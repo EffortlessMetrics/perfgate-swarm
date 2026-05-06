@@ -181,7 +181,7 @@ enum Command {
 
     /// Validate CLI examples in documentation against actual --help output.
     DocTest {
-        /// Additional markdown files to scan (default: README.md, CLAUDE.md, docs/*.md)
+        /// Additional markdown files to scan in addition to the current-doc default set
         #[arg(long)]
         files: Vec<PathBuf>,
     },
@@ -298,6 +298,7 @@ fn cmd_ci() -> anyhow::Result<()> {
         false,
     )?;
     cmd_arch()?;
+    cmd_doc_test(Vec::new())?;
     Ok(())
 }
 
@@ -2052,18 +2053,23 @@ struct DocCommand {
     flags: Vec<String>,
 }
 
-/// Collect default doc files: README.md, CLAUDE.md, and docs/**/*.md
+/// Collect default current-user docs.
 fn default_doc_files() -> anyhow::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
-    for name in ["README.md", "CLAUDE.md", "CONTRIBUTING.md"] {
+    for name in [
+        "README.md",
+        "docs/CONFIG.md",
+        "docs/PIPELINE.md",
+        "docs/BASELINE_SERVICE_DESIGN.md",
+    ] {
         let p = PathBuf::from(name);
         if p.exists() {
             files.push(p);
         }
     }
 
-    for entry in glob("docs/**/*.md")? {
+    for entry in glob("docs/GETTING_STARTED_*.md")? {
         files.push(entry?);
     }
 
@@ -2079,26 +2085,32 @@ fn default_doc_files() -> anyhow::Result<Vec<PathBuf>> {
 fn extract_commands(file: &Path, content: &str) -> Vec<DocCommand> {
     let mut commands = Vec::new();
     let mut in_code_block = false;
+    let mut scan_code_block = false;
     // Accumulated lines for multi-line commands (trailing backslash)
     let mut continuation: Option<(usize, String)> = None;
 
     for (idx, line) in content.lines().enumerate() {
         let line_num = idx + 1;
 
-        if line.trim_start().starts_with("```") {
+        let trimmed_start = line.trim_start();
+        if trimmed_start.starts_with("```") {
             if in_code_block {
                 // Closing fence -- flush any pending continuation
-                if let Some((start, acc)) = continuation.take()
+                if scan_code_block
+                    && let Some((start, acc)) = continuation.take()
                     && let Some(cmd) = parse_perfgate_line(file, start, &acc)
                 {
                     commands.push(cmd);
                 }
+                scan_code_block = false;
+            } else {
+                scan_code_block = is_shell_code_fence(trimmed_start);
             }
             in_code_block = !in_code_block;
             continue;
         }
 
-        if !in_code_block {
+        if !in_code_block || !scan_code_block {
             continue;
         }
 
@@ -2143,6 +2155,19 @@ fn extract_commands(file: &Path, content: &str) -> Vec<DocCommand> {
     }
 
     commands
+}
+
+fn is_shell_code_fence(fence: &str) -> bool {
+    let info = fence
+        .trim_start_matches("```")
+        .split_whitespace()
+        .next()
+        .unwrap_or("");
+
+    matches!(
+        info.to_ascii_lowercase().as_str(),
+        "" | "bash" | "sh" | "shell" | "console" | "terminal" | "powershell" | "pwsh"
+    )
 }
 
 /// Try to parse a single line as a perfgate CLI invocation.
@@ -3122,6 +3147,22 @@ perfgate check --config perfgate.toml \
 echo hello
 cargo build --release
 ls -la
+```
+"#;
+        let cmds = extract_commands(Path::new("test.md"), md);
+        assert!(cmds.is_empty());
+    }
+
+    #[test]
+    fn extract_commands_ignores_non_shell_fences() {
+        let md = r#"
+```toml
+[dependencies]
+perfgate = "0.16"
+```
+
+```rust
+let command = "perfgate run --name bench";
 ```
 "#;
         let cmds = extract_commands(Path::new("test.md"), md);
