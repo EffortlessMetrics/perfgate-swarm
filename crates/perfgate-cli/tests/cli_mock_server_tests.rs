@@ -88,6 +88,28 @@ fn add_success_command(cmd: &mut assert_cmd::Command) {
     }
 }
 
+fn mock_plaintext_key() -> String {
+    ["pg_live_", "fixtureonlynotsecret0000000000000000"].concat()
+}
+
+fn key_entry(id: &str, project: &str, revoked: bool) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "key_prefix": "pg_live_fixt...***",
+        "description": format!("{} key", project),
+        "role": "promoter",
+        "project": project,
+        "pattern": null,
+        "created_at": "2026-01-01T00:00:00Z",
+        "expires_at": null,
+        "revoked_at": if revoked {
+            serde_json::Value::String("2026-01-02T00:00:00Z".to_string())
+        } else {
+            serde_json::Value::Null
+        }
+    })
+}
+
 #[tokio::test]
 async fn test_run_upload_with_mock_server() {
     let mock_server = MockServer::start().await;
@@ -136,6 +158,167 @@ async fn test_run_upload_with_mock_server() {
         .stderr(predicate::str::contains("Uploaded baseline"));
 
     assert!(output_path.exists());
+}
+
+#[tokio::test]
+async fn test_admin_keys_create_with_mock_server() {
+    let mock_server = MockServer::start().await;
+    let plaintext = mock_plaintext_key();
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/keys"))
+        .and(header("Authorization", "Bearer admin-key"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "id": "key-new",
+            "key": plaintext,
+            "description": "promotion key",
+            "role": "promoter",
+            "project": "my-project",
+            "pattern": null,
+            "created_at": "2026-01-01T00:00:00Z",
+            "expires_at": null
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("admin-key")
+        .arg("admin")
+        .arg("keys")
+        .arg("create")
+        .arg("--project")
+        .arg("my-project")
+        .arg("--role")
+        .arg("promoter")
+        .arg("--description")
+        .arg("promotion key");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("key-new"))
+        .stdout(predicate::str::contains("my-project"))
+        .stdout(predicate::str::contains("pg_live_"))
+        .stderr(predicate::str::contains("Created API key key-new"));
+}
+
+#[tokio::test]
+async fn test_admin_keys_list_filters_project_and_revoked_keys() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/keys"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "keys": [
+                key_entry("key-active", "my-project", false),
+                key_entry("key-other", "other-project", false),
+                key_entry("key-revoked", "my-project", true)
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("admin-key")
+        .arg("admin")
+        .arg("keys")
+        .arg("list")
+        .arg("--project")
+        .arg("my-project");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("key-active"))
+        .stdout(predicate::str::contains("key-other").not())
+        .stdout(predicate::str::contains("key-revoked").not());
+}
+
+#[tokio::test]
+async fn test_admin_keys_revoke_with_mock_server() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("DELETE"))
+        .and(path("/api/v1/keys/key-active"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "key-active",
+            "revoked_at": "2026-01-02T00:00:00Z"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("admin-key")
+        .arg("admin")
+        .arg("keys")
+        .arg("revoke")
+        .arg("key-active");
+
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Revoked API key key-active"));
+}
+
+#[tokio::test]
+async fn test_admin_keys_rotate_with_mock_server() {
+    let mock_server = MockServer::start().await;
+    let plaintext = mock_plaintext_key();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/keys"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "keys": [key_entry("key-old", "my-project", false)]
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/keys"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "id": "key-new",
+            "key": plaintext,
+            "description": "my-project key",
+            "role": "promoter",
+            "project": "my-project",
+            "pattern": null,
+            "created_at": "2026-01-03T00:00:00Z",
+            "expires_at": null
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/v1/keys/key-old"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "key-old",
+            "revoked_at": "2026-01-03T00:01:00Z"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("admin-key")
+        .arg("admin")
+        .arg("keys")
+        .arg("rotate")
+        .arg("key-old");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("key-old"))
+        .stdout(predicate::str::contains("key-new"))
+        .stdout(predicate::str::contains("pg_live_"))
+        .stderr(predicate::str::contains(
+            "Rotated API key key-old -> key-new",
+        ));
 }
 
 #[tokio::test]

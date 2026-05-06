@@ -22,6 +22,7 @@ use perfgate_app::{
     render_markdown_template, render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
+use perfgate_client::types::{CreateKeyRequest, KeyEntry};
 use perfgate_client::{
     AuthMethod, BaselineClient, ClientConfig, ListBaselinesQuery, ListVerdictsQuery,
     SubmitVerdictRequest, UploadBaselineRequest,
@@ -251,6 +252,12 @@ enum Command {
     Baseline {
         #[command(subcommand)]
         action: BaselineAction,
+    },
+
+    /// Administer baseline service operations.
+    Admin {
+        #[command(subcommand)]
+        action: AdminAction,
     },
 
     /// Summarize one or more compare receipts in a terminal table.
@@ -1270,6 +1277,81 @@ pub struct WatchArgs {
     pub env: Vec<(String, String)>,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum KeyRole {
+    Viewer,
+    Contributor,
+    Promoter,
+    Admin,
+}
+
+impl From<KeyRole> for perfgate_api::auth::Role {
+    fn from(role: KeyRole) -> Self {
+        match role {
+            KeyRole::Viewer => Self::Viewer,
+            KeyRole::Contributor => Self::Contributor,
+            KeyRole::Promoter => Self::Promoter,
+            KeyRole::Admin => Self::Admin,
+        }
+    }
+}
+
+/// Subcommands for baseline service administration.
+#[derive(Debug, Subcommand)]
+enum AdminAction {
+    /// Manage API keys.
+    Keys {
+        #[command(subcommand)]
+        action: KeyAction,
+    },
+}
+
+/// Subcommands for API key lifecycle management.
+#[derive(Debug, Subcommand)]
+enum KeyAction {
+    /// Create a new API key. The plaintext key is printed once.
+    Create {
+        /// Project this key is scoped to.
+        #[arg(long)]
+        project: String,
+
+        /// Role to grant.
+        #[arg(long)]
+        role: KeyRole,
+
+        /// Human-readable key description.
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Optional benchmark glob/regex pattern enforced by the server.
+        #[arg(long)]
+        pattern: Option<String>,
+    },
+
+    /// List API keys. Key material is redacted.
+    List {
+        /// Filter by project.
+        #[arg(long)]
+        project: Option<String>,
+
+        /// Include revoked keys.
+        #[arg(long, default_value_t = false)]
+        include_revoked: bool,
+    },
+
+    /// Revoke an API key by ID.
+    Revoke {
+        /// Key ID to revoke.
+        key_id: String,
+    },
+
+    /// Create a replacement key with the same scope, then revoke the old key.
+    Rotate {
+        /// Key ID to rotate.
+        key_id: String,
+    },
+}
+
 /// Subcommands for baseline management.
 #[derive(Debug, Subcommand)]
 enum BaselineAction {
@@ -2164,6 +2246,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         }
 
         Command::Baseline { action } => execute_baseline_action(action, &server_flags),
+
+        Command::Admin { action } => execute_admin_action(action, &server_flags),
 
         Command::Fleet { action } => execute_fleet_action(action, &server_flags),
 
@@ -3216,6 +3300,172 @@ fn execute_comment(args: CommentArgs) -> anyhow::Result<()> {
 
         Ok(())
     })
+}
+
+/// Execute baseline service administration actions.
+fn execute_admin_action(action: AdminAction, server_flags: &ServerFlags) -> anyhow::Result<()> {
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
+    let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
+    let rt = tokio::runtime::Runtime::new()?;
+
+    match action {
+        AdminAction::Keys { action } => match action {
+            KeyAction::Create {
+                project,
+                role,
+                description,
+                pattern,
+            } => {
+                let role: perfgate_api::auth::Role = role.into();
+                let description =
+                    description.unwrap_or_else(|| format!("{} key for {}", role, project));
+                let request = CreateKeyRequest {
+                    description,
+                    role,
+                    project,
+                    pattern,
+                    expires_at: None,
+                };
+
+                rt.block_on(async {
+                    let response = client.create_key(&request).await.with_context(|| {
+                        format!(
+                            "Failed to create API key (project: {}, role: {})",
+                            request.project, request.role
+                        )
+                    })?;
+
+                    eprintln!(
+                        "Created API key {} for project {} with role {}",
+                        response.id, response.project, response.role
+                    );
+                    eprintln!("Store this key now; it will not be shown again.");
+                    println!("id\trole\tproject\tkey");
+                    println!(
+                        "{}\t{}\t{}\t{}",
+                        response.id, response.role, response.project, response.key
+                    );
+
+                    Ok::<(), anyhow::Error>(())
+                })?
+            }
+            KeyAction::List {
+                project,
+                include_revoked,
+            } => {
+                let project_filter = project.or_else(|| server_config.project.clone());
+
+                rt.block_on(async {
+                    let response = client
+                        .list_keys()
+                        .await
+                        .context("Failed to list API keys")?;
+                    let mut keys = response.keys;
+
+                    if let Some(project) = project_filter {
+                        keys.retain(|key| key.project == project);
+                    }
+                    if !include_revoked {
+                        keys.retain(|key| key.revoked_at.is_none());
+                    }
+
+                    print_key_table(&keys);
+                    Ok::<(), anyhow::Error>(())
+                })?
+            }
+            KeyAction::Revoke { key_id } => rt.block_on(async {
+                let response = client
+                    .revoke_key(&key_id)
+                    .await
+                    .with_context(|| format!("Failed to revoke API key {}", key_id))?;
+
+                eprintln!(
+                    "Revoked API key {} at {}",
+                    response.id,
+                    response.revoked_at.to_rfc3339()
+                );
+                Ok::<(), anyhow::Error>(())
+            })?,
+            KeyAction::Rotate { key_id } => rt.block_on(async {
+                let keys = client
+                    .list_keys()
+                    .await
+                    .context("Failed to list API keys before rotation")?
+                    .keys;
+                let old_key = keys
+                    .into_iter()
+                    .find(|key| key.id == key_id)
+                    .ok_or_else(|| anyhow::anyhow!("API key {} not found", key_id))?;
+                if old_key.revoked_at.is_some() {
+                    anyhow::bail!("API key {} is already revoked", key_id);
+                }
+
+                let request = CreateKeyRequest {
+                    description: old_key.description.clone(),
+                    role: old_key.role,
+                    project: old_key.project.clone(),
+                    pattern: old_key.pattern.clone(),
+                    expires_at: old_key.expires_at,
+                };
+                let replacement = client
+                    .create_key(&request)
+                    .await
+                    .with_context(|| format!("Failed to create replacement key for {}", key_id))?;
+
+                if let Err(e) = client.revoke_key(&key_id).await {
+                    println!("id\trole\tproject\tkey");
+                    println!(
+                        "{}\t{}\t{}\t{}",
+                        replacement.id, replacement.role, replacement.project, replacement.key
+                    );
+                    anyhow::bail!(
+                        "Created replacement key {} but failed to revoke old key {}: {}",
+                        replacement.id,
+                        key_id,
+                        e
+                    );
+                }
+
+                eprintln!("Rotated API key {} -> {}", key_id, replacement.id);
+                eprintln!("Store this key now; it will not be shown again.");
+                println!("old_id\tnew_id\trole\tproject\tkey");
+                println!(
+                    "{}\t{}\t{}\t{}\t{}",
+                    key_id, replacement.id, replacement.role, replacement.project, replacement.key
+                );
+                Ok::<(), anyhow::Error>(())
+            })?,
+        },
+    }
+
+    Ok(())
+}
+
+fn print_key_table(keys: &[KeyEntry]) {
+    println!("id\trole\tproject\tprefix\tstatus\tcreated_at\texpires_at\tdescription");
+    for key in keys {
+        let status = if key.revoked_at.is_some() {
+            "revoked"
+        } else {
+            "active"
+        };
+        let expires_at = key
+            .expires_at
+            .as_ref()
+            .map(|ts| ts.to_rfc3339())
+            .unwrap_or_else(|| "-".to_string());
+        println!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            key.id,
+            key.role,
+            key.project,
+            key.key_prefix,
+            status,
+            key.created_at.to_rfc3339(),
+            expires_at,
+            key.description
+        );
+    }
 }
 
 /// Execute baseline management actions.

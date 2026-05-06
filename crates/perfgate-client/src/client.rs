@@ -391,6 +391,101 @@ impl BaselineClient {
         }
     }
 
+    /// Creates a new API key. The plaintext key is returned exactly once.
+    pub async fn create_key(
+        &self,
+        request: &CreateKeyRequest,
+    ) -> Result<CreateKeyResponse, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url("keys");
+            debug!(url = %url, role = %request.role, project = %request.project, "Creating API key");
+
+            let client = self.inner.clone();
+            let request = request.clone();
+            async move {
+                let response = client
+                    .post(url)
+                    .json(&request)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<CreateKeyResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
+    /// Lists API keys. Returned key material is redacted by the server.
+    pub async fn list_keys(&self) -> Result<ListKeysResponse, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url("keys");
+            debug!(url = %url, "Listing API keys");
+
+            let client = self.inner.clone();
+            async move {
+                let response = client
+                    .get(url)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<ListKeysResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
+    /// Revokes an API key by ID.
+    pub async fn revoke_key(&self, id: &str) -> Result<RevokeKeyResponse, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url(&format!("keys/{}", id));
+            debug!(url = %url, key_id = %id, "Revoking API key");
+
+            let client = self.inner.clone();
+            async move {
+                let response = client
+                    .delete(url)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<RevokeKeyResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
     // -----------------------------------------------------------------------
     // Fleet-wide dependency regression detection
     // -----------------------------------------------------------------------
