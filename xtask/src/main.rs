@@ -111,7 +111,14 @@ enum Command {
         schemas_dir: PathBuf,
     },
 
-    /// Run the "usual" repo checks (fmt, clippy, test, schema-check, conform, publish-check).
+    /// Verify old receipt fixtures still deserialize with current types.
+    SchemaCompat {
+        /// Historical schema fixtures directory.
+        #[arg(long, default_value = "fixtures/schema")]
+        fixtures_dir: PathBuf,
+    },
+
+    /// Run the usual repo checks.
     Ci,
 
     /// Validate workspace packaging metadata for crates.io publication.
@@ -213,6 +220,7 @@ fn main() -> anyhow::Result<()> {
     match cli.cmd {
         Command::Schema { out_dir } => cmd_schema(&out_dir),
         Command::SchemaCheck { schemas_dir } => cmd_schema_check(&schemas_dir),
+        Command::SchemaCompat { fixtures_dir } => cmd_schema_compat(&fixtures_dir),
         Command::Ci => cmd_ci(),
         Command::PublishCheck => cmd_publish_check(),
         Command::PublicSurface {
@@ -290,6 +298,7 @@ fn cmd_ci() -> anyhow::Result<()> {
         &xtask_env,
     )?;
     cmd_schema_check(Path::new("schemas"))?;
+    cmd_schema_compat(Path::new("fixtures/schema"))?;
     cmd_conform(None, None)?;
     cmd_publish_check()?;
     cmd_public_surface(
@@ -1451,6 +1460,128 @@ fn cmd_schema_check(schemas_dir: &Path) -> anyhow::Result<()> {
 
     let _ = fs::remove_dir_all(&generated_dir);
     result
+}
+
+fn cmd_schema_compat(fixtures_dir: &Path) -> anyhow::Result<()> {
+    if !fixtures_dir.exists() {
+        anyhow::bail!(
+            "{} does not exist. Add historical fixtures or pass --fixtures-dir.",
+            fixtures_dir.display()
+        );
+    }
+    if !fixtures_dir.is_dir() {
+        anyhow::bail!("{} is not a directory", fixtures_dir.display());
+    }
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    collect_schema_compat_json_files(fixtures_dir, &mut files)?;
+    files.sort();
+
+    if files.is_empty() {
+        anyhow::bail!("no JSON fixtures found under {}", fixtures_dir.display());
+    }
+
+    let mut checked = BTreeMap::<String, u32>::new();
+    let mut errors = Vec::new();
+
+    for path in &files {
+        let raw = match fs::read_to_string(path) {
+            Ok(raw) => raw,
+            Err(err) => {
+                errors.push(format!("{}: {}", path.display(), err));
+                continue;
+            }
+        };
+
+        let value: serde_json::Value = match serde_json::from_str(&raw) {
+            Ok(value) => value,
+            Err(err) => {
+                errors.push(format!("{}: invalid JSON: {}", path.display(), err));
+                continue;
+            }
+        };
+
+        let schema = value
+            .get("schema")
+            .or_else(|| value.get("report_type"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+
+        let Some(schema) = schema else {
+            errors.push(format!(
+                "{}: missing schema or report_type field",
+                path.display()
+            ));
+            continue;
+        };
+
+        let result = match schema.as_str() {
+            "perfgate.run.v1" => {
+                serde_json::from_value::<perfgate_types::RunReceipt>(value).map(|_| ())
+            }
+            "perfgate.compare.v1" => {
+                serde_json::from_value::<perfgate_types::CompareReceipt>(value).map(|_| ())
+            }
+            "perfgate.report.v1" => {
+                serde_json::from_value::<perfgate_types::PerfgateReport>(value).map(|_| ())
+            }
+            "sensor.report.v1" => {
+                serde_json::from_value::<perfgate_types::SensorReport>(value).map(|_| ())
+            }
+            other => {
+                errors.push(format!("{}: unsupported schema {}", path.display(), other));
+                continue;
+            }
+        };
+
+        match result {
+            Ok(()) => {
+                *checked.entry(schema.clone()).or_default() += 1;
+                println!("  OK  {} ({})", path.display(), schema);
+            }
+            Err(err) => errors.push(format!(
+                "{}: failed to deserialize {}: {}",
+                path.display(),
+                schema,
+                err
+            )),
+        }
+    }
+
+    if !errors.is_empty() {
+        println!("Found {} schema compatibility error(s):", errors.len());
+        for error in &errors {
+            println!("  - {error}");
+        }
+        anyhow::bail!(
+            "{} historical schema fixture(s) failed compatibility checks",
+            errors.len()
+        );
+    }
+
+    println!(
+        "  OK  {} historical schema fixture(s) deserialize with current types",
+        checked.values().copied().sum::<u32>()
+    );
+    for (schema, count) in checked {
+        println!("      {schema}: {count}");
+    }
+
+    Ok(())
+}
+
+fn collect_schema_compat_json_files(dir: &Path, out: &mut Vec<PathBuf>) -> anyhow::Result<()> {
+    for entry in fs::read_dir(dir).with_context(|| format!("read dir {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            collect_schema_compat_json_files(&path, out)?;
+        } else if path.extension().is_some_and(|ext| ext == "json") {
+            out.push(path);
+        }
+    }
+    Ok(())
 }
 
 fn check_schema_mirror_at(generated_dir: &Path, committed_dir: &Path) -> anyhow::Result<()> {
@@ -3085,6 +3216,38 @@ mod tests {
             );
         });
         let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn cmd_schema_compat_accepts_historical_run_fixture() {
+        let root = unique_temp_dir("perfgate_schema_compat");
+        let version_dir = root.join("v0.15");
+        fs::create_dir_all(&version_dir).expect("create fixture dir");
+        fs::write(
+            version_dir.join("perfgate.run.v1.json"),
+            r#"{
+  "schema": "perfgate.run.v1",
+  "tool": {"name": "perfgate", "version": "0.15.1"},
+  "run": {
+    "id": "compat-run-1",
+    "started_at": "2026-01-01T00:00:00Z",
+    "ended_at": "2026-01-01T00:00:01Z",
+    "host": {"os": "linux", "arch": "x86_64"}
+  },
+  "bench": {
+    "name": "compat-bench",
+    "command": ["echo", "compat"],
+    "repeat": 1,
+    "warmup": 0
+  },
+  "samples": [{"wall_ms": 100, "exit_code": 0}],
+  "stats": {"wall_ms": {"median": 100, "min": 100, "max": 100}}
+}"#,
+        )
+        .expect("write fixture");
+
+        cmd_schema_compat(&root).expect("compat fixture should deserialize");
+        let _ = fs::remove_dir_all(&root);
     }
 
     // --- doc-test unit tests ---
