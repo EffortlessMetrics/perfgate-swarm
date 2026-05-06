@@ -1,13 +1,15 @@
 [workspace]
 resolver = "2"
+default-members = [
+  "crates/perfgate",
+  "crates/perfgate-cli",
+  "crates/perfgate-server",
+]
 members = [
   "crates/perfgate-error",
-  "crates/perfgate-auth",
   "crates/perfgate-config",
   "crates/perfgate-api",
   "crates/perfgate-types",
-  "crates/perfgate-validation",
-  "crates/perfgate-stats",
   "crates/perfgate-significance",
   "crates/perfgate-paired",
   "crates/perfgate-budget",
@@ -18,7 +20,6 @@ members = [
   "crates/perfgate-export",
   "crates/perfgate-sensor",
   "crates/perfgate-fake",
-  "crates/perfgate-summary",
   "crates/perfgate-adapters",
   "crates/perfgate-profile",
   "crates/perfgate-app",
@@ -75,8 +76,6 @@ wiremock = "0.6"
 serde_json.workspace = true
 toml.workspace = true
 perfgate-types.workspace = true
-perfgate-validation.workspace = true
-perfgate-stats.workspace = true
 perfgate-host-detect.workspace = true
 perfgate-sha256.workspace = true
 perfgate-render.workspace = true
@@ -88,10 +87,8 @@ perfgate-domain.workspace = true
 perfgate-paired.workspace = true
 perfgate-app.workspace = true
 perfgate-significance.workspace = true
-perfgate-auth.workspace = true
 perfgate-config.workspace = true
 perfgate-api.workspace = true
-perfgate-summary.workspace = true
 perfgate.workspace = true
 glob.workspace = true
 shell-words.workspace = true
@@ -143,23 +140,19 @@ libc = "0.2.182"
 
 # Internal crates
 perfgate-error = { path = "crates/perfgate-error", version = "0.15.1" }
-perfgate-auth = { path = "crates/perfgate-auth", version = "0.15.1" }
 perfgate-api = { path = "crates/perfgate-api", version = "0.15.1" }
 perfgate-config = { path = "crates/perfgate-config", version = "0.15.1" }
 perfgate-types = { path = "crates/perfgate-types", version = "0.15.1" }
-perfgate-validation = { path = "crates/perfgate-validation", version = "0.15.1" }
-perfgate-stats = { path = "crates/perfgate-stats", version = "0.15.1" }
 perfgate-significance = { path = "crates/perfgate-significance", version = "0.15.1" }
+perfgate-domain = { path = "crates/perfgate-domain", version = "0.15.1" }
 perfgate-paired = { path = "crates/perfgate-paired", version = "0.15.1" }
 perfgate-budget = { path = "crates/perfgate-budget", version = "0.15.1" }
-perfgate-domain = { path = "crates/perfgate-domain", version = "0.15.1" }
 perfgate-host-detect = { path = "crates/perfgate-host-detect", version = "0.15.1" }
 perfgate-sha256 = { path = "crates/perfgate-sha256", version = "0.15.1" }
 perfgate-render = { path = "crates/perfgate-render", version = "0.15.1" }
 perfgate-export = { path = "crates/perfgate-export", version = "0.15.1" }
 perfgate-sensor = { path = "crates/perfgate-sensor", version = "0.15.1" }
 perfgate-fake = { path = "crates/perfgate-fake", version = "0.15.1" }
-perfgate-summary = { path = "crates/perfgate-summary", version = "0.15.1" }
 perfgate-adapters = { path = "crates/perfgate-adapters", version = "0.15.1" }
 perfgate-ingest = { path = "crates/perfgate-ingest", version = "0.15.1" }
 perfgate-profile = { path = "crates/perfgate-profile", version = "0.15.1" }

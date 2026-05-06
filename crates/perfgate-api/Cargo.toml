@@ -19,16 +19,21 @@ serde_json.workspace = true
 chrono = { version = "0.4.39", features = ["serde"] }
 perfgate-types.workspace = true
 perfgate-error.workspace = true
-perfgate-auth.workspace = true
 schemars.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
 http.workspace = true
 axum = { workspace = true, optional = true }
+toml.workspace = true
+uuid.workspace = true
+tempfile = { version = "3.26.0" }
 
 [features]
 default = []
 server = ["axum"]
+
+[dev-dependencies]
+tempfile = { version = "3.26.0" }
 
 [lints]
 workspace = true

@@ -1,14 +1,14 @@
 //! Authentication and authorization types for perfgate.
 //!
 //! Provides API key management, permission scopes, and role-based access control
-//! types used by the perfgate baseline service.
+//! types used by perfgate baseline service.
 //!
-//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//! Part of [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 //!
 //! # Example
 //!
 //! ```
-//! use perfgate_auth::{generate_api_key, API_KEY_PREFIX_LIVE};
+//! use perfgate_api::auth::{generate_api_key, API_KEY_PREFIX_LIVE};
 //!
 //! let key = generate_api_key(false);
 //! assert!(key.starts_with(API_KEY_PREFIX_LIVE));
@@ -75,7 +75,7 @@ pub enum Role {
 }
 
 impl Role {
-    /// Returns the scopes allowed for this role.
+    /// Returns scopes allowed for this role.
     pub fn allowed_scopes(&self) -> Vec<Scope> {
         match self {
             Role::Viewer => vec![Scope::Read],
@@ -96,7 +96,7 @@ impl Role {
         self.allowed_scopes().contains(&scope)
     }
 
-    /// Infers the closest built-in role from a set of scopes.
+    /// Infers closest built-in role from a set of scopes.
     pub fn from_scopes(scopes: &[Scope]) -> Self {
         if scopes.contains(&Scope::Admin) || scopes.contains(&Scope::Delete) {
             Self::Admin
@@ -156,7 +156,7 @@ pub struct ApiKey {
 }
 
 impl ApiKey {
-    /// Creates a new API key with the given role.
+    /// Creates a new API key with given role.
     pub fn new(id: String, name: String, project_id: String, role: Role) -> Self {
         Self {
             id,
@@ -171,7 +171,7 @@ impl ApiKey {
         }
     }
 
-    /// Checks if the key has expired.
+    /// Checks if key has expired.
     pub fn is_expired(&self) -> bool {
         if let Some(exp) = self.expires_at {
             return exp < Utc::now();
@@ -179,13 +179,13 @@ impl ApiKey {
         false
     }
 
-    /// Checks if the key has a specific scope.
+    /// Checks if key has a specific scope.
     pub fn has_scope(&self, scope: Scope) -> bool {
         self.scopes.contains(&scope)
     }
 }
 
-/// JWT claims accepted by the server.
+/// JWT claims accepted by server.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub struct JwtClaims {
     /// Subject identifier.
@@ -221,7 +221,7 @@ pub fn validate_key_format(key: &str) -> Result<(), AuthError> {
             .or_else(|| key.strip_prefix(API_KEY_PREFIX_TEST))
             .unwrap();
 
-        // Check that the remainder is at least 32 characters
+        // Check that remainder is at least 32 characters
         if remainder.len() >= 32 && remainder.chars().all(|c| c.is_alphanumeric()) {
             return Ok(());
         }

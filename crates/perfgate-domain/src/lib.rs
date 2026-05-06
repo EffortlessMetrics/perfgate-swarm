@@ -7,12 +7,15 @@
 //! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
 mod blame;
-mod paired;
+pub mod paired;
+pub mod stats;
 
 pub use blame::{
     BinaryBlame, DependencyChange, DependencyChangeType, compare_lockfiles, parse_lockfile,
 };
-pub use paired::{PairedComparison, compare_paired_stats, compute_paired_cv, compute_paired_stats};
+pub use paired::{
+    PairedComparison, PairedError, compare_paired_stats, compute_paired_cv, compute_paired_stats,
+};
 
 pub use perfgate_host_detect::detect_host_mismatch;
 
@@ -22,11 +25,11 @@ pub use perfgate_budget::{
 };
 
 pub use perfgate_significance::{compute_significance, mean_and_variance};
-pub use perfgate_stats::trend::{
+pub use stats::{
     DriftClass, TrendAnalysis, TrendConfig, analyze_trend, classify_drift, compute_headroom_pct,
-    linear_regression, predict_breach_run, spark_chart,
+    linear_regression, median_f64_sorted, median_u64_sorted, predict_breach_run, spark_chart,
+    summarize_f64, summarize_u64,
 };
-pub use perfgate_stats::{median_f64_sorted, median_u64_sorted, summarize_f64, summarize_u64};
 
 use perfgate_types::{
     Budget, CHECK_ID_BUDGET, CompareReceipt, Delta, FINDING_CODE_METRIC_FAIL,

@@ -1,11 +1,11 @@
 //! Basic example demonstrating benchmark name validation.
 //!
-//! Run with: cargo run -p perfgate-validation --example basic
+//! Run with: cargo run -p perfgate-types --example validation_example
 
-use perfgate_validation::{BENCH_NAME_MAX_LEN, ValidationError, validate_bench_name};
+use perfgate_types::validation::{BENCH_NAME_MAX_LEN, ValidationError, validate_bench_name};
 
 fn main() {
-    println!("=== perfgate-validation Basic Example ===\n");
+    println!("=== perfgate-types::validation Basic Example ===\n");
 
     println!("1. Valid benchmark names:");
     let valid_names = [

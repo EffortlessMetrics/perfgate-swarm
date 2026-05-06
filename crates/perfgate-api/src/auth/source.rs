@@ -3,7 +3,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::Role;
+use crate::auth::Role;
 
 fn default_project() -> String {
     "default".to_string()

@@ -5,6 +5,8 @@
 //!
 //! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
 
+pub mod summary;
+
 use anyhow::Context;
 use perfgate_types::{
     CompareReceipt, ComplexityGateResult, ComplexityGateStatus, Direction, Metric, MetricStatistic,

@@ -74,10 +74,9 @@ The perfgate architecture is modularized into 26 workspace crates:
 | Crate | Responsibility |
 |-------|----------------|
 | `perfgate-types` | Core domain types and stable schemas |
-| `perfgate-api` | Common API types and models for baseline service |
-| `perfgate-auth` | Authentication and authorization types |
+| `perfgate-api` | API models and authentication types for baseline service |
 | `perfgate-config` | Configuration loading and merging logic |
-| `perfgate-domain` | Core business logic and statistical computations |
+| `perfgate-domain` | Core business logic, statistics, and paired analysis |
 | `perfgate-app` | Orchestration layer for CLI commands |
 | `perfgate-cli` | Command-line interface and argument parsing |
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
@@ -85,18 +84,19 @@ The perfgate architecture is modularized into 26 workspace crates:
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate-budget` | Budget evaluation and verdict logic |
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
-| `perfgate-render` | Markdown and terminal rendering |
+| `perfgate-render` | Markdown, terminal, and summary rendering |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |
 | `perfgate-significance` | Statistical significance testing (Welch's t-test) |
-| `perfgate-stats` | Descriptive statistics (median, p95, etc.) |
 | `perfgate-host-detect` | Host fingerprinting and mismatch detection |
-| `perfgate-paired` | Paired benchmarking implementation |
+| `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
 | `perfgate-error` | Shared error types and categorization |
-| `perfgate-validation` | Schema validation and contract testing |
 | `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
 | `perfgate-fake` | Test fixtures and mock data generators |
+| `perfgate-profile` | Profiling diagnostics and flamegraph capture |
+| `perfgate-ingest` | External benchmark format ingestion |
+| `perfgate-github` | GitHub API and PR-comment integration |
+| `perfgate-scaling` | Complexity and scaling analysis |
 | `perfgate-selfbench` | Internal benchmarking workloads for self-dogfooding |
-| `perfgate-summary` | Summarization logic for comparison receipts |
 | `perfgate` | Unified facade library |
 
 ## Implementation Status

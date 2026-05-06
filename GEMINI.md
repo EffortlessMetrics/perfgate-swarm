@@ -20,23 +20,23 @@ The architecture is modularized into 26 workspace crates:
 |-------|----------------|
 | `perfgate-types` | Core domain types and stable schemas |
 | `perfgate-error` | Shared error types and categorization |
-| `perfgate-domain` | Core business logic and statistical computations |
-| `perfgate-stats` | Descriptive statistics (median, p95, etc.) |
+| `perfgate-domain` | Core business logic, statistics, and paired analysis |
 | `perfgate-significance` | Statistical significance testing (Welch's t-test) |
 | `perfgate-budget` | Budget evaluation and verdict logic |
 | `perfgate-sha256` | Minimal SHA-256 implementation for fingerprints |
 | `perfgate-host-detect` | Host fingerprinting and mismatch detection |
-| `perfgate-validation` | Schema validation and contract testing |
 | `perfgate-adapters` | Low-level system adapters (rusage, process execution) |
-| `perfgate-paired` | Paired benchmarking implementation |
-| `perfgate-auth` | Authentication and authorization types |
-| `perfgate-api` | API types and models for baseline service |
+| `perfgate-paired` | Compatibility wrapper for paired benchmarking APIs |
+| `perfgate-api` | API models and authentication types for baseline service |
 | `perfgate-config` | Configuration loading and merging logic |
 | `perfgate-app` | Orchestration layer for CLI commands |
-| `perfgate-summary` | Summarization of comparison receipts |
-| `perfgate-render` | Markdown and terminal rendering |
+| `perfgate-render` | Markdown, terminal, and summary rendering |
 | `perfgate-export` | Multi-format export (CSV, JSONL, HTML, Prometheus, JUnit) |
 | `perfgate-sensor` | Cockpit mode and sensor report generation |
+| `perfgate-profile` | Profiling diagnostics and flamegraph capture |
+| `perfgate-ingest` | External benchmark format ingestion |
+| `perfgate-github` | GitHub API and PR-comment integration |
+| `perfgate-scaling` | Complexity and scaling analysis |
 | `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
 | `perfgate-client` | Client library for Baseline Service interaction |
 | `perfgate-cli` | Command-line interface and argument parsing |

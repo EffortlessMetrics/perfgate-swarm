@@ -1,42 +1,22 @@
 //! Validation functions for benchmark names and configuration.
 //!
-//! This crate provides validation logic for validating benchmark names
+//! This module provides validation logic for validating benchmark names
 //! according to a strict set of rules.
-//!
-//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
-//!
-//! # Example
-//!
-//! ```
-//! use perfgate_validation::{validate_bench_name, ValidationError};
-//!
-//! // Valid names
-//! assert!(validate_bench_name("my-bench").is_ok());
-//! assert!(validate_bench_name("bench_v2").is_ok());
-//! assert!(validate_bench_name("path/to/bench").is_ok());
-//! assert!(validate_bench_name("bench.v1").is_ok());
-//!
-//! // Invalid names
-//! assert!(validate_bench_name("").is_err());
-//! assert!(validate_bench_name("MyBench").is_err());  // uppercase
-//! assert!(validate_bench_name("../bench").is_err()); // path traversal
-//! assert!(validate_bench_name("bench/").is_err());   // trailing slash
-//! ```
 
 /// Maximum allowed length (in bytes) for a benchmark name.
 ///
 /// # Examples
 ///
 /// ```
-/// use perfgate_validation::{BENCH_NAME_MAX_LEN, validate_bench_name};
+/// use perfgate_types::validation::BENCH_NAME_MAX_LEN;
 ///
 /// // Exactly at the limit – accepted
 /// let name = "a".repeat(BENCH_NAME_MAX_LEN);
-/// assert!(validate_bench_name(&name).is_ok());
+/// assert!(perfgate_types::validation::validate_bench_name(&name).is_ok());
 ///
 /// // One byte over – rejected
 /// let too_long = "a".repeat(BENCH_NAME_MAX_LEN + 1);
-/// assert!(validate_bench_name(&too_long).is_err());
+/// assert!(perfgate_types::validation::validate_bench_name(&too_long).is_err());
 /// ```
 pub use perfgate_error::BENCH_NAME_MAX_LEN;
 
@@ -48,7 +28,7 @@ pub use perfgate_error::BENCH_NAME_MAX_LEN;
 /// # Examples
 ///
 /// ```
-/// use perfgate_validation::BENCH_NAME_PATTERN;
+/// use perfgate_types::validation::BENCH_NAME_PATTERN;
 ///
 /// assert_eq!(BENCH_NAME_PATTERN, r"^[a-z0-9_.\-/]+$");
 /// assert!(BENCH_NAME_PATTERN.starts_with('^'));
@@ -61,7 +41,7 @@ pub use perfgate_error::BENCH_NAME_PATTERN;
 /// # Examples
 ///
 /// ```
-/// use perfgate_validation::{validate_bench_name, ValidationError};
+/// use perfgate_types::validation::{validate_bench_name, ValidationError};
 ///
 /// // Empty name yields `ValidationError::Empty`
 /// let err = validate_bench_name("").unwrap_err();
@@ -99,7 +79,7 @@ pub use perfgate_error::ValidationError;
 /// # Examples
 ///
 /// ```
-/// use perfgate_validation::{validate_bench_name, ValidationError};
+/// use perfgate_types::validation::{validate_bench_name, ValidationError};
 ///
 /// // ── Valid names ──────────────────────────────────────
 /// assert!(validate_bench_name("my-bench").is_ok());

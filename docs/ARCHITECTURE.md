@@ -81,8 +81,8 @@ perfgate follows a highly modular micro-crate architecture with strictly layered
 │      perfgate-domain | perfgate-budget | perfgate-significance  │
 │                    (Domain Business Logic)                      │
 ├─────────────────────────────────────────────────────────────────┤
-│               perfgate-types | perfgate-stats                   │
-│                    (Core Types & Math)                          │
+│                         perfgate-types                          │
+│                    (Core Types & Validation)                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -90,8 +90,8 @@ perfgate follows a highly modular micro-crate architecture with strictly layered
 
 Dependencies flow inward toward the core types and domain logic:
 
-1. **Core**: `perfgate-types` and `perfgate-stats` are the foundation.
-2. **Domain**: `perfgate-budget` and `perfgate-significance` implement policy on top of core math. `perfgate-domain` coordinates these entities.
+1. **Core**: `perfgate-types` is the stable receipt/config and validation foundation.
+2. **Domain**: `perfgate-budget` and `perfgate-significance` implement policy on top of core math. `perfgate-domain` owns statistics and coordinates these entities.
 3. **Infrastructure**: `perfgate-adapters` and `perfgate-host-detect` provide the "outer" world access (process execution, system info).
 4. **App**: `perfgate-app` wires together domain logic and infrastructure to fulfill user requests.
 5. **Presentation**: `perfgate-render`, `perfgate-export`, and `perfgate-sensor` format the results for various consumers.
@@ -99,7 +99,7 @@ Dependencies flow inward toward the core types and domain logic:
 
 ### Crate Responsibilities (Updated)
 
-- **perfgate-stats**: Pure statistical aggregators (U64Summary, F64Summary).
+- **perfgate-domain::stats**: Pure statistical aggregators (U64Summary, F64Summary).
 - **perfgate-budget**: Logic for comparing metrics against thresholds.
 - **perfgate-significance**: P-value and statistical significance testing.
 - **perfgate-render**: Markdown and terminal rendering logic.

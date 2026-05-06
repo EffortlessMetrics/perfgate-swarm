@@ -35,7 +35,7 @@ pub async fn create_key(
     }
 
     // Generate a new plaintext key
-    let plaintext = perfgate_auth::generate_api_key(false);
+    let plaintext = perfgate_api::auth::generate_api_key(false);
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
 

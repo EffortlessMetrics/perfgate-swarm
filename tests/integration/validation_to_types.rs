@@ -1,12 +1,12 @@
 //! Integration tests: validation crate → types crate.
 //!
-//! These tests verify that perfgate-validation integrates correctly
+//! These tests verify that type-level validation integrates correctly
 //! with perfgate-types, including config validation with bench names.
 
 use perfgate_types::{
     BaselineServerConfig, BenchConfigFile, ConfigFile, DefaultsConfig, validate_bench_name,
+    validation::ValidationError,
 };
-use perfgate_validation::ValidationError;
 
 #[test]
 fn validation_error_is_used_by_types() {
@@ -207,7 +207,7 @@ fn uppercase_characters_are_rejected() {
 
 #[test]
 fn too_long_names_are_rejected() {
-    use perfgate_validation::BENCH_NAME_MAX_LEN;
+    use perfgate_types::validation::BENCH_NAME_MAX_LEN;
 
     let long_name = "a".repeat(BENCH_NAME_MAX_LEN + 1);
     assert!(matches!(

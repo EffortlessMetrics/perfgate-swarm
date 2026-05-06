@@ -1,9 +1,9 @@
 //! Integration tests: stats crate → domain crate.
 //!
-//! These tests verify that the perfgate-stats crate integrates correctly
+//! These tests verify that domain statistics integrate correctly
 //! with perfgate-domain, and that errors propagate correctly between them.
 
-use perfgate_stats::{StatsError, summarize_f64, summarize_u64};
+use perfgate_domain::stats::{StatsError, summarize_f64, summarize_u64};
 use perfgate_types::{F64Summary, U64Summary};
 
 #[test]
@@ -155,7 +155,7 @@ fn domain_uses_stats_for_metric_values() {
 
 #[test]
 fn stats_percentile_works_with_domain_percentile_logic() {
-    use perfgate_stats::percentile;
+    use perfgate_domain::stats::percentile;
 
     let values = vec![10.0, 20.0, 30.0, 40.0, 50.0];
 
@@ -174,7 +174,7 @@ fn stats_percentile_works_with_domain_percentile_logic() {
 
 #[test]
 fn stats_mean_and_variance_integrate_with_significance_testing() {
-    use perfgate_stats::mean_and_variance;
+    use perfgate_domain::stats::mean_and_variance;
 
     let values = vec![100.0, 102.0, 98.0, 101.0, 99.0];
     let (mean, variance) = mean_and_variance(&values).unwrap();

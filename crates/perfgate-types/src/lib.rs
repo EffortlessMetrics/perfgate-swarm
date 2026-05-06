@@ -26,6 +26,7 @@ mod defaults_config;
 mod io;
 mod paired;
 mod repair_context;
+pub mod validation;
 
 pub use paired::{
     NoiseDiagnostics, NoiseLevel, PAIRED_SCHEMA_V1, PairedBenchMeta, PairedDiffSummary,
@@ -36,7 +37,7 @@ pub use defaults_config::*;
 pub use io::{ReadJsonError, read_json_file};
 pub use repair_context::*;
 
-pub use perfgate_validation::{
+pub use validation::{
     BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError as BenchNameValidationError,
     validate_bench_name,
 };

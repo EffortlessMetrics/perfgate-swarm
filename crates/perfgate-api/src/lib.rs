@@ -13,6 +13,8 @@
 //! assert_eq!(BASELINE_SCHEMA_V1, "perfgate.baseline.v1");
 //! ```
 
+pub mod auth;
+
 use chrono::{DateTime, Utc};
 use perfgate_types::{RunReceipt, VerdictCounts, VerdictStatus};
 use schemars::JsonSchema;
@@ -734,7 +736,7 @@ pub struct CreateKeyRequest {
     /// Human-readable description
     pub description: String,
     /// Role to assign (viewer, contributor, promoter, admin)
-    pub role: perfgate_auth::Role,
+    pub role: auth::Role,
     /// Project this key is scoped to (use "*" for all projects)
     pub project: String,
     /// Optional glob pattern to restrict benchmark access
@@ -755,7 +757,7 @@ pub struct CreateKeyResponse {
     /// Human-readable description
     pub description: String,
     /// Assigned role
-    pub role: perfgate_auth::Role,
+    pub role: auth::Role,
     /// Scoped project
     pub project: String,
     /// Optional benchmark pattern
@@ -778,7 +780,7 @@ pub struct KeyEntry {
     /// Human-readable description
     pub description: String,
     /// Assigned role
-    pub role: perfgate_auth::Role,
+    pub role: auth::Role,
     /// Scoped project
     pub project: String,
     /// Optional benchmark pattern
