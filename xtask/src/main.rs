@@ -132,6 +132,9 @@ enum Command {
         strict: bool,
     },
 
+    /// Enforce crate-layer dependency rules for the current architecture.
+    Arch,
+
     /// Validate JSON fixtures against the vendored sensor.report.v1 schema.
     Conform {
         /// Directory of fixtures to validate (default: golden fixtures)
@@ -217,6 +220,7 @@ fn main() -> anyhow::Result<()> {
             absorbed_policy,
             strict,
         } => cmd_public_surface(&public_policy, &absorbed_policy, strict),
+        Command::Arch => cmd_arch(),
         Command::Conform { fixtures, file } => cmd_conform(fixtures, file),
         Command::SyncFixtures => cmd_sync_fixtures(),
         Command::Mutants {
@@ -293,6 +297,7 @@ fn cmd_ci() -> anyhow::Result<()> {
         Path::new("policy/absorbed_crates.txt"),
         false,
     )?;
+    cmd_arch()?;
     Ok(())
 }
 
@@ -579,6 +584,344 @@ fn collect_public_surface_errors(
     }
 
     errors
+}
+
+#[derive(Debug)]
+struct ArchRule {
+    name: &'static str,
+    sources: &'static [&'static str],
+    forbidden: &'static [&'static str],
+}
+
+const ARCH_RULES: &[ArchRule] = &[
+    ArchRule {
+        name: "contract packages stay below runtime/app/entrypoints",
+        sources: &["perfgate-types", "perfgate-api"],
+        forbidden: &[
+            "perfgate-adapters",
+            "perfgate-profile",
+            "perfgate-app",
+            "perfgate-client",
+            "perfgate-server",
+            "perfgate-cli",
+            "perfgate",
+        ],
+    },
+    ArchRule {
+        name: "core/domain packages stay below I/O, presentation, and entrypoints",
+        sources: &[
+            "perfgate-budget",
+            "perfgate-domain",
+            "perfgate-host-detect",
+            "perfgate-paired",
+            "perfgate-scaling",
+            "perfgate-sha256",
+            "perfgate-significance",
+        ],
+        forbidden: &[
+            "perfgate-adapters",
+            "perfgate-app",
+            "perfgate-client",
+            "perfgate-config",
+            "perfgate-export",
+            "perfgate-github",
+            "perfgate-ingest",
+            "perfgate-profile",
+            "perfgate-render",
+            "perfgate-sensor",
+            "perfgate-server",
+            "perfgate-cli",
+            "perfgate",
+        ],
+    },
+    ArchRule {
+        name: "presentation packages stay below runtime/app/entrypoints",
+        sources: &["perfgate-export", "perfgate-render", "perfgate-sensor"],
+        forbidden: &[
+            "perfgate-adapters",
+            "perfgate-app",
+            "perfgate-client",
+            "perfgate-profile",
+            "perfgate-server",
+            "perfgate-cli",
+            "perfgate",
+        ],
+    },
+    ArchRule {
+        name: "runtime packages stay below service/client/cli entrypoints",
+        sources: &["perfgate-adapters", "perfgate-profile"],
+        forbidden: &[
+            "perfgate-client",
+            "perfgate-server",
+            "perfgate-cli",
+            "perfgate",
+        ],
+    },
+    ArchRule {
+        name: "client must not depend on server or cli",
+        sources: &["perfgate-client"],
+        forbidden: &["perfgate-server", "perfgate-cli"],
+    },
+    ArchRule {
+        name: "server must not depend on cli",
+        sources: &["perfgate-server"],
+        forbidden: &["perfgate-cli"],
+    },
+];
+
+#[derive(Debug)]
+struct SourceArchRule {
+    packages: &'static [&'static str],
+    label: &'static str,
+    banned_patterns: &'static [&'static str],
+}
+
+const CORE_DOMAIN_ARCH_PACKAGES: &[&str] = &[
+    "perfgate-budget",
+    "perfgate-domain",
+    "perfgate-host-detect",
+    "perfgate-paired",
+    "perfgate-scaling",
+    "perfgate-sha256",
+    "perfgate-significance",
+];
+
+const CORE_DOMAIN_BANNED_SOURCE_PATTERNS: &[&str] = &[
+    "std::fs",
+    "std::process",
+    "tokio::fs",
+    "tokio::process",
+    "Command::new",
+];
+
+const PRESENTATION_ARCH_PACKAGES: &[&str] =
+    &["perfgate-export", "perfgate-render", "perfgate-sensor"];
+
+const PRESENTATION_BANNED_SOURCE_PATTERNS: &[&str] =
+    &["std::process", "tokio::process", "Command::new"];
+
+const SOURCE_ARCH_RULES: &[SourceArchRule] = &[
+    SourceArchRule {
+        packages: CORE_DOMAIN_ARCH_PACKAGES,
+        label: "core/domain source must stay filesystem/process free",
+        banned_patterns: CORE_DOMAIN_BANNED_SOURCE_PATTERNS,
+    },
+    SourceArchRule {
+        packages: PRESENTATION_ARCH_PACKAGES,
+        label: "presentation source must not execute processes",
+        banned_patterns: PRESENTATION_BANNED_SOURCE_PATTERNS,
+    },
+];
+
+fn cmd_arch() -> anyhow::Result<()> {
+    let metadata = load_cargo_metadata()?;
+    let mut errors = collect_arch_dependency_errors(&metadata);
+    errors.extend(collect_arch_source_errors(&metadata)?);
+
+    if !errors.is_empty() {
+        println!("Found {} architecture policy error(s):", errors.len());
+        for error in &errors {
+            println!("  - {}", error);
+        }
+        anyhow::bail!(
+            "{} architecture policy issue(s) found. Keep lower layers independent.",
+            errors.len()
+        );
+    }
+
+    println!("  OK  architecture dependency rules hold");
+    println!("      checked {} package-layer rule(s)", ARCH_RULES.len());
+    println!(
+        "      scanned {} source package(s) for banned filesystem/process usage",
+        SOURCE_ARCH_RULES
+            .iter()
+            .map(|rule| rule.packages.len())
+            .sum::<usize>()
+    );
+
+    Ok(())
+}
+
+fn collect_arch_dependency_errors(metadata: &CargoMetadata) -> Vec<String> {
+    let dependency_graph = workspace_dependency_graph(metadata);
+    let package_names: BTreeSet<&str> = metadata
+        .packages
+        .iter()
+        .map(|package| package.name.as_str())
+        .collect();
+    let mut errors = Vec::new();
+
+    for rule in ARCH_RULES {
+        for source in rule.sources {
+            if !package_names.contains(source) {
+                errors.push(format!(
+                    "{} references missing source package {}",
+                    rule.name, source
+                ));
+            }
+        }
+
+        for forbidden in rule.forbidden {
+            if !package_names.contains(forbidden) {
+                errors.push(format!(
+                    "{} references missing forbidden package {}",
+                    rule.name, forbidden
+                ));
+            }
+        }
+
+        for source in rule.sources {
+            if !dependency_graph.contains_key(*source) {
+                continue;
+            }
+
+            let reachable = reachable_workspace_dependencies(source, &dependency_graph);
+            for forbidden in rule.forbidden {
+                if reachable.contains(*forbidden) {
+                    errors.push(format!(
+                        "{}: {} must not depend on {}",
+                        rule.name, source, forbidden
+                    ));
+                }
+            }
+        }
+    }
+
+    errors
+}
+
+fn workspace_dependency_graph(metadata: &CargoMetadata) -> BTreeMap<String, BTreeSet<String>> {
+    let package_names: BTreeSet<&str> = metadata
+        .packages
+        .iter()
+        .map(|package| package.name.as_str())
+        .collect();
+    let mut graph = BTreeMap::new();
+
+    for package in &metadata.packages {
+        let deps = package
+            .dependencies
+            .iter()
+            .filter(|dependency| dependency.kind.as_deref() != Some("dev"))
+            .filter(|dependency| dependency.path.is_some())
+            .filter(|dependency| package_names.contains(dependency.name.as_str()))
+            .map(|dependency| dependency.name.clone())
+            .collect();
+
+        graph.insert(package.name.clone(), deps);
+    }
+
+    graph
+}
+
+fn reachable_workspace_dependencies(
+    source: &str,
+    graph: &BTreeMap<String, BTreeSet<String>>,
+) -> BTreeSet<String> {
+    let mut seen = BTreeSet::new();
+    let mut stack: Vec<String> = graph
+        .get(source)
+        .into_iter()
+        .flat_map(|deps| deps.iter().cloned())
+        .collect();
+
+    while let Some(package) = stack.pop() {
+        if !seen.insert(package.clone()) {
+            continue;
+        }
+
+        if let Some(deps) = graph.get(&package) {
+            stack.extend(deps.iter().filter(|dep| !seen.contains(*dep)).cloned());
+        }
+    }
+
+    seen
+}
+
+fn collect_arch_source_errors(metadata: &CargoMetadata) -> anyhow::Result<Vec<String>> {
+    let package_map: BTreeMap<&str, &MetadataPackage> = metadata
+        .packages
+        .iter()
+        .map(|package| (package.name.as_str(), package))
+        .collect();
+    let mut errors = Vec::new();
+
+    for rule in SOURCE_ARCH_RULES {
+        for package_name in rule.packages {
+            let Some(package) = package_map.get(package_name) else {
+                errors.push(format!(
+                    "{} references missing package {}",
+                    rule.label, package_name
+                ));
+                continue;
+            };
+            let Some(package_dir) = package.manifest_path.parent() else {
+                continue;
+            };
+            let src_dir = package_dir.join("src");
+            if !src_dir.is_dir() {
+                continue;
+            }
+
+            for path in collect_rust_files_recursive(&src_dir)? {
+                let content = fs::read_to_string(&path)
+                    .with_context(|| format!("read {}", path.display()))?;
+                for (line_idx, line) in content.lines().enumerate() {
+                    let searchable = rust_code_before_comment(line);
+                    for pattern in rule.banned_patterns {
+                        if searchable.contains(pattern) {
+                            errors.push(format!(
+                                "{}: {} uses `{}` at {}:{}",
+                                rule.label,
+                                package_name,
+                                pattern,
+                                path.display(),
+                                line_idx + 1
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(errors)
+}
+
+fn collect_rust_files_recursive(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    collect_rust_files_recursive_into(dir, &mut files)?;
+    files.sort();
+    Ok(files)
+}
+
+fn collect_rust_files_recursive_into(dir: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
+    for entry in fs::read_dir(dir).with_context(|| format!("read dir {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("read file type {}", path.display()))?;
+        if file_type.is_dir() {
+            collect_rust_files_recursive_into(&path, files)?;
+        } else if file_type.is_file() && path.extension().is_some_and(|extension| extension == "rs")
+        {
+            files.push(path);
+        }
+    }
+
+    Ok(())
+}
+
+fn rust_code_before_comment(line: &str) -> &str {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with('*') {
+        return "";
+    }
+
+    line.split_once("//")
+        .map(|(code, _comment)| code)
+        .unwrap_or(line)
 }
 
 fn is_publishable(package: &MetadataPackage) -> bool {
@@ -2167,13 +2510,54 @@ mod tests {
     }
 
     fn test_package(name: &str, publish: Option<Vec<String>>) -> MetadataPackage {
+        test_package_with_deps(name, publish, Vec::new())
+    }
+
+    fn test_package_with_deps(
+        name: &str,
+        publish: Option<Vec<String>>,
+        dependencies: Vec<MetadataDependency>,
+    ) -> MetadataPackage {
         MetadataPackage {
             name: name.to_string(),
             manifest_path: PathBuf::from(format!("crates/{name}/Cargo.toml")),
             publish,
             readme: None,
-            dependencies: Vec::new(),
+            dependencies,
         }
+    }
+
+    fn workspace_dep(name: &str) -> MetadataDependency {
+        MetadataDependency {
+            name: name.to_string(),
+            kind: None,
+            path: Some(PathBuf::from(format!("crates/{name}"))),
+        }
+    }
+
+    fn dev_workspace_dep(name: &str) -> MetadataDependency {
+        MetadataDependency {
+            name: name.to_string(),
+            kind: Some("dev".to_string()),
+            path: Some(PathBuf::from(format!("crates/{name}"))),
+        }
+    }
+
+    fn arch_metadata(mut packages: Vec<MetadataPackage>) -> CargoMetadata {
+        let mut package_names: BTreeSet<String> = packages
+            .iter()
+            .map(|package| package.name.clone())
+            .collect();
+
+        for rule in ARCH_RULES {
+            for package_name in rule.sources.iter().chain(rule.forbidden.iter()) {
+                if package_names.insert((*package_name).to_string()) {
+                    packages.push(test_package(package_name, None));
+                }
+            }
+        }
+
+        CargoMetadata { packages }
     }
 
     #[test]
@@ -2311,6 +2695,120 @@ mod tests {
             collect_public_surface_errors(&metadata, &public_crates, &absorbed_crates, false);
         assert_eq!(errors.len(), 1);
         assert!(errors[0].contains("perfgate-surprise is publishable"));
+    }
+
+    #[test]
+    fn arch_allows_lower_layer_dependencies() {
+        let metadata = arch_metadata(vec![
+            test_package_with_deps(
+                "perfgate-types",
+                None,
+                vec![workspace_dep("perfgate-error")],
+            ),
+            test_package("perfgate-error", None),
+            test_package_with_deps(
+                "perfgate-domain",
+                None,
+                vec![
+                    workspace_dep("perfgate-budget"),
+                    workspace_dep("perfgate-types"),
+                ],
+            ),
+            test_package_with_deps(
+                "perfgate-budget",
+                None,
+                vec![workspace_dep("perfgate-types")],
+            ),
+            test_package_with_deps(
+                "perfgate-render",
+                None,
+                vec![workspace_dep("perfgate-types")],
+            ),
+            test_package_with_deps(
+                "perfgate-adapters",
+                None,
+                vec![workspace_dep("perfgate-types")],
+            ),
+            test_package_with_deps(
+                "perfgate-app",
+                None,
+                vec![
+                    workspace_dep("perfgate-adapters"),
+                    workspace_dep("perfgate-domain"),
+                ],
+            ),
+            test_package_with_deps(
+                "perfgate-client",
+                None,
+                vec![workspace_dep("perfgate-types")],
+            ),
+            test_package_with_deps("perfgate-server", None, vec![workspace_dep("perfgate-api")]),
+            test_package_with_deps(
+                "perfgate-cli",
+                None,
+                vec![
+                    workspace_dep("perfgate-app"),
+                    workspace_dep("perfgate-client"),
+                    workspace_dep("perfgate-server"),
+                ],
+            ),
+            test_package("perfgate-api", None),
+        ]);
+
+        let errors = collect_arch_dependency_errors(&metadata);
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn arch_rejects_transitive_forbidden_dependencies() {
+        let metadata = arch_metadata(vec![
+            test_package_with_deps(
+                "perfgate-domain",
+                None,
+                vec![workspace_dep("perfgate-helper")],
+            ),
+            test_package_with_deps(
+                "perfgate-helper",
+                None,
+                vec![workspace_dep("perfgate-client")],
+            ),
+            test_package("perfgate-client", None),
+        ]);
+
+        let errors = collect_arch_dependency_errors(&metadata);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("perfgate-domain must not depend on perfgate-client"));
+    }
+
+    #[test]
+    fn arch_ignores_dev_dependencies() {
+        let metadata = arch_metadata(vec![
+            test_package_with_deps(
+                "perfgate-domain",
+                None,
+                vec![dev_workspace_dep("perfgate-client")],
+            ),
+            test_package("perfgate-client", None),
+        ]);
+
+        let errors = collect_arch_dependency_errors(&metadata);
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn arch_rejects_client_to_server_dependency() {
+        let metadata = arch_metadata(vec![
+            test_package_with_deps(
+                "perfgate-client",
+                None,
+                vec![workspace_dep("perfgate-server")],
+            ),
+            test_package("perfgate-server", None),
+        ]);
+
+        let errors = collect_arch_dependency_errors(&metadata);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("perfgate-client must not depend on perfgate-server"));
     }
 
     #[test]

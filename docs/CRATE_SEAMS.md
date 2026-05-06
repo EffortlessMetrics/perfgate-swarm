@@ -89,18 +89,24 @@ server must not depend on cli
 cli is the outermost adapter
 ```
 
-The current enforcement starts with public-surface disposition. A later
-`xtask arch` check should enforce source/module dependency rules.
+The current enforcement starts with Cargo metadata layer rules and source scans
+for the pure and presentation crates. As crates collapse into modules, extend
+`xtask arch` with module-level source rules.
 
 ## Enforcement
 
 Run:
 
 ```bash
+cargo run -p xtask -- arch
 cargo run -p xtask -- public-surface
 ```
 
-This command fails if a publishable workspace package is neither listed in
+`xtask arch` fails when lower-level packages can reach forbidden higher-level
+packages through non-dev workspace dependencies, or when pure crates import
+filesystem/process APIs in production source.
+
+`xtask public-surface` fails if a publishable workspace package is neither listed in
 `policy/public_crates.txt` nor assigned a disposition in
 `policy/absorbed_crates.txt`.
 
@@ -122,7 +128,7 @@ still publishable.
 5. Collapse presentation, runtime, app, and integration crates.
 6. Convert remaining published packages into deprecated shims or mark them
    private.
-7. Add `xtask arch` for source/module dependency rules.
+7. Extend `xtask arch` for source/module dependency rules as crates collapse.
 8. Update README, architecture docs, examples, and changelog for 0.16.
 
 ## Per-PR Checklist
@@ -133,6 +139,7 @@ still publishable.
 - Old package removed from `[workspace].members` or marked `publish = false`.
 - `policy/absorbed_crates.txt` status updated.
 - Docs and examples reference the current owner path.
+- `cargo run -p xtask -- arch` passes.
 - `cargo run -p xtask -- public-surface` passes.
 - `cargo run -p xtask -- ci` passes.
 
