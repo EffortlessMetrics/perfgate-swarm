@@ -1,13 +1,14 @@
+# Target public crates for the 0.16 public-surface collapse.
+#
+# `cargo run -p xtask -- public-surface` enforces that every publishable
+# workspace package is either listed here or has a disposition in
+# `policy/absorbed_crates.txt`.
+#
+# `cargo run -p xtask -- public-surface --strict` enforces this file as the
+# final publishable package allowlist.
+
 perfgate
 perfgate-cli
-perfgate-server
-perfgate-client
-perfgate-api
 perfgate-types
-perfgate-config
-perfgate-domain
-perfgate-error
-perfgate-render
-perfgate-export
-perfgate-ingest
-perfgate-github
+perfgate-client
+perfgate-server
