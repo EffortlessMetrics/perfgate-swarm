@@ -10,6 +10,84 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 mod common;
 use common::perfgate_cmd;
 
+fn run_receipt(run_id: &str, benchmark: &str, wall_ms: u64) -> serde_json::Value {
+    serde_json::json!({
+        "schema": RUN_SCHEMA_V1,
+        "tool": {"name": "perfgate", "version": "0.3.0"},
+        "run": {
+            "id": run_id,
+            "started_at": "2026-01-15T10:00:00Z",
+            "ended_at": "2026-01-15T10:00:01Z",
+            "host": {"os": "linux", "arch": "x86_64"}
+        },
+        "bench": {
+            "name": benchmark,
+            "command": ["echo", "test"],
+            "repeat": 1,
+            "warmup": 0
+        },
+        "samples": [{"wall_ms": wall_ms, "exit_code": 0, "warmup": false, "timed_out": false}],
+        "stats": {
+            "wall_ms": {"median": wall_ms, "min": wall_ms, "max": wall_ms}
+        }
+    })
+}
+
+fn baseline_record(
+    project: &str,
+    benchmark: &str,
+    run_id: &str,
+    wall_ms: u64,
+) -> serde_json::Value {
+    serde_json::json!({
+        "schema": BASELINE_SCHEMA_V1,
+        "id": "bl_contract",
+        "project": project,
+        "benchmark": benchmark,
+        "version": "v1.0.0",
+        "receipt": run_receipt(run_id, benchmark, wall_ms),
+        "metadata": {},
+        "tags": [],
+        "promoted_at": null,
+        "source": "upload",
+        "content_hash": "abc",
+        "deleted": false,
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z"
+    })
+}
+
+fn verdict_record(project: &str, benchmark: &str, run_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "schema": "perfgate.verdict.v1",
+        "id": "verdict_contract",
+        "project": project,
+        "benchmark": benchmark,
+        "run_id": run_id,
+        "status": "pass",
+        "counts": {"pass": 1, "warn": 0, "fail": 0, "skip": 0},
+        "reasons": [],
+        "created_at": "2026-01-01T00:00:00Z"
+    })
+}
+
+fn write_run_receipt(path: &std::path::Path, run_id: &str, benchmark: &str, wall_ms: u64) {
+    fs::write(
+        path,
+        serde_json::to_string(&run_receipt(run_id, benchmark, wall_ms)).unwrap(),
+    )
+    .unwrap();
+}
+
+fn add_success_command(cmd: &mut assert_cmd::Command) {
+    cmd.arg("--");
+    if cfg!(windows) {
+        cmd.args(["cmd", "/C", "echo", "hello"]);
+    } else {
+        cmd.args(["echo", "hello"]);
+    }
+}
+
 #[tokio::test]
 async fn test_run_upload_with_mock_server() {
     let mock_server = MockServer::start().await;
@@ -58,6 +136,205 @@ async fn test_run_upload_with_mock_server() {
         .stderr(predicate::str::contains("Uploaded baseline"));
 
     assert!(output_path.exists());
+}
+
+#[tokio::test]
+async fn test_compare_explicit_local_baseline_wins_over_configured_server() {
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let baseline_path = temp_dir.path().join("baseline.json");
+    let current_path = temp_dir.path().join("current.json");
+    let compare_path = temp_dir.path().join("compare.json");
+
+    write_run_receipt(&baseline_path, "local-base", "contract-bench", 90);
+    write_run_receipt(&current_path, "current-run", "contract-bench", 80);
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/projects/test-project/verdicts"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(verdict_record(
+            "test-project",
+            "contract-bench",
+            "current-run",
+        )))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("compare")
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--project")
+        .arg("test-project")
+        .arg("--out")
+        .arg(&compare_path);
+
+    cmd.assert().success();
+
+    let compare_json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&compare_path).unwrap()).unwrap();
+    assert_eq!(
+        compare_json["deltas"]["wall_ms"]["baseline"].as_f64(),
+        Some(90.0)
+    );
+
+    let requests = mock_server.received_requests().await.unwrap();
+    assert!(
+        requests.iter().all(|request| {
+            request.method.as_str() != "GET" || !request.url.path().contains("/baselines/")
+        }),
+        "explicit local baseline path must not fetch a server baseline"
+    );
+}
+
+#[tokio::test]
+async fn test_compare_bare_baseline_uses_server_when_configured_and_no_local_file_exists() {
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let current_path = temp_dir.path().join("current.json");
+    let compare_path = temp_dir.path().join("compare.json");
+
+    write_run_receipt(&current_path, "current-run", "contract-bench", 110);
+
+    Mock::given(method("GET"))
+        .and(path(
+            "/api/v1/projects/test-project/baselines/contract-bench/latest",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(baseline_record(
+            "test-project",
+            "contract-bench",
+            "server-base",
+            100,
+        )))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("compare")
+        .arg("--baseline")
+        .arg("contract-bench")
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--project")
+        .arg("test-project")
+        .arg("--out")
+        .arg(&compare_path);
+
+    cmd.assert().success();
+
+    let compare_json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&compare_path).unwrap()).unwrap();
+    assert_eq!(
+        compare_json["deltas"]["wall_ms"]["baseline"].as_f64(),
+        Some(100.0)
+    );
+
+    let requests = mock_server.received_requests().await.unwrap();
+    let baseline_fetches = requests
+        .iter()
+        .filter(|request| {
+            request.method.as_str() == "GET" && request.url.path().contains("/baselines/")
+        })
+        .count();
+    assert_eq!(
+        baseline_fetches, 1,
+        "implicit server fallback should fetch exactly one baseline"
+    );
+}
+
+#[test]
+fn test_compare_bare_baseline_without_server_uses_existing_local_error() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let current_path = temp_dir.path().join("current.json");
+    let compare_path = temp_dir.path().join("compare.json");
+
+    write_run_receipt(&current_path, "current-run", "contract-bench", 110);
+
+    let mut cmd = perfgate_cmd();
+    cmd.current_dir(temp_dir.path())
+        .arg("compare")
+        .arg("--baseline")
+        .arg("missing-contract-bench")
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--out")
+        .arg(&compare_path);
+
+    cmd.assert().failure().stderr(
+        predicate::str::contains("read")
+            .and(predicate::str::contains("missing-contract-bench"))
+            .and(predicate::str::contains("baseline server is not configured").not()),
+    );
+}
+
+#[tokio::test]
+async fn test_run_upload_failure_preserves_local_receipt_and_exits_nonzero() {
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let output_path = temp_dir.path().join("run.json");
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/projects/test-project/baselines"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("server unavailable"))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("run")
+        .arg("--name")
+        .arg("contract-upload")
+        .arg("--repeat")
+        .arg("1")
+        .arg("--out")
+        .arg(&output_path)
+        .arg("--upload")
+        .arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--project")
+        .arg("test-project");
+    add_success_command(&mut cmd);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Failed to upload baseline to server",
+    ));
+    assert!(output_path.exists(), "run receipt should be preserved");
+}
+
+#[tokio::test]
+async fn test_promote_to_server_failure_hard_errors() {
+    let mock_server = MockServer::start().await;
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let current_path = temp_dir.path().join("current.json");
+
+    write_run_receipt(&current_path, "current-run", "contract-promote", 100);
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/projects/test-project/baselines"))
+        .respond_with(ResponseTemplate::new(503).set_body_string("server unavailable"))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("promote")
+        .arg("--current")
+        .arg(&current_path)
+        .arg("--to-server")
+        .arg("--benchmark")
+        .arg("contract-promote")
+        .arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--project")
+        .arg("test-project");
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Failed to promote baseline to server",
+    ));
 }
 
 #[tokio::test]
