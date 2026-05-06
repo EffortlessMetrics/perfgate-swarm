@@ -48,3 +48,32 @@ jobs:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false # Don't block CI if Codecov is down
+
+  server-integration:
+    name: server integration (memory/sqlite/postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: perfgate
+          POSTGRES_USER: perfgate
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U perfgate -d perfgate"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.0
+
+      - name: Run live baseline server CLI workflows
+        env:
+          PERFGATE_TEST_POSTGRES_URL: postgres://perfgate@localhost:5432/perfgate
+        run: cargo test -p perfgate-cli --test cli_server_tests live_server -- --nocapture

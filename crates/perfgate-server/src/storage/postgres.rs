@@ -57,6 +57,87 @@ fn is_transient(err: &sqlx::Error) -> bool {
     }
 }
 
+fn postgres_schema_statements() -> [&'static str; 11] {
+    [
+        r#"
+            CREATE TABLE IF NOT EXISTS baselines (
+                id VARCHAR(64) PRIMARY KEY,
+                project VARCHAR(255) NOT NULL,
+                benchmark VARCHAR(255) NOT NULL,
+                version VARCHAR(64) NOT NULL,
+                schema_id VARCHAR(64) NOT NULL,
+                git_ref VARCHAR(255),
+                git_sha VARCHAR(40),
+                receipt JSONB,
+                artifact_path TEXT,
+                metadata JSONB NOT NULL,
+                tags JSONB NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL,
+                content_hash VARCHAR(64) NOT NULL,
+                source VARCHAR(32) NOT NULL,
+                deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                UNIQUE (project, benchmark, version)
+            )
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_baselines_project_benchmark
+            ON baselines(project, benchmark)
+            "#,
+        r#"
+            CREATE TABLE IF NOT EXISTS verdicts (
+                id VARCHAR(64) PRIMARY KEY,
+                schema_id VARCHAR(64) NOT NULL,
+                project VARCHAR(255) NOT NULL,
+                benchmark VARCHAR(255) NOT NULL,
+                run_id VARCHAR(255) NOT NULL,
+                status VARCHAR(32) NOT NULL,
+                counts JSONB NOT NULL,
+                reasons JSONB NOT NULL,
+                git_ref VARCHAR(255),
+                git_sha VARCHAR(40),
+                wall_ms_cv DOUBLE PRECISION,
+                flakiness_score DOUBLE PRECISION,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_verdicts_project_benchmark
+            ON verdicts(project, benchmark)
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_verdicts_created_at
+            ON verdicts(created_at)
+            "#,
+        r#"
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id VARCHAR(64) PRIMARY KEY,
+                timestamp TIMESTAMPTZ NOT NULL,
+                actor VARCHAR(255) NOT NULL,
+                action VARCHAR(32) NOT NULL,
+                resource_type VARCHAR(32) NOT NULL,
+                resource_id VARCHAR(255) NOT NULL,
+                project VARCHAR(255) NOT NULL,
+                metadata JSONB NOT NULL DEFAULT '{}'
+            )
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_audit_events_project
+            ON audit_events(project)
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp
+            ON audit_events(timestamp DESC)
+            "#,
+        r#"
+            CREATE INDEX IF NOT EXISTS idx_audit_events_action
+            ON audit_events(action)
+            "#,
+        "ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS wall_ms_cv DOUBLE PRECISION",
+        "ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS flakiness_score DOUBLE PRECISION",
+    ]
+}
+
 impl PostgresStore {
     /// Creates a new PostgreSQL storage backend and runs initial schema migrations.
     ///
@@ -163,87 +244,16 @@ impl PostgresStore {
     }
 
     async fn init_schema(&self) -> Result<(), StoreError> {
-        let sql = r#"
-            CREATE TABLE IF NOT EXISTS baselines (
-                id VARCHAR(26) PRIMARY KEY,
-                project VARCHAR(255) NOT NULL,
-                benchmark VARCHAR(255) NOT NULL,
-                version VARCHAR(64) NOT NULL,
-                schema_id VARCHAR(64) NOT NULL,
-                git_ref VARCHAR(255),
-                git_sha VARCHAR(40),
-                receipt JSONB,
-                artifact_path TEXT,
-                metadata JSONB NOT NULL,
-                tags JSONB NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL,
-                updated_at TIMESTAMPTZ NOT NULL,
-                content_hash VARCHAR(64) NOT NULL,
-                source VARCHAR(32) NOT NULL,
-                deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                UNIQUE (project, benchmark, version)
-            );
-            
-            CREATE INDEX IF NOT EXISTS idx_baselines_project_benchmark 
-            ON baselines(project, benchmark);
+        let statements = postgres_schema_statements();
 
-            CREATE TABLE IF NOT EXISTS verdicts (
-                id VARCHAR(26) PRIMARY KEY,
-                schema_id VARCHAR(64) NOT NULL,
-                project VARCHAR(255) NOT NULL,
-                benchmark VARCHAR(255) NOT NULL,
-                run_id VARCHAR(255) NOT NULL,
-                status VARCHAR(32) NOT NULL,
-                counts JSONB NOT NULL,
-                reasons JSONB NOT NULL,
-                git_ref VARCHAR(255),
-                git_sha VARCHAR(40),
-                wall_ms_cv DOUBLE PRECISION,
-                flakiness_score DOUBLE PRECISION,
-                created_at TIMESTAMPTZ NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_verdicts_project_benchmark
-            ON verdicts(project, benchmark);
-
-            CREATE INDEX IF NOT EXISTS idx_verdicts_created_at
-            ON verdicts(created_at);
-
-            CREATE TABLE IF NOT EXISTS audit_events (
-                id VARCHAR(64) PRIMARY KEY,
-                timestamp TIMESTAMPTZ NOT NULL,
-                actor VARCHAR(255) NOT NULL,
-                action VARCHAR(32) NOT NULL,
-                resource_type VARCHAR(32) NOT NULL,
-                resource_id VARCHAR(255) NOT NULL,
-                project VARCHAR(255) NOT NULL,
-                metadata JSONB NOT NULL DEFAULT '{}'
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_audit_events_project
-            ON audit_events(project);
-
-            CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp
-            ON audit_events(timestamp DESC);
-
-            CREATE INDEX IF NOT EXISTS idx_audit_events_action
-            ON audit_events(action);
-        "#;
-
-        sqlx::query(sql)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| StoreError::ConnectionError(format!("Failed to init schema: {}", e)))?;
-        sqlx::query("ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS wall_ms_cv DOUBLE PRECISION")
-            .execute(&self.pool)
-            .await
-            .map_err(|e| StoreError::ConnectionError(format!("Failed to migrate schema: {}", e)))?;
-        sqlx::query(
-            "ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS flakiness_score DOUBLE PRECISION",
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| StoreError::ConnectionError(format!("Failed to migrate schema: {}", e)))?;
+        for statement in statements {
+            sqlx::query(statement)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| {
+                    StoreError::ConnectionError(format!("Failed to init schema: {}", e))
+                })?;
+        }
 
         Ok(())
     }
@@ -979,5 +989,22 @@ mod tests {
     fn test_is_transient_non_transient() {
         let err = sqlx::Error::ColumnNotFound("missing".to_string());
         assert!(!is_transient(&err));
+    }
+
+    #[test]
+    fn test_postgres_schema_ids_fit_generated_ids() {
+        let generated_id = crate::models::generate_ulid();
+        assert!(generated_id.len() <= 64);
+
+        for table in ["baselines", "verdicts"] {
+            let table_ddl = postgres_schema_statements()
+                .into_iter()
+                .find(|statement| {
+                    statement.contains(&format!("CREATE TABLE IF NOT EXISTS {}", table))
+                })
+                .expect("table schema should be present");
+            assert!(table_ddl.contains("id VARCHAR(64) PRIMARY KEY"));
+            assert!(!table_ddl.contains("id VARCHAR(26) PRIMARY KEY"));
+        }
     }
 }
