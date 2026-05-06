@@ -39,9 +39,7 @@ impl SqliteStore {
             std::fs::create_dir_all(parent)?;
         }
 
-        let is_memory = path.as_os_str() == ":memory:";
-        let conn = rusqlite::Connection::open(&path)?;
-        Self::configure_pragmas(&conn, is_memory)?;
+        let conn = open_configured_connection(&path)?;
 
         let store = Self {
             _path: path,
@@ -55,8 +53,7 @@ impl SqliteStore {
 
     /// Creates an in-memory SQLite database (for testing).
     pub fn in_memory() -> Result<Self, StoreError> {
-        let conn = rusqlite::Connection::open_in_memory()?;
-        Self::configure_pragmas(&conn, true)?;
+        let conn = open_configured_memory_connection()?;
 
         let store = Self {
             _path: std::path::PathBuf::from(":memory:"),
@@ -67,35 +64,54 @@ impl SqliteStore {
         store.initialize()?;
         Ok(store)
     }
+}
 
-    /// Configures SQLite pragmas for performance and concurrent access.
-    ///
-    /// - `journal_mode=WAL`: enables write-ahead logging so readers do not
-    ///   block writers and vice-versa.  Verified via the returned mode string
-    ///   so that silent fallbacks (e.g. read-only filesystem) become hard
-    ///   errors.  Skipped for in-memory databases where WAL is not applicable.
-    /// - `busy_timeout=5000`: waits up to 5 seconds when the database is
-    ///   locked instead of returning SQLITE_BUSY immediately.
-    fn configure_pragmas(conn: &rusqlite::Connection, is_memory: bool) -> Result<(), StoreError> {
-        conn.execute_batch("PRAGMA busy_timeout=5000;")?;
+/// Opens a SQLite file database and applies the server's required pragmas.
+pub(crate) fn open_configured_connection<P: AsRef<Path>>(
+    path: P,
+) -> Result<rusqlite::Connection, StoreError> {
+    let path = path.as_ref();
+    let is_memory = path.as_os_str() == ":memory:";
+    let conn = rusqlite::Connection::open(path)?;
+    configure_pragmas(&conn, is_memory)?;
+    Ok(conn)
+}
 
-        // GOTCHA: In-memory SQLite databases cannot use WAL mode. Executing
-        // `PRAGMA journal_mode=WAL` on an in-memory DB silently succeeds but
-        // returns "memory" instead of "wal". You MUST check the returned
-        // string — a bare `execute_batch("PRAGMA journal_mode=WAL")` will
-        // appear to work but leave you without WAL's concurrency benefits.
-        if !is_memory {
-            let mode: String = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
-            if mode.to_lowercase() != "wal" {
-                return Err(StoreError::Other(format!(
-                    "failed to enable WAL journal mode (got '{mode}')"
-                )));
-            }
+fn open_configured_memory_connection() -> Result<rusqlite::Connection, StoreError> {
+    let conn = rusqlite::Connection::open_in_memory()?;
+    configure_pragmas(&conn, true)?;
+    Ok(conn)
+}
+
+/// Configures SQLite pragmas for performance and concurrent access.
+///
+/// - `journal_mode=WAL`: enables write-ahead logging so readers do not
+///   block writers and vice-versa. Verified via the returned mode string
+///   so that silent fallbacks (e.g. read-only filesystem) become hard
+///   errors. Skipped for in-memory databases where WAL is not applicable.
+/// - `busy_timeout=5000`: waits up to 5 seconds when the database is
+///   locked instead of returning SQLITE_BUSY immediately.
+fn configure_pragmas(conn: &rusqlite::Connection, is_memory: bool) -> Result<(), StoreError> {
+    conn.execute_batch("PRAGMA busy_timeout=5000;")?;
+
+    // GOTCHA: In-memory SQLite databases cannot use WAL mode. Executing
+    // `PRAGMA journal_mode=WAL` on an in-memory DB silently succeeds but
+    // returns "memory" instead of "wal". You MUST check the returned
+    // string — a bare `execute_batch("PRAGMA journal_mode=WAL")` will
+    // appear to work but leave you without WAL's concurrency benefits.
+    if !is_memory {
+        let mode: String = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
+        if mode.to_lowercase() != "wal" {
+            return Err(StoreError::Other(format!(
+                "failed to enable WAL journal mode (got '{mode}')"
+            )));
         }
-
-        Ok(())
     }
 
+    Ok(())
+}
+
+impl SqliteStore {
     fn initialize(&self) -> Result<(), StoreError> {
         let conn = self
             .conn
@@ -940,6 +956,68 @@ mod tests {
             .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
             .unwrap();
         assert_eq!(busy_timeout, 5000);
+    }
+
+    #[test]
+    fn test_in_memory_database_skips_wal_but_sets_busy_timeout() {
+        let conn = open_configured_memory_connection().unwrap();
+
+        let journal_mode: String = conn
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(journal_mode.to_lowercase(), "memory");
+
+        let busy_timeout: i64 = conn
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(busy_timeout, 5000);
+    }
+
+    #[test]
+    fn test_wal_allows_writer_while_reader_transaction_is_open() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("wal_concurrent_read.db");
+
+        let setup = open_configured_connection(&db_path).unwrap();
+        setup
+            .execute_batch(
+                r#"
+                CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+                INSERT INTO items (value) VALUES ('before');
+                "#,
+            )
+            .unwrap();
+        drop(setup);
+
+        let reader = open_configured_connection(&db_path).unwrap();
+        let writer = open_configured_connection(&db_path).unwrap();
+
+        reader.execute_batch("BEGIN;").unwrap();
+        let reader_count: i64 = reader
+            .query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(reader_count, 1);
+
+        writer
+            .execute_batch(
+                r#"
+                BEGIN IMMEDIATE;
+                INSERT INTO items (value) VALUES ('during-read');
+                COMMIT;
+                "#,
+            )
+            .unwrap();
+
+        let reader_snapshot_count: i64 = reader
+            .query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(reader_snapshot_count, 1);
+        reader.execute_batch("COMMIT;").unwrap();
+
+        let final_count: i64 = reader
+            .query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(final_count, 2);
     }
 
     #[tokio::test(flavor = "multi_thread")]

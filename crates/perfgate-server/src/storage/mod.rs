@@ -16,6 +16,7 @@ pub use key_store::{InMemoryKeyStore, KeyRecord, KeyStore, SqliteKeyStore, hash_
 pub use memory::InMemoryStore;
 pub use postgres::PostgresStore;
 pub use sqlite::SqliteStore;
+pub(crate) use sqlite::open_configured_connection as open_configured_sqlite_connection;
 
 use crate::error::StoreError;
 use crate::models::{

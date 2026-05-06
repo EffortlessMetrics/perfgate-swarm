@@ -39,6 +39,7 @@ use crate::storage::fleet::{FleetStore, InMemoryFleetStore};
 use crate::storage::{
     ArtifactStore, AuditStore, BaselineStore, InMemoryKeyStore, InMemoryStore, KeyStore,
     ObjectArtifactStore, PostgresStore, SqliteKeyStore, SqliteStore,
+    open_configured_sqlite_connection,
 };
 use metrics_exporter_prometheus::PrometheusHandle;
 
@@ -631,7 +632,7 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
             .sqlite_path
             .clone()
             .unwrap_or_else(|| PathBuf::from("perfgate.db"));
-        let conn = rusqlite::Connection::open(&path).map_err(|e| {
+        let conn = open_configured_sqlite_connection(&path).map_err(|e| {
             ConfigError::InvalidValue(format!("Failed to open SQLite for key store: {}", e))
         })?;
         Some(Arc::new(std::sync::Mutex::new(conn)))

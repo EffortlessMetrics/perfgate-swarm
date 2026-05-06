@@ -77,6 +77,10 @@ perfgate-server \
   --api-keys viewer:pg_live_<32+alnum>:my-project
 ```
 
+SQLite file storage is configured for single-node service use: the server
+enables WAL mode and applies a 5 second busy timeout on its SQLite connections.
+Use PostgreSQL instead when multiple server instances need to share storage.
+
 Then configure the CLI:
 
 ```bash
