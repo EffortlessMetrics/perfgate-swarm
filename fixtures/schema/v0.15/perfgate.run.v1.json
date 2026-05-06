@@ -1,0 +1,51 @@
+{
+  "schema": "perfgate.run.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.15.1"
+  },
+  "run": {
+    "id": "compat-run-001",
+    "started_at": "2026-01-01T00:00:00Z",
+    "ended_at": "2026-01-01T00:00:01Z",
+    "host": {
+      "os": "linux",
+      "arch": "x86_64",
+      "cpu_count": 8,
+      "memory_bytes": 17179869184
+    }
+  },
+  "bench": {
+    "name": "compat-bench",
+    "command": [
+      "echo",
+      "compat"
+    ],
+    "repeat": 3,
+    "warmup": 1
+  },
+  "samples": [
+    {
+      "wall_ms": 96,
+      "exit_code": 0,
+      "warmup": true
+    },
+    {
+      "wall_ms": 100,
+      "exit_code": 0
+    },
+    {
+      "wall_ms": 104,
+      "exit_code": 0
+    }
+  ],
+  "stats": {
+    "wall_ms": {
+      "median": 102,
+      "min": 100,
+      "max": 104,
+      "mean": 102.0,
+      "stddev": 2.0
+    }
+  }
+}

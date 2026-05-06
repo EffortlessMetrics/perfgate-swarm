@@ -30,6 +30,9 @@ cargo run -p xtask -- schema
 
 # Verify committed schemas match generated output
 cargo run -p xtask -- schema-check
+
+# Verify old release fixtures still deserialize with current types
+cargo run -p xtask -- schema-compat
 ```
 
 ## Fixture Validation
@@ -50,6 +53,10 @@ cargo run -p xtask -- conform --fixtures path/to/dir
 The vendored schema lives at `contracts/schemas/sensor.report.v1.schema.json`.
 This schema is hand-written (not auto-generated) to maintain a stable contract
 with external consumers.
+
+Historical compatibility fixtures live under `fixtures/schema/<release>/`.
+`schema-compat` currently checks v0.15 examples for `perfgate.run.v1`,
+`perfgate.compare.v1`, `perfgate.report.v1`, and `sensor.report.v1`.
 
 ## Versioning Policy
 
