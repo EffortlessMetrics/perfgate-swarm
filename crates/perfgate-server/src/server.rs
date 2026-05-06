@@ -508,11 +508,12 @@ pub(crate) fn create_router(
         .route("/keys", post(create_key))
         .route("/keys", get(list_keys))
         .route("/keys/{id}", delete(revoke_key))
-        .with_state(persistent_key_store)
+        .layer(axum::Extension(persistent_key_store))
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             auth_middleware,
-        ));
+        ))
+        .with_state(state.clone());
 
     // Admin routes (require admin auth, never skipped even in local mode)
     let admin_routes = Router::new()

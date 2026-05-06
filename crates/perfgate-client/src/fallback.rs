@@ -184,6 +184,24 @@ impl FallbackClient {
         self.client.is_healthy().await
     }
 
+    /// Creates an API key (server only, no fallback).
+    pub async fn create_key(
+        &self,
+        request: &CreateKeyRequest,
+    ) -> Result<CreateKeyResponse, ClientError> {
+        self.client.create_key(request).await
+    }
+
+    /// Lists API keys (server only, no fallback).
+    pub async fn list_keys(&self) -> Result<ListKeysResponse, ClientError> {
+        self.client.list_keys().await
+    }
+
+    /// Revokes an API key (server only, no fallback).
+    pub async fn revoke_key(&self, id: &str) -> Result<RevokeKeyResponse, ClientError> {
+        self.client.revoke_key(id).await
+    }
+
     /// Checks if fallback storage is available.
     pub fn has_fallback(&self) -> bool {
         self.fallback.is_some()

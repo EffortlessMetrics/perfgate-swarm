@@ -11,8 +11,10 @@ use tracing::{error, info, warn};
 
 use crate::auth::{AuthContext, Scope};
 use crate::models::{
-    ApiError, CreateKeyRequest, CreateKeyResponse, KeyEntry, ListKeysResponse, RevokeKeyResponse,
+    ApiError, AuditAction, AuditEvent, AuditResourceType, CreateKeyRequest, CreateKeyResponse,
+    KeyEntry, ListKeysResponse, RevokeKeyResponse,
 };
+use crate::server::AppState;
 use crate::storage::{KeyRecord, KeyStore, hash_key, key_prefix};
 
 /// POST /api/v1/keys — create a new API key (admin-only).
@@ -20,7 +22,8 @@ use crate::storage::{KeyRecord, KeyStore, hash_key, key_prefix};
 /// Returns the plaintext key exactly once in the response.
 pub async fn create_key(
     Extension(auth_ctx): Extension<AuthContext>,
-    State(store): State<Arc<dyn KeyStore>>,
+    Extension(store): Extension<Arc<dyn KeyStore>>,
+    State(state): State<AppState>,
     Json(request): Json<CreateKeyRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
     // Admin scope check — use a wildcard project since key management is global.
@@ -61,11 +64,22 @@ pub async fn create_key(
     })?;
 
     info!(
+        actor = %auth_ctx.api_key.id,
         key_id = %id,
         role = %record.role,
         project = %record.project,
         "API key created"
     );
+
+    emit_key_audit(
+        &state,
+        &auth_ctx,
+        AuditAction::Create,
+        &id,
+        &record.project,
+        Some(record.role),
+    )
+    .await;
 
     Ok((
         StatusCode::CREATED,
@@ -85,7 +99,7 @@ pub async fn create_key(
 /// GET /api/v1/keys — list all API keys (admin-only, redacted).
 pub async fn list_keys(
     Extension(auth_ctx): Extension<AuthContext>,
-    State(store): State<Arc<dyn KeyStore>>,
+    Extension(store): Extension<Arc<dyn KeyStore>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
     check_admin(&auth_ctx)?;
 
@@ -119,9 +133,18 @@ pub async fn list_keys(
 pub async fn revoke_key(
     Path(id): Path<String>,
     Extension(auth_ctx): Extension<AuthContext>,
-    State(store): State<Arc<dyn KeyStore>>,
+    Extension(store): Extension<Arc<dyn KeyStore>>,
+    State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
     check_admin(&auth_ctx)?;
+
+    let key_for_audit = match store.list_keys().await {
+        Ok(records) => records.into_iter().find(|record| record.id == id),
+        Err(e) => {
+            warn!(error = %e, key_id = %id, "Failed to load key metadata for audit");
+            None
+        }
+    };
 
     let revoked_at = store.revoke_key(&id).await.map_err(|e| {
         error!(error = %e, key_id = %id, "Failed to revoke API key");
@@ -133,7 +156,21 @@ pub async fn revoke_key(
 
     match revoked_at {
         Some(ts) => {
-            info!(key_id = %id, "API key revoked");
+            info!(actor = %auth_ctx.api_key.id, key_id = %id, "API key revoked");
+            let audit_project = key_for_audit
+                .as_ref()
+                .map(|record| record.project.as_str())
+                .unwrap_or(&auth_ctx.api_key.project_id);
+            let audit_role = key_for_audit.as_ref().map(|record| record.role);
+            emit_key_audit(
+                &state,
+                &auth_ctx,
+                AuditAction::Delete,
+                &id,
+                audit_project,
+                audit_role,
+            )
+            .await;
             Ok(Json(RevokeKeyResponse { id, revoked_at: ts }))
         }
         None => {
@@ -161,4 +198,34 @@ fn check_admin(auth_ctx: &AuthContext) -> Result<(), (StatusCode, Json<ApiError>
         ));
     }
     Ok(())
+}
+
+async fn emit_key_audit(
+    state: &AppState,
+    auth_ctx: &AuthContext,
+    action: AuditAction,
+    key_id: &str,
+    project: &str,
+    role: Option<perfgate_api::auth::Role>,
+) {
+    let metadata = serde_json::json!({
+        "source": "api_key",
+        "request_id": null,
+        "source_ip": auth_ctx.source_ip.clone(),
+        "role": role.map(|r| r.to_string()),
+    });
+    let event = AuditEvent {
+        id: crate::models::generate_ulid(),
+        timestamp: chrono::Utc::now(),
+        actor: auth_ctx.api_key.id.clone(),
+        action,
+        resource_type: AuditResourceType::Key,
+        resource_id: key_id.to_string(),
+        project: project.to_string(),
+        metadata,
+    };
+
+    if let Err(e) = state.audit.log_event(&event).await {
+        warn!(error = %e, key_id = %key_id, "Failed to log key audit event");
+    }
 }

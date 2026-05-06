@@ -1,5 +1,8 @@
 //! Integration tests with a real in-memory server.
 
+use perfgate_client::types::{
+    AuditAction, AuditResourceType, CreateKeyRequest, ListAuditEventsResponse,
+};
 use perfgate_client::{BaselineClient, ClientConfig};
 use perfgate_server::auth::Role;
 use perfgate_server::server::{ServerConfig, StorageBackend};
@@ -78,4 +81,65 @@ async fn test_server_end_to_end_workflow() {
         .await
         .expect("list failed");
     assert_eq!(list_after.baselines.len(), 0);
+}
+
+#[tokio::test]
+async fn test_key_management_writes_audit_events() {
+    let config = ServerConfig::new()
+        .storage_backend(StorageBackend::Memory)
+        .api_key(ADMIN_KEY, Role::Admin);
+
+    let server = spawn_test_server(config).await;
+    let admin_client =
+        BaselineClient::new(ClientConfig::new(&server.url).with_api_key(ADMIN_KEY)).unwrap();
+
+    let created = admin_client
+        .create_key(&CreateKeyRequest {
+            description: "promotion key".to_string(),
+            role: Role::Promoter,
+            project: "test-proj".to_string(),
+            pattern: Some("^bench-.*$".to_string()),
+            expires_at: None,
+        })
+        .await
+        .expect("create key failed");
+    assert_eq!(created.role, Role::Promoter);
+    assert_eq!(created.project, "test-proj");
+
+    let listed = admin_client.list_keys().await.expect("list keys failed");
+    assert!(listed.keys.iter().any(|key| key.id == created.id));
+
+    admin_client
+        .revoke_key(&created.id)
+        .await
+        .expect("revoke key failed");
+
+    let audit: ListAuditEventsResponse = reqwest::Client::new()
+        .get(format!("{}/audit", server.url))
+        .bearer_auth(ADMIN_KEY)
+        .send()
+        .await
+        .expect("audit request failed")
+        .json()
+        .await
+        .expect("audit response should decode");
+
+    let create_event = audit
+        .events
+        .iter()
+        .find(|event| event.resource_id == created.id && event.action == AuditAction::Create)
+        .expect("create key audit event should exist");
+    assert_eq!(create_event.resource_type, AuditResourceType::Key);
+    assert_eq!(create_event.project, "test-proj");
+    assert_eq!(create_event.metadata["source"].as_str(), Some("api_key"));
+    assert_eq!(create_event.metadata["role"].as_str(), Some("promoter"));
+
+    let revoke_event = audit
+        .events
+        .iter()
+        .find(|event| event.resource_id == created.id && event.action == AuditAction::Delete)
+        .expect("revoke key audit event should exist");
+    assert_eq!(revoke_event.resource_type, AuditResourceType::Key);
+    assert_eq!(revoke_event.project, "test-proj");
+    assert_eq!(revoke_event.metadata["source"].as_str(), Some("api_key"));
 }

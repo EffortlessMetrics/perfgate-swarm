@@ -460,6 +460,19 @@ fn test_global_server_flags_in_help() {
         .stdout(predicate::str::contains("--project"));
 }
 
+#[test]
+fn test_admin_keys_subcommands_exist() {
+    let mut cmd = perfgate_cmd();
+    cmd.arg("admin").arg("keys").arg("--help");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("create"))
+        .stdout(predicate::str::contains("list"))
+        .stdout(predicate::str::contains("revoke"))
+        .stdout(predicate::str::contains("rotate"));
+}
+
 /// Test compare with @server:benchmark reference (when server is not available).
 #[test]
 fn test_compare_server_reference_without_server() {
