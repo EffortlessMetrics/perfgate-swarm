@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.93.0
       - name: Build release binary
         run: cargo build --release -p perfgate-cli --bin perfgate
       - name: Make scripts executable
@@ -64,7 +64,7 @@ jobs:
           ref: main
           path: main
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.93.0
 
       - name: Build current binary
         run: cd current && cargo build --release -p perfgate-cli --bin perfgate && cargo build --release -p perfgate-selfbench

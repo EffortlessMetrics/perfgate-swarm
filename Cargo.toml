@@ -38,7 +38,7 @@ exclude = [
 [workspace.package]
 version = "0.15.1"
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.93"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/EffortlessMetrics/perfgate"
 authors = ["Effortless Metrics"]
