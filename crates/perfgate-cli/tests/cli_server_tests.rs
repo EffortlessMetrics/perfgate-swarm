@@ -6,15 +6,80 @@
 //! - `perfgate baseline list --baseline-server`
 //! - `perfgate baseline upload`
 
+use perfgate_server::auth::Role;
+use perfgate_server::server::{ServerConfig, StorageBackend};
+use perfgate_server::testing::{TestServer, spawn_test_server};
 use predicates::prelude::*;
+use std::env;
 use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
 mod common;
-use common::perfgate_cmd;
+use common::{fixtures_dir, perfgate_cmd};
+
+struct RunningTestServer {
+    inner: TestServer,
+}
+
+impl RunningTestServer {
+    async fn spawn(config: ServerConfig) -> Self {
+        Self {
+            inner: spawn_test_server(config).await,
+        }
+    }
+
+    fn url(&self) -> &str {
+        &self.inner.url
+    }
+}
+
+impl Drop for RunningTestServer {
+    fn drop(&mut self) {
+        self.inner.handle.abort();
+    }
+}
+
+fn add_success_command(cmd: &mut assert_cmd::Command) {
+    cmd.arg("--");
+    if cfg!(windows) {
+        cmd.args(["cmd", "/C", "echo", "test"]);
+    } else {
+        cmd.args(["sh", "-c", "printf test"]);
+    }
+}
+
+fn unique_project(label: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    format!("cli-live-{label}-{nanos}")
+}
+
+fn contributor_key() -> String {
+    ["pg_test_", "fixtureonlynotsecretserverclitests000000"].concat()
+}
+
+fn live_server_config(project: &str, backend: StorageBackend, api_key: &str) -> ServerConfig {
+    ServerConfig::new().storage_backend(backend).scoped_api_key(
+        api_key,
+        Role::Contributor,
+        project,
+        None,
+    )
+}
+
+fn add_server_flags(cmd: &mut assert_cmd::Command, server_url: &str, project: &str, api_key: &str) {
+    cmd.arg("--baseline-server")
+        .arg(server_url)
+        .arg("--api-key")
+        .arg(api_key)
+        .arg("--project")
+        .arg(project);
+}
 
 /// Test that `--upload` fails without `--baseline-server` configured.
-#[cfg_attr(windows, ignore)]
 #[test]
 fn test_upload_requires_baseline_server() {
     let temp_dir = TempDir::new().expect("failed to create temp dir");
@@ -28,10 +93,8 @@ fn test_upload_requires_baseline_server() {
         .arg("1")
         .arg("--out")
         .arg(&output_path)
-        .arg("--upload")
-        .arg("--")
-        .arg("echo")
-        .arg("test");
+        .arg("--upload");
+    add_success_command(&mut cmd);
 
     cmd.assert().failure().stderr(
         predicate::str::contains("baseline server is not configured")
@@ -40,7 +103,6 @@ fn test_upload_requires_baseline_server() {
 }
 
 /// Test that `--upload` fails without `--project` configured.
-#[cfg_attr(windows, ignore)]
 #[test]
 fn test_upload_requires_project() {
     let temp_dir = TempDir::new().expect("failed to create temp dir");
@@ -56,10 +118,8 @@ fn test_upload_requires_project() {
         .arg(&output_path)
         .arg("--upload")
         .arg("--baseline-server")
-        .arg("http://localhost:9999/api/v1")
-        .arg("--")
-        .arg("echo")
-        .arg("test");
+        .arg("http://localhost:9999/api/v1");
+    add_success_command(&mut cmd);
 
     cmd.assert().failure().stderr(
         predicate::str::contains("--project is required")
@@ -269,7 +329,7 @@ fn test_baseline_upload_requires_server() {
         .arg("upload")
         .arg("--benchmark")
         .arg("test-bench")
-        .arg("--receipt")
+        .arg("--file")
         .arg(&receipt_path);
 
     // Should fail without server configuration
@@ -278,7 +338,6 @@ fn test_baseline_upload_requires_server() {
 }
 
 /// Test that environment variables are used for server configuration.
-#[cfg_attr(windows, ignore)]
 #[test]
 fn test_server_config_from_env() {
     let temp_dir = TempDir::new().expect("failed to create temp dir");
@@ -296,10 +355,8 @@ fn test_server_config_from_env() {
         .arg("1")
         .arg("--out")
         .arg(&output_path)
-        .arg("--upload")
-        .arg("--")
-        .arg("echo")
-        .arg("test");
+        .arg("--upload");
+    add_success_command(&mut cmd);
 
     // The command should run but fail to connect to the server
     // (since there's no server running on port 9999)
@@ -344,10 +401,8 @@ fn test_cli_flags_override_env() {
         .arg("--api-key")
         .arg("cli-key") // Override
         .arg("--project")
-        .arg("cli-project") // Override
-        .arg("--")
-        .arg("echo")
-        .arg("test");
+        .arg("cli-project"); // Override
+    add_success_command(&mut cmd);
 
     let output = cmd.output().expect("Failed to execute command");
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -509,75 +564,168 @@ fn test_compare_server_reference_with_baseline_project_without_global_project() 
     );
 }
 
-/// Integration test with a mock server (requires server to be running).
-/// This test is marked with #[ignore] so it doesn't run by default.
-#[test]
-#[ignore = "Requires a running perfgate-server on localhost:8080"]
-fn test_full_upload_workflow_with_server() {
-    let temp_dir = TempDir::new().expect("failed to create temp dir");
-    let output_path = temp_dir.path().join("output.json");
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn live_server_cli_workflow_memory() {
+    let project = unique_project("memory");
+    let api_key = contributor_key();
+    let config = live_server_config(&project, StorageBackend::Memory, &api_key);
 
-    // Run a benchmark and upload to server
-    let mut cmd = perfgate_cmd();
-    cmd.arg("run")
+    run_live_server_cli_workflow(config, &project, &api_key).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn live_server_cli_workflow_sqlite() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let project = unique_project("sqlite");
+    let api_key = contributor_key();
+    let config = live_server_config(&project, StorageBackend::Sqlite, &api_key)
+        .sqlite_path(temp_dir.path().join("perfgate.db"));
+
+    run_live_server_cli_workflow(config, &project, &api_key).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn live_server_cli_workflow_postgres() {
+    let Ok(postgres_url) = env::var("PERFGATE_TEST_POSTGRES_URL") else {
+        eprintln!(
+            "skipping postgres live server CLI workflow; PERFGATE_TEST_POSTGRES_URL is unset"
+        );
+        return;
+    };
+
+    let project = unique_project("postgres");
+    let api_key = contributor_key();
+    let config =
+        live_server_config(&project, StorageBackend::Postgres, &api_key).postgres_url(postgres_url);
+
+    run_live_server_cli_workflow(config, &project, &api_key).await;
+}
+
+async fn run_live_server_cli_workflow(config: ServerConfig, project: &str, api_key: &str) {
+    let server = RunningTestServer::spawn(config).await;
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let baseline_file = fixtures_dir().join("baseline.json");
+    let current_file = fixtures_dir().join("current_pass.json");
+    let uploaded_bench = format!("{project}-uploaded");
+    let run_bench = format!("{project}-run");
+    let promoted_bench = format!("{project}-promoted");
+    let downloaded_path = temp_dir.path().join("downloaded-baseline.json");
+    let run_path = temp_dir.path().join("uploaded-run.json");
+    let compare_path = temp_dir.path().join("server-compare.json");
+
+    let mut upload = perfgate_cmd();
+    upload
+        .arg("baseline")
+        .arg("upload")
+        .arg("--file")
+        .arg(&baseline_file)
+        .arg("--benchmark")
+        .arg(&uploaded_bench)
+        .arg("--version")
+        .arg("seed-v1");
+    add_server_flags(&mut upload, server.url(), project, api_key);
+    upload
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(&uploaded_bench));
+
+    let mut list = perfgate_cmd();
+    list.arg("baseline").arg("list").arg("--limit").arg("10");
+    add_server_flags(&mut list, server.url(), project, api_key);
+    list.assert()
+        .success()
+        .stdout(predicate::str::contains(&uploaded_bench));
+
+    let mut download = perfgate_cmd();
+    download
+        .arg("baseline")
+        .arg("download")
+        .arg("--benchmark")
+        .arg(&uploaded_bench)
+        .arg("--output")
+        .arg(&downloaded_path);
+    add_server_flags(&mut download, server.url(), project, api_key);
+    download.assert().success();
+    assert!(
+        downloaded_path.exists(),
+        "downloaded baseline should be written"
+    );
+    let downloaded: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&downloaded_path).expect("downloaded baseline should be readable"),
+    )
+    .expect("downloaded baseline should be valid JSON");
+    assert_eq!(downloaded["schema"].as_str(), Some("perfgate.run.v1"));
+
+    let mut history = perfgate_cmd();
+    history
+        .arg("baseline")
+        .arg("history")
+        .arg("--benchmark")
+        .arg(&uploaded_bench);
+    add_server_flags(&mut history, server.url(), project, api_key);
+    history
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("seed-v1"));
+
+    let mut run = perfgate_cmd();
+    run.arg("run")
         .arg("--name")
-        .arg("integration-test-bench")
+        .arg(&run_bench)
         .arg("--repeat")
         .arg("1")
         .arg("--out")
-        .arg(&output_path)
-        .arg("--upload")
-        .arg("--baseline-server")
-        .arg("http://localhost:8080")
-        .arg("--api-key")
-        .arg("test-contributor-key")
-        .arg("--project")
-        .arg("integration-tests")
-        .arg("--")
-        .arg("echo")
-        .arg("test");
+        .arg(&run_path)
+        .arg("--upload");
+    add_server_flags(&mut run, server.url(), project, api_key);
+    add_success_command(&mut run);
+    run.assert()
+        .success()
+        .stderr(predicate::str::contains(&run_bench));
+    assert!(
+        run_path.exists(),
+        "uploaded run receipt should be preserved"
+    );
 
-    let output = cmd.output().expect("Failed to execute command");
+    let mut compare = perfgate_cmd();
+    compare
+        .arg("compare")
+        .arg("--baseline")
+        .arg(format!("@server:{uploaded_bench}"))
+        .arg("--current")
+        .arg(&current_file)
+        .arg("--out")
+        .arg(&compare_path)
+        .arg("--host-mismatch")
+        .arg("ignore");
+    add_server_flags(&mut compare, server.url(), project, api_key);
+    compare.assert().success();
+    assert!(
+        compare_path.exists(),
+        "server compare receipt should be written"
+    );
+    let compare_receipt: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&compare_path).expect("compare receipt should be readable"),
+    )
+    .expect("compare receipt should be valid JSON");
+    assert_eq!(
+        compare_receipt["schema"].as_str(),
+        Some("perfgate.compare.v1")
+    );
 
-    // Should succeed if server is running with the test key
-    if output.status.success() {
-        // Verify the receipt was created
-        assert!(output_path.exists(), "Receipt should exist after run");
-
-        // Check that upload was mentioned in output
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains("Uploaded") || stderr.contains("upload"),
-            "Should mention upload in output: {}",
-            stderr
-        );
-    }
-}
-
-/// Integration test for baseline list with a running server.
-#[test]
-#[ignore = "Requires a running perfgate-server on localhost:8080"]
-fn test_baseline_list_with_server() {
-    let mut cmd = perfgate_cmd();
-    cmd.arg("baseline")
-        .arg("list")
-        .arg("--baseline-server")
-        .arg("http://localhost:8080")
-        .arg("--api-key")
-        .arg("test-viewer-key")
-        .arg("--project")
-        .arg("integration-tests");
-
-    let output = cmd.output().expect("Failed to execute command");
-
-    // Should succeed if server is running
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        // Output should be valid JSON array or object
-        assert!(
-            stdout.starts_with("[") || stdout.starts_with("{"),
-            "Output should be JSON: {}",
-            stdout
-        );
-    }
+    let mut promote = perfgate_cmd();
+    promote
+        .arg("promote")
+        .arg("--current")
+        .arg(&baseline_file)
+        .arg("--to-server")
+        .arg("--benchmark")
+        .arg(&promoted_bench)
+        .arg("--version")
+        .arg("promoted-v1");
+    add_server_flags(&mut promote, server.url(), project, api_key);
+    promote
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(&promoted_bench));
 }
