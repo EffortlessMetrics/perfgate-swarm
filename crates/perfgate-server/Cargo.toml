@@ -45,11 +45,8 @@ sqlx = { version = "0.8.3", default-features = false, features = ["postgres", "r
 
 # Validation
 perfgate-types.workspace = true
-perfgate-validation.workspace = true
 perfgate-error.workspace = true
-perfgate-auth.workspace = true
 perfgate-api = { workspace = true, features = ["server"] }
-perfgate-stats.workspace = true
 perfgate-domain.workspace = true
 
 # Error handling

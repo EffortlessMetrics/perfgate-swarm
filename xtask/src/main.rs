@@ -29,27 +29,25 @@ struct Cli {
 /// Supported crates for mutation testing
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum MutantsCrate {
-    #[value(name = "perfgate-domain")]
+    #[value(name = "perfgate-domain", alias = "perfgate-stats")]
     Domain,
-    #[value(name = "perfgate-types")]
+    #[value(name = "perfgate-types", alias = "perfgate-validation")]
     Types,
     #[value(name = "perfgate-app")]
     App,
+    #[value(name = "perfgate-api", alias = "perfgate-auth")]
+    Api,
     #[value(name = "perfgate-adapters")]
     Adapters,
     #[value(name = "perfgate-cli")]
     Cli,
     #[value(name = "perfgate-sha256")]
     Sha256,
-    #[value(name = "perfgate-stats")]
-    Stats,
-    #[value(name = "perfgate-validation")]
-    Validation,
     #[value(name = "perfgate-host-detect")]
     HostDetect,
     #[value(name = "perfgate-export")]
     Export,
-    #[value(name = "perfgate-render")]
+    #[value(name = "perfgate-render", alias = "perfgate-summary")]
     Render,
     #[value(name = "perfgate-sensor")]
     Sensor,
@@ -65,11 +63,10 @@ impl MutantsCrate {
             MutantsCrate::Domain => "perfgate-domain",
             MutantsCrate::Types => "perfgate-types",
             MutantsCrate::App => "perfgate-app",
+            MutantsCrate::Api => "perfgate-api",
             MutantsCrate::Adapters => "perfgate-adapters",
             MutantsCrate::Cli => "perfgate-cli",
             MutantsCrate::Sha256 => "perfgate-sha256",
-            MutantsCrate::Stats => "perfgate-stats",
-            MutantsCrate::Validation => "perfgate-validation",
             MutantsCrate::HostDetect => "perfgate-host-detect",
             MutantsCrate::Export => "perfgate-export",
             MutantsCrate::Render => "perfgate-render",
@@ -84,11 +81,10 @@ impl MutantsCrate {
             MutantsCrate::Domain => 100,
             MutantsCrate::Types => 95,
             MutantsCrate::App => 90,
+            MutantsCrate::Api => 90,
             MutantsCrate::Adapters => 80,
             MutantsCrate::Cli => 70,
             MutantsCrate::Sha256 => 100,
-            MutantsCrate::Stats => 100,
-            MutantsCrate::Validation => 100,
             MutantsCrate::HostDetect => 100,
             MutantsCrate::Export => 90,
             MutantsCrate::Render => 90,
@@ -997,12 +993,6 @@ fn cmd_microcrates() -> anyhow::Result<()> {
             100,
         ),
         (
-            "perfgate-stats",
-            "Statistical functions (median, percentile, variance)",
-            100,
-        ),
-        ("perfgate-validation", "Bench name validation logic", 100),
-        (
             "perfgate-host-detect",
             "Host mismatch detection for CI noise reduction",
             100,
@@ -1091,9 +1081,9 @@ fn cmd_microcrates() -> anyhow::Result<()> {
     println!("         ↓");
     println!("  perfgate-sha256 (standalone, no_std)");
     println!("         ↓");
-    println!("  perfgate-stats (pure math)");
+    println!("  perfgate-domain::stats (pure math)");
     println!("         ↓");
-    println!("  perfgate-validation, perfgate-host-detect (pure logic)");
+    println!("  perfgate-types::validation, perfgate-host-detect (pure logic)");
     println!("         ↓");
     println!("  perfgate-types (data contracts)");
     println!("         ↓");
@@ -1314,7 +1304,7 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
                 }
 
                 let (mean, variance) =
-                    perfgate_stats::mean_and_variance(&vals).unwrap_or((0.0, 0.0));
+                    perfgate_domain::stats::mean_and_variance(&vals).unwrap_or((0.0, 0.0));
                 let stddev = variance.sqrt();
                 let cv = if mean > 0.0 {
                     (stddev / mean) * 100.0
@@ -1365,12 +1355,6 @@ fn generate_workspace_inventory_md() -> String {
             "Minimal SHA-256 implementation (no_std compatible)",
             100,
         ),
-        (
-            "perfgate-stats",
-            "Statistical functions (median, percentile, variance)",
-            100,
-        ),
-        ("perfgate-validation", "Bench name validation logic", 100),
         (
             "perfgate-host-detect",
             "Host mismatch detection for CI noise reduction",
@@ -1460,8 +1444,8 @@ fn generate_workspace_inventory_md() -> String {
     md.push_str("```mermaid\ngraph TD\n");
     md.push_str("  error[perfgate-error] --> types[perfgate-types]\n");
     md.push_str("  sha[perfgate-sha256] --> types\n");
-    md.push_str("  stats[perfgate-stats] --> types\n");
-    md.push_str("  val[perfgate-validation] --> types\n");
+    md.push_str("  domain --> stats[perfgate-domain::stats]\n");
+    md.push_str("  types --> val[perfgate-types::validation]\n");
     md.push_str("  host[perfgate-host-detect] --> types\n");
     md.push_str("  types --> budget[perfgate-budget]\n");
     md.push_str("  types --> sig[perfgate-significance]\n");

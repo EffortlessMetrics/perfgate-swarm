@@ -35,10 +35,10 @@ use perfgate_error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_github::{CommentOptions, GitHubClient};
 use perfgate_ingest::IngestFormat;
 use perfgate_profile::{ProfileRequest, capture_flamegraph};
+use perfgate_render::summary::{SummaryRequest, SummaryUseCase};
 use perfgate_scaling::{
     ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
 };
-use perfgate_summary::{SummaryRequest, SummaryUseCase};
 use perfgate_types::{
     AggregateWeightMode, AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig,
     ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy,

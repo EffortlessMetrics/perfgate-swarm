@@ -14,12 +14,10 @@ keywords = ["paired", "benchmarking", "statistics", "ab-testing"]
 categories = ["mathematics", "development-tools"]
 
 [dependencies]
-perfgate-types.workspace = true
-perfgate-stats.workspace = true
-perfgate-error.workspace = true
-thiserror.workspace = true
+perfgate-domain.workspace = true
 
 [dev-dependencies]
+perfgate-types.workspace = true
 proptest = "1.7"
 approx = "0.5"
 [lints]

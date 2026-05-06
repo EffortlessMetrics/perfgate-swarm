@@ -1,14 +1,10 @@
 //! Statistical functions for benchmarking analysis.
 //!
-//! This crate provides pure statistical functions with no I/O dependencies.
-//! It is designed to be used by `perfgate-domain` and can be independently
-//! tested and versioned.
-//!
-//! Part of the [perfgate](https://github.com/EffortlessMetrics/perfgate) workspace.
+//! This module provides pure statistical functions with no I/O dependencies.
 //!
 //! # Overview
 //!
-//! The crate provides:
+//! The module provides:
 //! - Summary statistics (median, min, max) for `u64` and `f64` slices
 //! - Percentile calculation
 //! - Mean and variance computation
@@ -18,7 +14,13 @@ pub mod trend;
 
 pub use perfgate_error::StatsError;
 
-use perfgate_types::{F64Summary, U64Summary};
+// Re-export trend module items
+pub use trend::{
+    DriftClass, TrendAnalysis, TrendConfig, analyze_trend, classify_drift, compute_headroom_pct,
+    linear_regression, predict_breach_run, spark_chart,
+};
+
+pub use perfgate_types::{F64Summary, U64Summary};
 use std::cmp::Ordering;
 
 /// Compute min, max, and median for a `u64` slice.
@@ -30,7 +32,7 @@ use std::cmp::Ordering;
 /// # Examples
 ///
 /// ```
-/// use perfgate_stats::summarize_u64;
+/// use perfgate_domain::stats::summarize_u64;
 ///
 /// let s = summarize_u64(&[10, 30, 20]).unwrap();
 /// assert_eq!(s.median, 20);
@@ -73,7 +75,7 @@ pub fn summarize_u64(values: &[u64]) -> Result<U64Summary, StatsError> {
 /// # Examples
 ///
 /// ```
-/// use perfgate_stats::summarize_f64;
+/// use perfgate_domain::stats::summarize_f64;
 ///
 /// let s = summarize_f64(&[1.0, 3.0, 2.0]).unwrap();
 /// assert_eq!(s.median, 2.0);
@@ -137,7 +139,7 @@ pub fn median_f64_sorted(sorted: &[f64]) -> f64 {
 /// # Examples
 ///
 /// ```
-/// use perfgate_stats::percentile;
+/// use perfgate_domain::stats::percentile;
 ///
 /// let p50 = percentile(vec![1.0, 2.0, 3.0, 4.0, 5.0], 0.5).unwrap();
 /// assert_eq!(p50, 3.0);
@@ -177,7 +179,7 @@ pub fn percentile(mut values: Vec<f64>, q: f64) -> Option<f64> {
 /// # Examples
 ///
 /// ```
-/// use perfgate_stats::mean_and_variance;
+/// use perfgate_domain::stats::mean_and_variance;
 ///
 /// let (mean, var) = mean_and_variance(&[1.0, 2.0, 3.0, 4.0, 5.0]).unwrap();
 /// assert!((mean - 3.0).abs() < 1e-10);
@@ -265,19 +267,19 @@ mod tests {
     }
 
     #[test]
-    fn summarize_u64_odd_length() {
-        let summary = summarize_u64(&[10, 30, 20]).unwrap();
-        assert_eq!(summary.median, 20);
-        assert_eq!(summary.min, 10);
-        assert_eq!(summary.max, 30);
-    }
-
-    #[test]
     fn summarize_f64_odd_length() {
         let summary = summarize_f64(&[10.0, 30.0, 20.0]).unwrap();
         assert_eq!(summary.median, 20.0);
         assert_eq!(summary.min, 10.0);
         assert_eq!(summary.max, 30.0);
+    }
+
+    #[test]
+    fn summarize_u64_odd_length() {
+        let summary = summarize_u64(&[10, 30, 20]).unwrap();
+        assert_eq!(summary.median, 20);
+        assert_eq!(summary.min, 10);
+        assert_eq!(summary.max, 30);
     }
 
     #[test]

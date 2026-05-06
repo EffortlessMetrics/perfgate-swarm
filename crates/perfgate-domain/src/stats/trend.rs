@@ -92,7 +92,7 @@ impl Default for TrendConfig {
 /// # Examples
 ///
 /// ```
-/// use perfgate_stats::trend::linear_regression;
+/// use perfgate_domain::stats::trend::linear_regression;
 ///
 /// let points = vec![(0.0, 1.0), (1.0, 2.0), (2.0, 3.0)];
 /// let (slope, intercept, r2) = linear_regression(&points).unwrap();
@@ -287,7 +287,7 @@ pub fn compute_headroom_pct(
 /// # Examples
 ///
 /// ```
-/// use perfgate_stats::trend::{TrendConfig, analyze_trend, DriftClass};
+/// use perfgate_domain::stats::trend::{TrendConfig, analyze_trend, DriftClass};
 ///
 /// let values = vec![100.0, 102.0, 104.0, 106.0, 108.0];
 /// let result = analyze_trend(&values, "wall_ms", 150.0, true, &TrendConfig::default()).unwrap();
@@ -362,7 +362,7 @@ pub fn analyze_trend(
 /// # Examples
 ///
 /// ```
-/// use perfgate_stats::trend::spark_chart;
+/// use perfgate_domain::stats::trend::spark_chart;
 ///
 /// let chart = spark_chart(&[1.0, 2.0, 3.0, 4.0, 5.0]);
 /// assert_eq!(chart.len(), 5);

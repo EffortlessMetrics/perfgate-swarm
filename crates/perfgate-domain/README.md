@@ -13,7 +13,7 @@ function deterministic and trivially testable.
 
 - `compute_stats(samples, work_units) -> Stats` -- aggregate summary statistics
   from raw samples (excludes warmup iterations)
-- Re-exports from `perfgate-stats`: `summarize_u64`, `summarize_f64`,
+- Re-exports from `perfgate-domain::stats`: `summarize_u64`, `summarize_f64`,
   `median_u64_sorted`, `median_f64_sorted`
 
 ### Budget Evaluation

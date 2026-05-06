@@ -92,7 +92,7 @@ pub async fn submit_verdict(
         Scope::Write,
     )?;
 
-    if let Err(e) = perfgate_validation::validate_bench_name(&request.benchmark) {
+    if let Err(e) = perfgate_types::validation::validate_bench_name(&request.benchmark) {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ApiError::validation(&format!(

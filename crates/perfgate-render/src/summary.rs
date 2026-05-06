@@ -8,7 +8,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use perfgate_summary::{SummaryRequest, SummaryUseCase};
+//! use perfgate_render::summary::{SummaryRequest, SummaryUseCase};
 //!
 //! let uc = SummaryUseCase;
 //! let outcome = uc.execute(SummaryRequest {

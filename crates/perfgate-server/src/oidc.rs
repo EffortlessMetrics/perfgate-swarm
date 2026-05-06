@@ -6,7 +6,7 @@
 //! - **Custom providers**: Configurable issuer, JWKS URL, and claim field.
 
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
-use perfgate_auth::{ApiKey, Role};
+use perfgate_api::auth::{ApiKey, Role};
 use perfgate_error::AuthError;
 use reqwest::Client;
 use serde::Deserialize;

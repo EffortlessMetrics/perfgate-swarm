@@ -1,11 +1,11 @@
 //! Basic example demonstrating statistical functions.
 //!
-//! Run with: cargo run -p perfgate-stats --example basic
+//! Run with: cargo run -p perfgate-domain --example stats_example
 
-use perfgate_stats::{mean_and_variance, percentile, summarize_f64, summarize_u64};
+use perfgate_domain::stats::{mean_and_variance, percentile, summarize_f64, summarize_u64};
 
 fn main() {
-    println!("=== perfgate-stats Basic Example ===\n");
+    println!("=== perfgate-domain stats Basic Example ===\n");
 
     println!("1. Summarizing u64 benchmark data:");
     let u64_samples: Vec<u64> = vec![95, 100, 105, 98, 102, 100, 103];
