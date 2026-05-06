@@ -153,7 +153,9 @@ runs:
 
     - name: Install Rust toolchain
       if: steps.install_binary.outputs.installed != 'true'
-      uses: dtolnay/rust-toolchain@1.93.0
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: 1.93.0
 
     - name: Install perfgate (cargo install fallback)
       if: steps.install_binary.outputs.installed != 'true'
