@@ -105,6 +105,11 @@ Loaded policy `id`, `role`, `project`, optional `benchmark_regex`, and optional
 | **sqlite** | Single-node production | Disk | `--database-url ./perfgate.db` |
 | **postgres** | Multi-node / HA | Disk | `--database-url postgresql://host/db` |
 
+SQLite file databases are opened with `journal_mode=WAL` and a 5 second
+`busy_timeout` on every server-managed connection. This keeps readers from
+blocking writers in normal single-node deployments. In-memory SQLite databases
+skip WAL because SQLite reports `journal_mode=memory` for those connections.
+
 ## Library usage
 
 ```rust

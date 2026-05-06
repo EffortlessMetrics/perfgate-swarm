@@ -39,6 +39,12 @@ The current server binary supports:
 For local development, prefer `perfgate serve`. For a shared deployment,
 prefer `perfgate-server` directly.
 
+The SQLite backend is intended for one server process. File-backed SQLite
+connections are configured with WAL mode and a 5 second busy timeout so normal
+dashboard reads and CI writes can proceed without immediate lock failures.
+In-memory SQLite is still supported for tests and local sandboxing, but WAL is
+not applicable there.
+
 For local mode, `perfgate serve` runs with API auth disabled for single-user
 workflows.
 
