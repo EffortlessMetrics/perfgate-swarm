@@ -1,16 +1,47 @@
-perfgate-validation
-perfgate-auth
-perfgate-summary
-perfgate-stats
-perfgate-significance
-perfgate-budget
-perfgate-paired
-perfgate-host-detect
-perfgate-scaling
-perfgate-app
-perfgate-adapters
-perfgate-profile
-perfgate-sha256
-perfgate-sensor
-perfgate-fake
-perfgate-selfbench
+# Crate absorption map for the 0.16 public-surface collapse.
+#
+# Format:
+# old-package-name -> new owner path or disposition
+#
+# A package listed here has an explicit non-public disposition. During the
+# transition it may still be publishable as a compatibility shim. The strict
+# public-surface check fails until those packages are deleted, marked
+# `publish = false`, or intentionally converted into deprecated shims.
+
+# Landed in PR #223.
+perfgate-validation -> perfgate_types::validation [deleted]
+perfgate-auth -> perfgate_api::auth [deleted]
+perfgate-summary -> perfgate_render::summary [deleted]
+perfgate-stats -> perfgate_domain::stats [deleted]
+perfgate-paired -> perfgate_domain::paired [compatibility wrapper]
+
+# Contract-adjacent.
+perfgate-error -> perfgate_types::error
+perfgate-config -> perfgate_types::config
+perfgate-api -> perfgate_types::baseline_service or shared client/server contract
+
+# Pure core and domain policy.
+perfgate-domain -> perfgate::domain
+perfgate-budget -> perfgate::core::budget or perfgate_domain::budget
+perfgate-significance -> perfgate::core::significance or perfgate_domain::significance
+perfgate-host-detect -> perfgate::domain::host
+perfgate-scaling -> perfgate::domain::scaling
+perfgate-sha256 -> perfgate::core::fingerprint
+
+# Presentation.
+perfgate-render -> perfgate::presentation::render
+perfgate-export -> perfgate::presentation::export
+perfgate-sensor -> perfgate::presentation::sensor
+
+# Runtime, app, and integrations.
+perfgate-adapters -> perfgate::runtime
+perfgate-profile -> perfgate::runtime::profile
+perfgate-app -> perfgate::app
+perfgate-github -> perfgate::integrations::github
+perfgate-ingest -> perfgate::integrations::ingest
+
+# Dev-only packages.
+perfgate-fake -> perfgate::test_support or private dev crate
+perfgate-selfbench -> private workspace crate
+perfgate-tests -> private workspace root package
+xtask -> private workspace automation crate

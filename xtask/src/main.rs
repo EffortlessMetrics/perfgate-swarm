@@ -117,6 +117,21 @@ enum Command {
     /// Validate workspace packaging metadata for crates.io publication.
     PublishCheck,
 
+    /// Validate the target public crate policy and transition dispositions.
+    PublicSurface {
+        /// Target public crate policy file.
+        #[arg(long, default_value = "policy/public_crates.txt")]
+        public_policy: PathBuf,
+
+        /// Absorbed/internal crate disposition file.
+        #[arg(long, default_value = "policy/absorbed_crates.txt")]
+        absorbed_policy: PathBuf,
+
+        /// Fail if any absorbed package is still publishable.
+        #[arg(long)]
+        strict: bool,
+    },
+
     /// Validate JSON fixtures against the vendored sensor.report.v1 schema.
     Conform {
         /// Directory of fixtures to validate (default: golden fixtures)
@@ -197,6 +212,11 @@ fn main() -> anyhow::Result<()> {
         Command::SchemaCheck { schemas_dir } => cmd_schema_check(&schemas_dir),
         Command::Ci => cmd_ci(),
         Command::PublishCheck => cmd_publish_check(),
+        Command::PublicSurface {
+            public_policy,
+            absorbed_policy,
+            strict,
+        } => cmd_public_surface(&public_policy, &absorbed_policy, strict),
         Command::Conform { fixtures, file } => cmd_conform(fixtures, file),
         Command::SyncFixtures => cmd_sync_fixtures(),
         Command::Mutants {
@@ -268,6 +288,11 @@ fn cmd_ci() -> anyhow::Result<()> {
     cmd_schema_check(Path::new("schemas"))?;
     cmd_conform(None, None)?;
     cmd_publish_check()?;
+    cmd_public_surface(
+        Path::new("policy/public_crates.txt"),
+        Path::new("policy/absorbed_crates.txt"),
+        false,
+    )?;
     Ok(())
 }
 
@@ -372,6 +397,185 @@ fn collect_publish_errors(metadata: &CargoMetadata) -> Vec<String> {
                 ));
             }
         }
+    }
+
+    errors
+}
+
+fn cmd_public_surface(
+    public_policy: &Path,
+    absorbed_policy: &Path,
+    strict: bool,
+) -> anyhow::Result<()> {
+    let metadata = load_cargo_metadata()?;
+    let public_crates = read_public_crate_policy(public_policy)?;
+    let absorbed_crates = read_absorbed_crate_policy(absorbed_policy)?;
+    let errors = collect_public_surface_errors(&metadata, &public_crates, &absorbed_crates, strict);
+
+    if !errors.is_empty() {
+        println!("Found {} public-surface policy error(s):", errors.len());
+        for error in &errors {
+            println!("  - {}", error);
+        }
+
+        anyhow::bail!(
+            "{} public-surface policy issue(s) found. Update policy or crate publication state.",
+            errors.len()
+        );
+    }
+
+    let publishable: Vec<_> = metadata
+        .packages
+        .iter()
+        .filter(|package| is_publishable(package))
+        .map(|package| package.name.as_str())
+        .collect();
+    let transitional: Vec<_> = publishable
+        .iter()
+        .copied()
+        .filter(|name| !public_crates.contains(*name) && absorbed_crates.contains_key(*name))
+        .collect();
+
+    println!(
+        "  OK  public-surface policy accounts for {} publishable package(s)",
+        publishable.len()
+    );
+    println!("      target public packages: {}", public_crates.len());
+    if !transitional.is_empty() {
+        println!(
+            "      transition publishable packages with dispositions: {}",
+            transitional.len()
+        );
+    }
+
+    Ok(())
+}
+
+fn read_public_crate_policy(path: &Path) -> anyhow::Result<BTreeSet<String>> {
+    let content = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let mut names = BTreeSet::new();
+
+    for (idx, raw_line) in content.lines().enumerate() {
+        let line = strip_policy_comment(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.contains("->") {
+            anyhow::bail!(
+                "{}:{} public crate policy entries must be plain package names",
+                path.display(),
+                idx + 1
+            );
+        }
+        names.insert(line.to_string());
+    }
+
+    if names.is_empty() {
+        anyhow::bail!("{} contains no public crate entries", path.display());
+    }
+
+    Ok(names)
+}
+
+fn read_absorbed_crate_policy(path: &Path) -> anyhow::Result<BTreeMap<String, String>> {
+    let content = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let mut dispositions = BTreeMap::new();
+
+    for (idx, raw_line) in content.lines().enumerate() {
+        let line = strip_policy_comment(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let Some((package, disposition)) = line.split_once("->") else {
+            anyhow::bail!(
+                "{}:{} absorbed crate entries must use `package -> disposition`",
+                path.display(),
+                idx + 1
+            );
+        };
+
+        let Some(package_name) = package.split_whitespace().next() else {
+            anyhow::bail!("{}:{} missing package name", path.display(), idx + 1);
+        };
+        let disposition = disposition.trim();
+        if disposition.is_empty() {
+            anyhow::bail!("{}:{} missing disposition", path.display(), idx + 1);
+        }
+
+        dispositions.insert(package_name.to_string(), disposition.to_string());
+    }
+
+    Ok(dispositions)
+}
+
+fn strip_policy_comment(line: &str) -> &str {
+    line.split_once('#')
+        .map(|(before, _)| before)
+        .unwrap_or(line)
+}
+
+fn collect_public_surface_errors(
+    metadata: &CargoMetadata,
+    public_crates: &BTreeSet<String>,
+    absorbed_crates: &BTreeMap<String, String>,
+    strict: bool,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    for public_crate in public_crates {
+        let Some(package) = metadata
+            .packages
+            .iter()
+            .find(|package| package.name == *public_crate)
+        else {
+            errors.push(format!(
+                "policy lists public crate {} but no workspace package has that name",
+                public_crate
+            ));
+            continue;
+        };
+
+        if !is_publishable(package) {
+            errors.push(format!(
+                "policy lists public crate {} but the package is not publishable",
+                public_crate
+            ));
+        }
+    }
+
+    for public_crate in public_crates {
+        if absorbed_crates.contains_key(public_crate) {
+            errors.push(format!(
+                "{} is listed as both public and absorbed/internal",
+                public_crate
+            ));
+        }
+    }
+
+    for package in metadata
+        .packages
+        .iter()
+        .filter(|package| is_publishable(package))
+    {
+        if public_crates.contains(&package.name) {
+            continue;
+        }
+
+        if absorbed_crates.contains_key(&package.name) {
+            if strict {
+                errors.push(format!(
+                    "{} is still publishable but is listed as absorbed/internal",
+                    package.name
+                ));
+            }
+            continue;
+        }
+
+        errors.push(format!(
+            "{} is publishable but is not listed in {} or {}",
+            package.name, "policy/public_crates.txt", "policy/absorbed_crates.txt"
+        ));
     }
 
     errors
@@ -1962,6 +2166,16 @@ mod tests {
         }
     }
 
+    fn test_package(name: &str, publish: Option<Vec<String>>) -> MetadataPackage {
+        MetadataPackage {
+            name: name.to_string(),
+            manifest_path: PathBuf::from(format!("crates/{name}/Cargo.toml")),
+            publish,
+            readme: None,
+            dependencies: Vec::new(),
+        }
+    }
+
     #[test]
     fn collect_publish_errors_reports_missing_readme() {
         let metadata = CargoMetadata {
@@ -2036,6 +2250,67 @@ mod tests {
 
         let errors = collect_publish_errors(&metadata);
         assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn public_surface_allows_publishable_packages_with_transition_dispositions() {
+        let metadata = CargoMetadata {
+            packages: vec![
+                test_package("perfgate", None),
+                test_package("perfgate-budget", None),
+                test_package("perfgate-tests", Some(Vec::new())),
+            ],
+        };
+        let public_crates = ["perfgate"].into_iter().map(String::from).collect();
+        let absorbed_crates = [(
+            "perfgate-budget".to_string(),
+            "perfgate::core::budget".to_string(),
+        )]
+        .into_iter()
+        .collect();
+
+        let errors =
+            collect_public_surface_errors(&metadata, &public_crates, &absorbed_crates, false);
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn public_surface_strict_rejects_publishable_absorbed_packages() {
+        let metadata = CargoMetadata {
+            packages: vec![
+                test_package("perfgate", None),
+                test_package("perfgate-budget", None),
+            ],
+        };
+        let public_crates = ["perfgate"].into_iter().map(String::from).collect();
+        let absorbed_crates = [(
+            "perfgate-budget".to_string(),
+            "perfgate::core::budget".to_string(),
+        )]
+        .into_iter()
+        .collect();
+
+        let errors =
+            collect_public_surface_errors(&metadata, &public_crates, &absorbed_crates, true);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("still publishable"));
+    }
+
+    #[test]
+    fn public_surface_rejects_unclassified_publishable_packages() {
+        let metadata = CargoMetadata {
+            packages: vec![
+                test_package("perfgate", None),
+                test_package("perfgate-surprise", None),
+            ],
+        };
+        let public_crates = ["perfgate"].into_iter().map(String::from).collect();
+        let absorbed_crates = BTreeMap::new();
+
+        let errors =
+            collect_public_surface_errors(&metadata, &public_crates, &absorbed_crates, false);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("perfgate-surprise is publishable"));
     }
 
     #[test]

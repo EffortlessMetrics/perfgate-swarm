@@ -1,128 +1,145 @@
-# Perfgate Crate Seams and Architecture
+# Perfgate Crate Seams and Public Surface
 
-This document defines the target public crate surface and the absorption plan for internal implementation crates.
+This document is the canonical 0.16 crate-surface contract. It keeps the
+clean-architecture seams that made the workspace useful, but stops treating
+every seam as a public package.
 
 ## Governing Rule
 
-> **Crates are public contracts. Folders are architectural boundaries.**
+> Crates are public contracts. Folders and modules are architectural boundaries.
 
-## Target Public Crates (13)
+The target is a small public package surface backed by enforceable internal
+seams. The product should be easy to depend on without exposing every internal
+refactoring decision as a crates.io package.
 
-### Primary Product / Contract Crates
+## Target Public Crates
 
-| Crate | Purpose |
-|-------|---------|
-| `perfgate` | Umbrella library for local performance-gating workflows |
-| `perfgate-cli` | Installed binary package, command-line UX |
-| `perfgate-server` | Centralized baseline management server |
-| `perfgate-client` | Client SDK for baseline service |
-| `perfgate-api` | Shared baseline-service API contract |
-| `perfgate-types` | Versioned receipt/config/domain DTO contract |
-| `perfgate-config` | Config loading, parsing, merging, normalization |
-| `perfgate-domain` | Pure decision logic: stats, budgets, significance, paired/scaling analysis, host mismatch policy |
+By the end of the 0.16 public-surface collapse, only these packages should be
+publishable:
 
-### Published Support Crates
+| Crate | Role |
+|-------|------|
+| `perfgate` | Main embeddable facade for local performance-gating workflows |
+| `perfgate-cli` | Installs the `perfgate` binary |
+| `perfgate-types` | Stable receipts, schemas, config, and wire contracts |
+| `perfgate-client` | Baseline service client |
+| `perfgate-server` | Baseline service binary/library |
 
-| Crate | Purpose |
-|-------|---------|
-| `perfgate-error` | Shared error surface across the public crate family |
-| `perfgate-render` | Markdown, GitHub annotation text, report rendering |
-| `perfgate-export` | CSV, JSONL, HTML, Prometheus, JUnit export formats |
-| `perfgate-ingest` | Importing Criterion, hyperfine, and external benchmark formats |
-| `perfgate-github` | GitHub API / PR-comment integration |
+All other workspace packages must have one explicit disposition:
 
-## Absorbed Crates
+- absorbed into one of the public crates as an internal module,
+- deleted from the workspace,
+- marked `publish = false`,
+- or kept temporarily as a deprecated compatibility shim.
 
-The following crates will be moved into module folders under their owning crates:
+## Current Landed Moves
 
-| Current Crate | New Location | Owner Crate |
-|---------------|--------------|-------------|
-| `perfgate-validation` | `perfgate-types::validation` | perfgate-types |
-| `perfgate-auth` | `perfgate-api::auth` | perfgate-api |
-| `perfgate-summary` | `perfgate-render::summary` | perfgate-render |
-| `perfgate-stats` | `perfgate-domain::stats` | perfgate-domain |
-| `perfgate-significance` | `perfgate-domain::significance` | perfgate-domain |
-| `perfgate-budget` | `perfgate-domain::budget` | perfgate-domain |
-| `perfgate-paired` | `perfgate-domain::paired` | perfgate-domain |
-| `perfgate-host-detect` | `perfgate-domain::host_mismatch` | perfgate-domain |
-| `perfgate-scaling` | `perfgate-domain::scaling` | perfgate-domain |
-| `perfgate-app` | `perfgate::workflow` | perfgate |
-| `perfgate-adapters` | `perfgate::ops` | perfgate |
-| `perfgate-profile` | `perfgate::diagnostics::profile` | perfgate |
-| `perfgate-sha256` | `perfgate::fingerprint` | perfgate |
-| `perfgate-sensor` | `perfgate::integrations::cockpit` | perfgate |
-| `perfgate-fake` | `tests/support` or `perfgate-testkit` | internal |
-| `perfgate-selfbench` | `benches/` or internal | internal |
+PR #223 started the real collapse and is the current implementation truth:
+
+| Former crate | Current owner | Status |
+|--------------|---------------|--------|
+| `perfgate-validation` | `perfgate_types::validation` | crate deleted |
+| `perfgate-auth` | `perfgate_api::auth` | crate deleted |
+| `perfgate-summary` | `perfgate_render::summary` | crate deleted |
+| `perfgate-stats` | `perfgate_domain::stats` | crate deleted |
+| `perfgate-paired` | `perfgate_domain::paired` | compatibility wrapper remains |
+
+Those paths are intentionally more conservative than the final facade shape.
+Future PRs may re-export or move pieces again, but they must do so with the
+policy files and docs updated in the same change.
+
+## Remaining Absorption Map
+
+`policy/absorbed_crates.txt` is the machine-readable disposition list. The
+high-level target is:
+
+| Current package | Target owner |
+|-----------------|--------------|
+| `perfgate-error` | `perfgate_types::error` |
+| `perfgate-config` | `perfgate_types::config` |
+| `perfgate-api` | `perfgate_types::baseline_service` or shared client/server contract |
+| `perfgate-domain` | `perfgate::domain` |
+| `perfgate-budget` | `perfgate::core::budget` |
+| `perfgate-significance` | `perfgate::core::significance` |
+| `perfgate-host-detect` | `perfgate::domain::host` |
+| `perfgate-scaling` | `perfgate::domain::scaling` |
+| `perfgate-sha256` | `perfgate::core::fingerprint` |
+| `perfgate-render` | `perfgate::presentation::render` |
+| `perfgate-export` | `perfgate::presentation::export` |
+| `perfgate-sensor` | `perfgate::presentation::sensor` |
+| `perfgate-adapters` | `perfgate::runtime` |
+| `perfgate-profile` | `perfgate::runtime::profile` |
+| `perfgate-app` | `perfgate::app` |
+| `perfgate-github` | `perfgate::integrations::github` |
+| `perfgate-ingest` | `perfgate::integrations::ingest` |
+| `perfgate-fake` | `perfgate::test_support` or private dev crate |
+| `perfgate-selfbench` | private workspace crate |
 
 ## Dependency Direction Rules
 
-### Good Dependencies
+These rules preserve the SRP architecture after crate collapse:
 
-```
-perfgate-cli -> perfgate -> perfgate-domain -> perfgate-types
-perfgate-server -> perfgate-api -> perfgate-domain -> perfgate-types
-perfgate-client -> perfgate-api -> perfgate-types
-perfgate-render/export/ingest -> perfgate-types
-perfgate-config -> perfgate-types
-```
-
-### Bad Dependencies (Forbidden)
-
-```
-perfgate-types -> perfgate-domain
-perfgate-config -> perfgate-client
-perfgate-domain -> perfgate-render
-perfgate-domain -> perfgate-config
-perfgate-api -> perfgate-server
-perfgate-client -> perfgate-server
-perfgate-cli -> perfgate-app/adapters/profile/sensor/scaling
+```text
+types must not depend on runtime, app, server, client, or cli
+core/domain must not depend on filesystem, process execution, server, client, or cli
+presentation must not depend on process execution, server, client, or cli
+runtime must not depend on cli, server, or client
+client must not depend on server
+server must not depend on cli
+cli is the outermost adapter
 ```
 
-## Module-Layer Rules
+The current enforcement starts with public-surface disposition. A later
+`xtask arch` check should enforce source/module dependency rules.
 
-1. **One owner crate per concept**
-2. **One folder per absorbed former crate**
-3. **Curated public facades**
-4. **`pub(crate)` by default**
-5. **No deep lateral imports**
-6. **Module-local tests and docs**
+## Enforcement
 
-## Publication Rules
+Run:
 
-- Only the 13 public crates should have `publish = true`
-- All internal/dev-only packages must have `publish = false`
-- Absorbed crates must be removed from `[workspace].members`
-- Absorbed crates must be removed from `[workspace.dependencies]`
-- No absorbed folder should contain its old `Cargo.toml`
+```bash
+cargo run -p xtask -- public-surface
+```
+
+This command fails if a publishable workspace package is neither listed in
+`policy/public_crates.txt` nor assigned a disposition in
+`policy/absorbed_crates.txt`.
+
+Run:
+
+```bash
+cargo run -p xtask -- public-surface --strict
+```
+
+Strict mode is the release-end gate. It fails while any absorbed package is
+still publishable.
 
 ## Migration Order
 
-1. Phase 0: Create this documentation and policy files
-2. Phase 1: Add workspace defaults
-3. Phase 2: Absorb contract-adjacent crates (validation, auth, summary)
-4. Phase 3: Collapse domain shards (stats, significance, budget, paired, host-detect, scaling)
-5. Phase 4: Collapse runtime/orchestration (adapters, profile, sensor, app, sha256)
-6. Phase 5: Clean up config/client dependency direction
-7. Phase 6: Simplify CLI dependencies
-8. Phase 7: Move test-only utilities (fake, selfbench)
-9. Phase 8: Final manifest shrink and validation
+1. Land first seam absorption and compatibility wrappers.
+2. Establish enforceable public-surface policy.
+3. Collapse contract-adjacent crates.
+4. Collapse pure core and domain policy crates.
+5. Collapse presentation, runtime, app, and integration crates.
+6. Convert remaining published packages into deprecated shims or mark them
+   private.
+7. Add `xtask arch` for source/module dependency rules.
+8. Update README, architecture docs, examples, and changelog for 0.16.
 
-## Validation Commands
+## Per-PR Checklist
 
-Run after each phase:
-```bash
-cargo check --workspace --all-targets
-cargo test --workspace
-cargo run -p xtask -- ci
-```
+- Code moved into the target owner module.
+- Workspace imports updated.
+- Compatibility shim kept only when intentionally preserving a published path.
+- Old package removed from `[workspace].members` or marked `publish = false`.
+- `policy/absorbed_crates.txt` status updated.
+- Docs and examples reference the current owner path.
+- `cargo run -p xtask -- public-surface` passes.
+- `cargo run -p xtask -- ci` passes.
 
-Run before publishing:
-```bash
-cargo package --list -p perfgate
-cargo publish --dry-run -p perfgate
-```
+## References
 
-Check for absorbed names:
-```bash
-rg "perfgate-(stats|significance|budget|paired|host-detect|scaling|app|adapters|profile|sha256|sensor|summary|validation|auth)"
-```
+- [REFACTORING_0_16.md](REFACTORING_0_16.md)
+- [MIGRATION_0_16.md](MIGRATION_0_16.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [policy/public_crates.txt](../policy/public_crates.txt)
+- [policy/absorbed_crates.txt](../policy/absorbed_crates.txt)
