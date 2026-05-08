@@ -13,6 +13,7 @@ perfgate uses versioned JSON receipts at every stage of the pipeline.
 | `perfgate.baseline.v1` | baseline service | Stored baseline record returned by the server |
 | `perfgate.verdict.v1` | baseline service | Stored verdict history, including optional noise history fields |
 | `perfgate.audit.v1` | baseline service | Append-only audit event for baseline, verdict, and key mutations; inferred by fixture filename because current audit events do not include a `schema` field |
+| `perfgate.health.v1` | baseline service | Health response for liveness and storage readiness; inferred by fixture filename because `/health` responses do not include a `schema` field |
 | `perfgate.dependency_event.v1` | fleet API | Dependency-change event with performance impact |
 | `perfgate.fleet_alert.v1` | fleet API | Fleet-wide dependency regression alert |
 
@@ -61,10 +62,12 @@ with external consumers.
 
 Historical compatibility fixtures live under `fixtures/schema/<release>/`.
 `schema-compat` checks v0.15 examples for `perfgate.run.v1`,
-`perfgate.compare.v1`, `perfgate.report.v1`, and `sensor.report.v1`.
+`perfgate.compare.v1`, `perfgate.report.v1`, `sensor.report.v1`,
+and `perfgate.health.v1`.
 It also checks v0.16 baseline-service and fleet contract fixtures for
 `perfgate.baseline.v1`, `perfgate.verdict.v1`, `perfgate.audit.v1`,
-`perfgate.dependency_event.v1`, and `perfgate.fleet_alert.v1`.
+`perfgate.health.v1`, `perfgate.dependency_event.v1`, and
+`perfgate.fleet_alert.v1`.
 
 ## Versioning Policy
 

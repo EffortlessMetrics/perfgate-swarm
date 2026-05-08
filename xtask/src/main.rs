@@ -2187,6 +2187,10 @@ fn cmd_schema_compat(fixtures_dir: &Path) -> anyhow::Result<()> {
                 serde_json::from_value::<perfgate_types::baseline_service::AuditEvent>(value)
                     .map(|_| ())
             }
+            "perfgate.health.v1" => {
+                serde_json::from_value::<perfgate_types::baseline_service::HealthResponse>(value)
+                    .map(|_| ())
+            }
             "perfgate.dependency_event.v1" => {
                 serde_json::from_value::<perfgate_types::baseline_service::DependencyEvent>(value)
                     .map(|_| ())
@@ -2253,7 +2257,11 @@ fn collect_schema_compat_json_files(dir: &Path, out: &mut Vec<PathBuf>) -> anyho
 
 fn infer_schema_from_fixture_path(path: &Path) -> Option<String> {
     let name = path.file_name()?.to_str()?;
-    (name == "perfgate.audit.v1.json").then(|| "perfgate.audit.v1".to_string())
+    match name {
+        "perfgate.audit.v1.json" => Some("perfgate.audit.v1".to_string()),
+        "perfgate.health.v1.json" => Some("perfgate.health.v1".to_string()),
+        _ => None,
+    }
 }
 
 fn check_schema_mirror_at(generated_dir: &Path, committed_dir: &Path) -> anyhow::Result<()> {
@@ -4658,6 +4666,48 @@ pkg-fmt = "zip"
         .expect("write fixture");
 
         cmd_schema_compat(&root).expect("schema-less audit fixture should deserialize");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn cmd_schema_compat_accepts_schema_less_health_fixtures_by_filename() {
+        let root = unique_temp_dir("perfgate_schema_compat_health");
+        let legacy_dir = root.join("v0.15");
+        let current_dir = root.join("v0.16");
+        fs::create_dir_all(&legacy_dir).expect("create legacy fixture dir");
+        fs::create_dir_all(&current_dir).expect("create current fixture dir");
+        fs::write(
+            legacy_dir.join("perfgate.health.v1.json"),
+            r#"{
+  "status": "healthy",
+  "version": "0.15.1",
+  "storage": {
+    "backend": "memory",
+    "status": "healthy"
+  }
+}"#,
+        )
+        .expect("write legacy fixture");
+        fs::write(
+            current_dir.join("perfgate.health.v1.json"),
+            r#"{
+  "status": "degraded",
+  "version": "0.16.0",
+  "storage": {
+    "backend": "postgres",
+    "status": "unhealthy",
+    "detail": "query_error"
+  },
+  "pool": {
+    "idle": 0,
+    "active": 1,
+    "max": 20
+  }
+}"#,
+        )
+        .expect("write current fixture");
+
+        cmd_schema_compat(&root).expect("schema-less health fixtures should deserialize");
         let _ = fs::remove_dir_all(&root);
     }
 
