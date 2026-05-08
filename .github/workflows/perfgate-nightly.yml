@@ -26,8 +26,6 @@ jobs:
           ./target/release/perfgate --version
           ./target/release/perfgate-selfbench noop
 
-      - name: Make scripts executable
-        run: chmod +x .ci/perf/*.sh
 
       - name: Run calibration
         run: ./target/release/perfgate check --config .ci/perfgate-nightly.toml --all --mode cockpit --output-github
@@ -36,18 +34,7 @@ jobs:
         run: cargo run -p xtask -- dogfood promote
 
       - name: Export trends
-        run: |
-          mkdir -p artifacts/trends
-          find artifacts/perfgate/extras -name 'perfgate.run.v1.json' -print0 |
-          while IFS= read -r -d '' file; do
-            bench=$(echo "$file" | sed -n 's|artifacts/perfgate/extras/\(.*\)/perfgate.run.v1.json|\1|p' | tr '/' '-')
-            ./target/release/perfgate export --run "$file" --format jsonl --out "artifacts/trends/history-${bench}.jsonl"
-          done
-          find artifacts/perfgate/extras -name 'perfgate.compare.v1.json' -print0 |
-          while IFS= read -r -d '' file; do
-            bench=$(echo "$file" | sed -n 's|artifacts/perfgate/extras/\(.*\)/perfgate.compare.v1.json|\1|p' | tr '/' '-')
-            ./target/release/perfgate export --compare "$file" --format prometheus --out "artifacts/trends/metrics-${bench}.prom"
-          done
+        run: cargo run -p xtask -- dogfood export-trends
 
       - name: Generate weekly variance summary
         run: |

@@ -24,10 +24,12 @@ Metrics from other platforms (e.g., Windows) are currently observe-only.
 
 ## Automation (xtask)
 
-We use `xtask` to manage dogfooding fixtures and verification:
+We keep dogfooding automation in Rust wherever possible:
 
+- `perfgate-selfbench ci-*`: Runs the CI benchmark wrappers for compare, check, markdown rendering, and report rendering without shell scripts.
 - `cargo run -p xtask -- dogfood fixtures`: Regenerates the stable JSON fixtures in `.ci/fixtures/` using the release binary.
 - `cargo run -p xtask -- dogfood verify`: Validates that required artifacts (`report.json`, `comment.md`) exist in the expected layout.
+- `cargo run -p xtask -- dogfood export-trends`: Exports nightly run/compare receipts into persisted trend files.
 
 ## Configurations
 

@@ -4,11 +4,11 @@ This guide helps you resolve failures in the `perfgate-self` or `perfgate-nightl
 
 ## 1. Runtime Failure (Non-zero exit != 2, 3)
 
-The workload wrapper script failed before it could evaluate the performance policy.
+The Rust selfbench CI workload failed before it could evaluate the performance policy.
 
-- **Check Logs**: Look for "perfgate binary not found" or shell script errors.
-- **Cause**: Usually due to changes in the project structure, broken build, or missing dependencies in the runner image.
-- **Fix**: Verify `.ci/perf/lib.sh` and the individual wrapper scripts.
+- **Check Logs**: Look for "perfgate binary not found" or `perfgate-selfbench ci-*` command errors.
+- **Cause**: Usually due to changes in the project structure, broken release builds, or missing dependencies in the runner image.
+- **Fix**: Verify the `ci-*` commands in `crates/perfgate-selfbench/src/main.rs` and the benchmark commands in `.ci/perfgate-*.toml`.
 
 ## 2. Policy Failure (Exit Code 2 or 3)
 
