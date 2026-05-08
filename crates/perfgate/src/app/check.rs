@@ -1249,6 +1249,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![bench.clone()],
         };
 
@@ -1381,6 +1382,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![bench.clone()],
         };
 
@@ -1460,6 +1462,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![bench],
         };
 
@@ -1516,6 +1519,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![bench],
         };
 
@@ -1589,6 +1593,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![bench],
         };
 
@@ -1648,6 +1653,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![bench],
         };
 
@@ -1680,6 +1686,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![],
         };
 
@@ -1734,6 +1741,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![bench],
         };
 
@@ -1803,6 +1811,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![bench],
         };
 
@@ -1862,6 +1871,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![bench],
         };
 

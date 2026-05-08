@@ -62,6 +62,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: Vec::new(),
         };
 

@@ -1,0 +1,21 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+expression: "help_output(&[\"scenario\", \"evaluate\", \"--help\"])"
+---
+Evaluate configured scenarios into a perfgate.scenario.v1 receipt
+
+Usage: perfgate scenario evaluate [OPTIONS]
+
+Options:
+      --config <CONFIG> Path to perfgate.toml [default: perfgate.toml]
+      --scenario <SCENARIO> Evaluate only one configured scenario by name
+      --workload-name <WORKLOAD_NAME> Name to use for the combined weighted workload receipt
+      --out-dir <OUT_DIR> Override artifact directory used for default compare receipt lookup
+      --out <OUT> Output scenario receipt path [default: scenario.json]
+      --pretty Pretty-print JSON
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

@@ -26,6 +26,7 @@ pub mod render;
 mod repair_context;
 mod report;
 pub mod runtime;
+mod scenario;
 pub mod sensor;
 mod sensor_report;
 mod trend;
@@ -48,6 +49,9 @@ pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
 pub use ratchet::{RatchetPlan, RatchetUseCase, is_host_mismatch_reason, preview_lines};
 pub use repair_context::redact_command_for_diagnostics;
 pub use report::{ReportRequest, ReportResult, ReportUseCase};
+pub use scenario::{
+    ScenarioEvaluateInput, ScenarioEvaluateOutcome, ScenarioEvaluateRequest, ScenarioUseCase,
+};
 pub use sensor_report::{
     BenchOutcome, SensorCheckOptions, SensorReportBuilder, classify_error,
     default_engine_capability, run_sensor_check, sensor_fingerprint,

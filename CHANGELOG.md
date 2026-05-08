@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `perfgate.probe.v1`, `perfgate.scenario.v1`, and `perfgate.tradeoff.v1`.
 - Added `perfgate ingest probes --file probes.jsonl` to convert
   language-agnostic probe JSONL into `perfgate.probe.v1` receipts.
+- Added `perfgate scenario evaluate` to turn configured weighted scenarios and
+  benchmark compare receipts into `perfgate.scenario.v1` workload receipts.
 - Extended `xtask schema-compat` with baseline-service record, health-response,
   and fleet fixtures so the 0.16 server API contract is checked alongside
   receipt compatibility.

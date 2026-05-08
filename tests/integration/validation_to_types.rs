@@ -38,6 +38,7 @@ fn config_file_validates_bench_names() {
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
+        scenarios: Vec::new(),
         benches: vec![BenchConfigFile {
             name: "valid-bench".to_string(),
             cwd: None,
@@ -63,6 +64,7 @@ fn config_file_rejects_invalid_bench_names() {
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
+        scenarios: Vec::new(),
         benches: vec![BenchConfigFile {
             name: "../evil".to_string(),
             cwd: None,
@@ -88,6 +90,7 @@ fn multiple_benches_all_validated() {
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
+        scenarios: Vec::new(),
         benches: vec![
             BenchConfigFile {
                 name: "valid-bench".to_string(),
@@ -128,6 +131,7 @@ fn validation_fails_on_first_invalid_bench() {
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
+        scenarios: Vec::new(),
         benches: vec![
             BenchConfigFile {
                 name: "valid-bench".to_string(),
@@ -250,6 +254,7 @@ fn config_empty_benches_is_valid() {
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
+        scenarios: Vec::new(),
         benches: vec![],
     };
 
@@ -267,6 +272,7 @@ fn config_duplicate_bench_names_passes_validation() {
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
+        scenarios: Vec::new(),
         benches: vec![
             BenchConfigFile {
                 name: "same-name".to_string(),
@@ -416,6 +422,7 @@ fn config_empty_bench_name_rejected() {
         baseline_server: BaselineServerConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
+        scenarios: Vec::new(),
         benches: vec![BenchConfigFile {
             name: String::new(),
             cwd: None,
@@ -443,6 +450,7 @@ fn config_path_traversal_variants_rejected() {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![BenchConfigFile {
                 name: name.to_string(),
                 cwd: None,
