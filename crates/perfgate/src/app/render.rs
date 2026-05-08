@@ -9,8 +9,9 @@ pub mod summary;
 
 use anyhow::Context;
 use perfgate_types::{
-    CompareReceipt, ComplexityGateResult, ComplexityGateStatus, Direction, Metric, MetricStatistic,
-    MetricStatus, TradeoffDecisionStatus, TradeoffReceipt,
+    CompareReceipt, ComplexityGateResult, ComplexityGateStatus, Delta, Direction, Metric,
+    MetricStatistic, MetricStatus, TradeoffDecisionStatus, TradeoffReceipt,
+    TradeoffRequirementOutcome,
 };
 use serde_json::json;
 
@@ -90,38 +91,38 @@ pub fn render_tradeoff_markdown(tradeoff: &TradeoffReceipt) -> String {
     out.push_str(header);
     out.push_str("\n\n");
 
-    if let Some(scenario) = &tradeoff.scenario {
-        out.push_str(&format!("**Scenario:** `{scenario}`\n\n"));
-    }
-
+    out.push_str("### Summary\n\n");
+    out.push_str("| field | value |\n");
+    out.push_str("|---|---|\n");
     out.push_str(&format!(
-        "**Decision:** {} - {}\n\n",
+        "| final verdict | {} {} |\n",
         metric_status_icon(tradeoff.decision.status),
-        tradeoff.decision.reason
+        metric_status_str(tradeoff.decision.status)
     ));
+    if let Some(scenario) = &tradeoff.scenario {
+        out.push_str(&format!("| scenario | `{scenario}` |\n"));
+    }
+    out.push_str(&format!("| decision | {} |\n", tradeoff.decision.reason));
+    out.push_str(&format!(
+        "| accepted tradeoff | {} |\n",
+        if tradeoff.decision.accepted_tradeoff {
+            "yes"
+        } else {
+            "no"
+        }
+    ));
+    out.push('\n');
 
-    if !tradeoff.weighted_deltas.is_empty() {
-        out.push_str("### Weighted Outcome\n\n");
+    out.push_str("### Weighted Workload\n\n");
+    if tradeoff.weighted_deltas.is_empty() {
+        out.push_str("No weighted workload deltas recorded.\n\n");
+    } else {
         out.push_str("| metric | baseline | current | delta | status |\n");
         out.push_str("|---|---:|---:|---:|---|\n");
         for (metric_key, delta) in &tradeoff.weighted_deltas {
-            let (baseline, current, unit) = Metric::parse_key(metric_key)
-                .map(|metric| {
-                    (
-                        format_value(metric, delta.baseline),
-                        format_value(metric, delta.current),
-                        metric.display_unit(),
-                    )
-                })
-                .unwrap_or_else(|| {
-                    (
-                        format!("{:.3}", delta.baseline),
-                        format!("{:.3}", delta.current),
-                        "",
-                    )
-                });
+            let (baseline, current) = format_delta_values(metric_key, delta);
             out.push_str(&format!(
-                "| `{metric_key}` | {baseline} {unit} | {current} {unit} | {delta_pct} | {status} |\n",
+                "| `{metric_key}` | {baseline} | {current} | {delta_pct} | {status} |\n",
                 delta_pct = format_pct(delta.pct),
                 status = metric_status_icon(delta.status),
             ));
@@ -129,29 +130,59 @@ pub fn render_tradeoff_markdown(tradeoff: &TradeoffReceipt) -> String {
         out.push('\n');
     }
 
-    if !tradeoff.rules.is_empty() {
-        out.push_str("### Tradeoff Rules\n\n");
-        out.push_str("| rule | decision | downgrade | requirements |\n");
-        out.push_str("|---|---|---|---|\n");
+    out.push_str("### Probe Evidence\n\n");
+    if tradeoff.probes.is_empty() {
+        out.push_str("No probe evidence attached.\n\n");
+    } else {
+        out.push_str("| probe | scope | metric | baseline | current | delta | status | reason |\n");
+        out.push_str("|---|---|---|---:|---:|---:|---|---|\n");
+        for probe in &tradeoff.probes {
+            let scope = probe
+                .scope
+                .map(|scope| format!("{:?}", scope).to_lowercase())
+                .unwrap_or_else(|| "-".to_string());
+            let reason = probe.reason.as_deref().unwrap_or("-");
+            if probe.deltas.is_empty() {
+                out.push_str(&format!(
+                    "| `{}` | `{}` | `-` | - | - | - | {} | {} |\n",
+                    probe.name,
+                    scope,
+                    metric_status_icon(probe.status),
+                    reason
+                ));
+                continue;
+            }
+            for (metric_key, delta) in &probe.deltas {
+                let (baseline, current) = format_delta_values(metric_key, delta);
+                out.push_str(&format!(
+                    "| `{}` | `{}` | `{}` | {} | {} | {} | {} | {} |\n",
+                    probe.name,
+                    scope,
+                    metric_key,
+                    baseline,
+                    current,
+                    format_pct(delta.pct),
+                    metric_status_icon(delta.status),
+                    reason
+                ));
+            }
+        }
+        out.push('\n');
+    }
+
+    out.push_str("### Accepted / Rejected Tradeoffs\n\n");
+    if tradeoff.rules.is_empty() {
+        out.push_str("No tradeoff rules evaluated.\n\n");
+    } else {
+        out.push_str("| rule | decision | downgrade | requirements | reason |\n");
+        out.push_str("|---|---|---|---|---|\n");
         for rule in &tradeoff.rules {
             let requirements = if rule.requirements.is_empty() {
                 "none".to_string()
             } else {
                 rule.requirements
                     .iter()
-                    .map(|requirement| {
-                        let observed = requirement
-                            .observed_change
-                            .map(format_pct)
-                            .unwrap_or_else(|| "missing".to_string());
-                        format!(
-                            "`{}` observed {} / required {} {}",
-                            requirement.metric,
-                            observed,
-                            format_pct(requirement.required_change),
-                            metric_status_icon(requirement.status)
-                        )
-                    })
+                    .map(render_tradeoff_requirement)
                     .collect::<Vec<_>>()
                     .join("<br>")
             };
@@ -159,47 +190,108 @@ pub fn render_tradeoff_markdown(tradeoff: &TradeoffReceipt) -> String {
                 .downgrade_to
                 .map(tradeoff_downgrade_label)
                 .unwrap_or("-");
+            let reason = rule.reason.as_deref().unwrap_or("-");
             out.push_str(&format!(
-                "| `{}` | {} | `{}` | {} |\n",
+                "| `{}` | {} | `{}` | {} | {} |\n",
                 rule.name,
                 tradeoff_decision_label(rule.status),
                 downgrade,
-                requirements
-            ));
-        }
-        out.push('\n');
-    }
-
-    if !tradeoff.probes.is_empty() {
-        out.push_str("### Probe Evidence\n\n");
-        out.push_str("| probe | scope | status | reason |\n");
-        out.push_str("|---|---|---|---|\n");
-        for probe in &tradeoff.probes {
-            let scope = probe
-                .scope
-                .map(|scope| format!("{:?}", scope).to_lowercase())
-                .unwrap_or_else(|| "-".to_string());
-            let reason = probe.reason.as_deref().unwrap_or("-");
-            out.push_str(&format!(
-                "| `{}` | `{}` | {} | {} |\n",
-                probe.name,
-                scope,
-                metric_status_icon(probe.status),
+                requirements,
                 reason
             ));
         }
         out.push('\n');
     }
 
-    if !tradeoff.warnings.is_empty() {
-        out.push_str("### Warnings\n\n");
+    out.push_str("### Policy Reasons\n\n");
+    if tradeoff.verdict.reasons.is_empty() && tradeoff.warnings.is_empty() {
+        out.push_str("- none\n");
+    } else {
+        for reason in &tradeoff.verdict.reasons {
+            out.push_str(&format!("- `{reason}`\n"));
+        }
         for warning in &tradeoff.warnings {
             out.push_str(&format!("- {warning}\n"));
         }
-        out.push('\n');
     }
+    out.push('\n');
+
+    out.push_str("### Evidence Files\n\n");
+    out.push_str("- `scenario.json`: weighted workload evidence\n");
+    out.push_str("- `tradeoff.json`: structured tradeoff decision receipt\n");
+    out.push_str("- `decision.md`: this review summary\n");
+    if let Some(reference) = &tradeoff.baseline_ref {
+        if let Some(path) = &reference.path {
+            out.push_str(&format!("- baseline: `{path}`\n"));
+        }
+        if let Some(run_id) = &reference.run_id {
+            out.push_str(&format!("- baseline run: `{run_id}`\n"));
+        }
+    }
+    if let Some(reference) = &tradeoff.current_ref {
+        if let Some(path) = &reference.path {
+            out.push_str(&format!("- current: `{path}`\n"));
+        }
+        if let Some(run_id) = &reference.run_id {
+            out.push_str(&format!("- current run: `{run_id}`\n"));
+        }
+    }
+    out.push('\n');
+
+    out.push_str("### Local Reproduction\n\n");
+    out.push_str("```bash\n");
+    out.push_str("perfgate decision evaluate --config perfgate.toml\n");
+    out.push_str("```\n\n");
 
     out
+}
+
+fn render_tradeoff_requirement(requirement: &TradeoffRequirementOutcome) -> String {
+    let observed = requirement
+        .observed_change
+        .map(format_pct)
+        .unwrap_or_else(|| "missing".to_string());
+    let target = requirement
+        .probe
+        .as_deref()
+        .map(|probe| format!("probe `{probe}` `{}`", requirement.metric))
+        .unwrap_or_else(|| format!("`{}`", requirement.metric));
+    let reason = requirement
+        .reason
+        .as_deref()
+        .map(|reason| format!(" ({reason})"))
+        .unwrap_or_default();
+    format!(
+        "{target} observed {observed} / required {required} {status}{reason}",
+        required = format_pct(requirement.required_change),
+        status = metric_status_icon(requirement.status)
+    )
+}
+
+fn format_delta_values(metric_key: &str, delta: &Delta) -> (String, String) {
+    Metric::parse_key(metric_key)
+        .map(|metric| {
+            (
+                format_value_with_unit(metric, delta.baseline),
+                format_value_with_unit(metric, delta.current),
+            )
+        })
+        .unwrap_or_else(|| {
+            (
+                format!("{:.3}", delta.baseline),
+                format!("{:.3}", delta.current),
+            )
+        })
+}
+
+fn format_value_with_unit(metric: Metric, value: f64) -> String {
+    let value = format_value(metric, value);
+    let unit = metric.display_unit();
+    if unit.is_empty() {
+        value
+    } else {
+        format!("{value} {unit}")
+    }
 }
 
 /// Render a complexity-gate section for markdown reports.
@@ -494,8 +586,8 @@ fn tradeoff_downgrade_label(downgrade: perfgate_types::TradeoffDowngrade) -> &'s
 mod tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, Budget, CompareRef, Delta, RunMeta, ToolInfo, TradeoffDecision,
-        TradeoffRuleOutcome, Verdict, VerdictCounts, VerdictStatus,
+        BenchMeta, Budget, CompareRef, Delta, ProbeScope, RunMeta, ToolInfo, TradeoffDecision,
+        TradeoffProbeOutcome, TradeoffRuleOutcome, Verdict, VerdictCounts, VerdictStatus,
     };
     use std::collections::BTreeMap;
 
@@ -629,7 +721,52 @@ mod tests {
                     reason: None,
                 }],
             }],
-            probes: Vec::new(),
+            probes: vec![
+                TradeoffProbeOutcome {
+                    name: "parser.tokenize".to_string(),
+                    scope: Some(ProbeScope::Local),
+                    weight: None,
+                    deltas: BTreeMap::from([(
+                        "wall_ms".to_string(),
+                        Delta {
+                            baseline: 100.0,
+                            current: 102.1,
+                            ratio: 1.021,
+                            pct: 0.021,
+                            regression: 0.021,
+                            cv: None,
+                            noise_threshold: None,
+                            statistic: MetricStatistic::Median,
+                            significance: None,
+                            status: MetricStatus::Warn,
+                        },
+                    )]),
+                    status: MetricStatus::Warn,
+                    reason: Some("local phase regressed".to_string()),
+                },
+                TradeoffProbeOutcome {
+                    name: "parser.batch_loop".to_string(),
+                    scope: Some(ProbeScope::Dominant),
+                    weight: None,
+                    deltas: BTreeMap::from([(
+                        "wall_ms".to_string(),
+                        Delta {
+                            baseline: 100.0,
+                            current: 89.6,
+                            ratio: 0.896,
+                            pct: -0.104,
+                            regression: 0.0,
+                            cv: None,
+                            noise_threshold: None,
+                            statistic: MetricStatistic::Median,
+                            significance: None,
+                            status: MetricStatus::Pass,
+                        },
+                    )]),
+                    status: MetricStatus::Pass,
+                    reason: None,
+                },
+            ],
             weighted_deltas,
             decision: TradeoffDecision {
                 accepted_tradeoff: true,
@@ -664,11 +801,22 @@ mod tests {
         let md = render_tradeoff_markdown(&receipt);
 
         assert!(md.contains("perfgate tradeoff: warn"));
-        assert!(md.contains("**Scenario:** `release_workload`"));
+        assert!(md.contains("### Summary"));
+        assert!(md.contains("| scenario | `release_workload` |"));
         assert!(md.contains("tradeoff 'memory_for_speed' accepted"));
+        assert!(md.contains("### Weighted Workload"));
         assert!(md.contains("| `max_rss_kb` |"));
+        assert!(md.contains("### Probe Evidence"));
+        assert!(md.contains("| `parser.tokenize` | `local` | `wall_ms`"));
+        assert!(md.contains("+2.10%"));
+        assert!(md.contains("| `parser.batch_loop` | `dominant` | `wall_ms`"));
+        assert!(md.contains("-10.40%"));
+        assert!(md.contains("### Accepted / Rejected Tradeoffs"));
         assert!(md.contains("| `memory_for_speed` | accepted | `warn` |"));
         assert!(md.contains("`wall_ms` observed -12.00% / required -10.00%"));
+        assert!(md.contains("### Policy Reasons"));
+        assert!(md.contains("### Evidence Files"));
+        assert!(md.contains("### Local Reproduction"));
     }
 
     #[test]
