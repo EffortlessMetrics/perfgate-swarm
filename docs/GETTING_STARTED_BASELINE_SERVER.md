@@ -168,6 +168,15 @@ The current CLI surfaces that talk to the baseline service are:
 | `baseline verdicts` | Query pass/warn/fail verdict history |
 | `baseline submit-verdict` | Submit verdict data from a compare receipt |
 | `baseline migrate` | Upload local baseline JSON files to the server |
+| `audit list` | List admin audit events |
+| `audit export --format jsonl` | Export audit events for external review |
+
+Example audit queries:
+
+```bash
+perfgate audit list --project my-project
+perfgate audit export --project my-project --format jsonl
+```
 
 ## Server Endpoints
 

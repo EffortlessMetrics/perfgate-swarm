@@ -31,9 +31,9 @@ use perfgate_app::{
 use perfgate_client::types::auth::Role;
 use perfgate_client::types::{BaselineRecord, CreateKeyRequest, KeyEntry};
 use perfgate_client::{
-    AuthMethod, BaselineClient, ClientConfig, ListBaselinesQuery, ListVerdictsQuery,
-    ResolvedServerConfig, RetryConfig, SubmitVerdictRequest, UploadBaselineRequest,
-    resolve_server_config,
+    AuthMethod, BaselineClient, ClientConfig, ListAuditEventsQuery, ListAuditEventsResponse,
+    ListBaselinesQuery, ListVerdictsQuery, ResolvedServerConfig, RetryConfig, SubmitVerdictRequest,
+    UploadBaselineRequest, resolve_server_config,
 };
 use perfgate_domain::scaling::{
     ScalingReport, SizeMeasurement, classify_complexity, parse_complexity, render_ascii_chart,
@@ -268,6 +268,12 @@ enum Command {
     Admin {
         #[command(subcommand)]
         action: AdminAction,
+    },
+
+    /// List and export baseline service audit events.
+    Audit {
+        #[command(subcommand)]
+        action: AuditActionCli,
     },
 
     /// Summarize one or more compare receipts in a terminal table.
@@ -1375,6 +1381,96 @@ enum KeyAction {
     Rotate {
         /// Key ID to rotate.
         key_id: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum AuditActionFilter {
+    Create,
+    Update,
+    Delete,
+    Promote,
+}
+
+impl AuditActionFilter {
+    fn as_wire(self) -> &'static str {
+        match self {
+            Self::Create => "create",
+            Self::Update => "update",
+            Self::Delete => "delete",
+            Self::Promote => "promote",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum AuditResourceFilter {
+    Baseline,
+    Key,
+    Verdict,
+}
+
+impl AuditResourceFilter {
+    fn as_wire(self) -> &'static str {
+        match self {
+            Self::Baseline => "baseline",
+            Self::Key => "key",
+            Self::Verdict => "verdict",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum AuditExportFormat {
+    Jsonl,
+    Json,
+}
+
+/// Common filters for baseline service audit queries.
+#[derive(Debug, Clone, Args)]
+struct AuditQueryArgs {
+    /// Filter by project. Defaults to --project or PERFGATE_PROJECT when set.
+    #[arg(long)]
+    project: Option<String>,
+
+    /// Filter by action.
+    #[arg(long)]
+    action: Option<AuditActionFilter>,
+
+    /// Filter by affected resource type.
+    #[arg(long)]
+    resource_type: Option<AuditResourceFilter>,
+
+    /// Filter by actor identity, such as an API key ID or OIDC subject.
+    #[arg(long)]
+    actor: Option<String>,
+
+    /// Maximum number of events to return.
+    #[arg(long, default_value_t = 50)]
+    limit: u32,
+
+    /// Pagination offset.
+    #[arg(long, default_value_t = 0)]
+    offset: u64,
+}
+
+/// Subcommands for baseline service audit visibility.
+#[derive(Debug, Subcommand)]
+enum AuditActionCli {
+    /// List audit events in a terminal table.
+    List {
+        #[command(flatten)]
+        query: AuditQueryArgs,
+    },
+
+    /// Export audit events as JSONL or JSON.
+    Export {
+        #[command(flatten)]
+        query: AuditQueryArgs,
+
+        /// Output format.
+        #[arg(long, default_value = "jsonl")]
+        format: AuditExportFormat,
     },
 }
 
@@ -2769,6 +2865,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
         Command::Admin { action } => execute_admin_action(action, &server_flags),
 
+        Command::Audit { action } => execute_audit_action(action, &server_flags),
+
         Command::Fleet { action } => execute_fleet_action(action, &server_flags),
 
         Command::Summary {
@@ -4030,6 +4128,95 @@ fn print_key_table(keys: &[KeyEntry]) {
             key.created_at.to_rfc3339(),
             expires_at,
             key.description
+        );
+    }
+}
+
+fn build_audit_query(
+    args: AuditQueryArgs,
+    server_config: &ResolvedServerConfig,
+) -> ListAuditEventsQuery {
+    ListAuditEventsQuery {
+        project: args.project.or_else(|| server_config.project.clone()),
+        action: args.action.map(|action| action.as_wire().to_string()),
+        resource_type: args
+            .resource_type
+            .map(|resource_type| resource_type.as_wire().to_string()),
+        actor: args.actor,
+        limit: args.limit,
+        offset: args.offset,
+        ..ListAuditEventsQuery::default()
+    }
+}
+
+fn execute_audit_action(action: AuditActionCli, server_flags: &ServerFlags) -> anyhow::Result<()> {
+    let (server_config, _config_file) = resolve_server_config_from_path(server_flags, None)?;
+    let client = server_config.require_fallback_client(None, BASELINE_SERVER_NOT_CONFIGURED)?;
+    let rt = tokio::runtime::Runtime::new()?;
+
+    match action {
+        AuditActionCli::List { query } => {
+            let query = build_audit_query(query, &server_config);
+
+            rt.block_on(async {
+                let response = client
+                    .list_audit_events(&query)
+                    .await
+                    .context("Failed to list audit events")?;
+                print_audit_table(&response);
+                Ok::<(), anyhow::Error>(())
+            })?
+        }
+        AuditActionCli::Export { query, format } => {
+            let query = build_audit_query(query, &server_config);
+
+            rt.block_on(async {
+                let response = client
+                    .list_audit_events(&query)
+                    .await
+                    .context("Failed to export audit events")?;
+
+                match format {
+                    AuditExportFormat::Jsonl => {
+                        for event in &response.events {
+                            println!("{}", serde_json::to_string(event)?);
+                        }
+                    }
+                    AuditExportFormat::Json => {
+                        println!("{}", serde_json::to_string_pretty(&response)?);
+                    }
+                }
+
+                Ok::<(), anyhow::Error>(())
+            })?
+        }
+    }
+
+    Ok(())
+}
+
+fn print_audit_table(response: &ListAuditEventsResponse) {
+    if response.events.is_empty() {
+        println!("No audit events found.");
+        return;
+    }
+
+    println!(
+        "Audit events ({} of {}):",
+        response.events.len(),
+        response.pagination.total
+    );
+    println!("id\ttimestamp\taction\tresource\tresource_id\tproject\tactor");
+    for event in &response.events {
+        println!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            event.id,
+            event.timestamp.to_rfc3339(),
+            event.action,
+            event.resource_type,
+            event.resource_id,
+            event.project,
+            event.actor
         );
     }
 }
