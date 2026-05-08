@@ -16,9 +16,12 @@ const TARGET_PUBLIC_PACKAGES: [&str; 5] = [
     "perfgate-cli",
 ];
 
-const SCHEMA_FILES: [&str; 8] = [
+const SCHEMA_FILES: [&str; 11] = [
     "perfgate.run.v1.schema.json",
     "perfgate.compare.v1.schema.json",
+    "perfgate.probe.v1.schema.json",
+    "perfgate.scenario.v1.schema.json",
+    "perfgate.tradeoff.v1.schema.json",
     "perfgate.config.v1.schema.json",
     "perfgate.report.v1.schema.json",
     "perfgate.aggregate.v1.schema.json",
@@ -2043,36 +2046,54 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
     write_schema(
         out_dir,
         SCHEMA_FILES[2],
-        schema_for!(perfgate_types::ConfigFile),
+        schema_for!(perfgate_types::ProbeReceipt),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[3],
-        schema_for!(perfgate_types::PerfgateReport),
+        schema_for!(perfgate_types::ScenarioReceipt),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[4],
-        schema_for!(perfgate_types::AggregateReceipt),
+        schema_for!(perfgate_types::TradeoffReceipt),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[5],
-        schema_for!(perfgate_types::RatchetReceipt),
+        schema_for!(perfgate_types::ConfigFile),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[6],
+        schema_for!(perfgate_types::PerfgateReport),
+    )?;
+
+    write_schema(
+        out_dir,
+        SCHEMA_FILES[7],
+        schema_for!(perfgate_types::AggregateReceipt),
+    )?;
+
+    write_schema(
+        out_dir,
+        SCHEMA_FILES[8],
+        schema_for!(perfgate_types::RatchetReceipt),
+    )?;
+
+    write_schema(
+        out_dir,
+        SCHEMA_FILES[9],
         schema_for!(perfgate_types::RepairContextReceipt),
     )?;
 
     // Sensor report schema is vendored from contracts/, not generated.
     let vendored_schema = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
-    let dest = out_dir.join(SCHEMA_FILES[7]);
+    let dest = out_dir.join(SCHEMA_FILES[10]);
     fs::copy(&vendored_schema, &dest).with_context(|| {
         format!(
             "copy vendored schema {} -> {}",
@@ -2168,6 +2189,15 @@ fn cmd_schema_compat(fixtures_dir: &Path) -> anyhow::Result<()> {
             }
             "perfgate.compare.v1" => {
                 serde_json::from_value::<perfgate_types::CompareReceipt>(value).map(|_| ())
+            }
+            "perfgate.probe.v1" => {
+                serde_json::from_value::<perfgate_types::ProbeReceipt>(value).map(|_| ())
+            }
+            "perfgate.scenario.v1" => {
+                serde_json::from_value::<perfgate_types::ScenarioReceipt>(value).map(|_| ())
+            }
+            "perfgate.tradeoff.v1" => {
+                serde_json::from_value::<perfgate_types::TradeoffReceipt>(value).map(|_| ())
             }
             "perfgate.report.v1" => {
                 serde_json::from_value::<perfgate_types::PerfgateReport>(value).map(|_| ())
@@ -3485,6 +3515,21 @@ fn validate_versioned_json_example(
             serde_json::from_value::<perfgate_types::CompareReceipt>(value)
                 .context("deserialize perfgate.compare.v1 example")?;
             Ok(Some(perfgate_types::COMPARE_SCHEMA_V1))
+        }
+        Some(perfgate_types::PROBE_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::ProbeReceipt>(value)
+                .context("deserialize perfgate.probe.v1 example")?;
+            Ok(Some(perfgate_types::PROBE_SCHEMA_V1))
+        }
+        Some(perfgate_types::SCENARIO_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::ScenarioReceipt>(value)
+                .context("deserialize perfgate.scenario.v1 example")?;
+            Ok(Some(perfgate_types::SCENARIO_SCHEMA_V1))
+        }
+        Some(perfgate_types::TRADEOFF_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::TradeoffReceipt>(value)
+                .context("deserialize perfgate.tradeoff.v1 example")?;
+            Ok(Some(perfgate_types::TRADEOFF_SCHEMA_V1))
         }
         Some(perfgate_types::AGGREGATE_SCHEMA_V1) => {
             serde_json::from_value::<perfgate_types::AggregateReceipt>(value)

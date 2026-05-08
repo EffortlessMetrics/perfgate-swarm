@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProbeReceipt",
+  "description": "A versioned receipt for named probe observations (`perfgate.probe.v1`).",
+  "type": "object",
+  "properties": {
+    "bench": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BenchMeta"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ProbeObservation"
+      }
+    },
+    "run": {
+      "$ref": "#/$defs/RunMeta"
+    },
+    "scenario": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolInfo"
+    }
+  },
+  "required": [
+    "schema",
+    "tool",
+    "run",
+    "probes"
+  ],
+  "$defs": {
+    "BenchMeta": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "argv vector (no shell parsing).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "description": "Optional working directory (stringified path).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "warmup": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "work_units": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "name",
+        "command",
+        "repeat",
+        "warmup"
+      ]
+    },
+    "HostInfo": {
+      "type": "object",
+      "properties": {
+        "arch": {
+          "description": "CPU architecture (e.g., \"x86_64\", \"aarch64\")",
+          "type": "string"
+        },
+        "cpu_count": {
+          "description": "Number of logical CPUs (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "hostname_hash": {
+          "description": "Hashed hostname for fingerprinting (opt-in, privacy-preserving).\nWhen present, this is a SHA-256 hash of the actual hostname.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memory_bytes": {
+          "description": "Total system memory in bytes (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "os": {
+          "description": "Operating system (e.g., \"linux\", \"macos\", \"windows\")",
+          "type": "string"
+        }
+      },
+      "required": [
+        "os",
+        "arch"
+      ]
+    },
+    "ProbeMetricValue": {
+      "description": "A numeric metric observed for a named probe.",
+      "type": "object",
+      "properties": {
+        "statistic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "value"
+      ]
+    },
+    "ProbeObservation": {
+      "description": "One named probe observation from external instrumentation.",
+      "type": "object",
+      "properties": {
+        "attributes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "ended_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "items": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "iteration": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ProbeMetricValue"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProbeScope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "ProbeScope": {
+      "description": "Scope of a named performance probe inside a workload.",
+      "type": "string",
+      "enum": [
+        "local",
+        "enclosing",
+        "dominant",
+        "total"
+      ]
+    },
+    "RunMeta": {
+      "type": "object",
+      "properties": {
+        "ended_at": {
+          "type": "string"
+        },
+        "host": {
+          "$ref": "#/$defs/HostInfo"
+        },
+        "id": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "started_at",
+        "ended_at",
+        "host"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    }
+  }
+}

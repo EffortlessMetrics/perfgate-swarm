@@ -1,0 +1,97 @@
+{
+  "schema": "perfgate.tradeoff.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.16.0"
+  },
+  "run": {
+    "id": "run-tradeoff-1",
+    "started_at": "2026-05-08T00:00:00Z",
+    "ended_at": "2026-05-08T00:00:01Z",
+    "host": {
+      "os": "linux",
+      "arch": "x86_64"
+    }
+  },
+  "scenario": "large_file_parse",
+  "rules": [
+    {
+      "name": "tokenizer-slower-if-parser-faster",
+      "status": "accepted",
+      "accepted": true,
+      "downgrade_to": "pass",
+      "reason": "dominant parser loop improved materially",
+      "requirements": [
+        {
+          "metric": "wall_ms",
+          "probe": "parser.batch_loop",
+          "required_change": -0.08,
+          "observed_change": -0.104,
+          "satisfied": true,
+          "status": "pass"
+        }
+      ]
+    }
+  ],
+  "probes": [
+    {
+      "name": "parser.tokenize",
+      "scope": "local",
+      "weight": 0.2,
+      "deltas": {
+        "wall_ms": {
+          "baseline": 12.1,
+          "current": 12.35,
+          "ratio": 1.021,
+          "pct": 0.021,
+          "regression": 0.021,
+          "status": "warn"
+        }
+      },
+      "status": "warn",
+      "reason": "local slowdown"
+    },
+    {
+      "name": "parser.batch_loop",
+      "scope": "dominant",
+      "weight": 0.8,
+      "deltas": {
+        "wall_ms": {
+          "baseline": 100.0,
+          "current": 89.6,
+          "ratio": 0.896,
+          "pct": -0.104,
+          "regression": 0.0,
+          "status": "pass"
+        }
+      },
+      "status": "pass",
+      "reason": "dominant loop improved"
+    }
+  ],
+  "weighted_deltas": {
+    "wall_ms": {
+      "baseline": 100.0,
+      "current": 94.0,
+      "ratio": 0.94,
+      "pct": -0.06,
+      "regression": 0.0,
+      "status": "pass"
+    }
+  },
+  "decision": {
+    "accepted_tradeoff": true,
+    "status": "pass",
+    "reason": "2.1% local slowdown is offset by a 10.4% dominant-loop improvement"
+  },
+  "verdict": {
+    "status": "pass",
+    "counts": {
+      "pass": 1,
+      "warn": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "reasons": ["tradeoff_tokenizer-slower-if-parser-faster_applied"]
+  }
+}

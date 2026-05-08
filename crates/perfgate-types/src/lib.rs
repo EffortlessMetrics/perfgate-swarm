@@ -30,6 +30,7 @@ pub mod fingerprint;
 mod io;
 mod paired;
 mod repair_context;
+mod structured_evidence;
 pub mod validation;
 
 pub use paired::{
@@ -40,6 +41,7 @@ pub use paired::{
 pub use defaults_config::*;
 pub use io::{ReadJsonError, read_json_file};
 pub use repair_context::*;
+pub use structured_evidence::*;
 
 pub use validation::{
     BENCH_NAME_MAX_LEN, BENCH_NAME_PATTERN, ValidationError as BenchNameValidationError,
@@ -56,6 +58,9 @@ pub const RUN_SCHEMA_V1: &str = "perfgate.run.v1";
 pub const AGGREGATE_SCHEMA_V1: &str = "perfgate.aggregate.v1";
 pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
+pub const PROBE_SCHEMA_V1: &str = "perfgate.probe.v1";
+pub const SCENARIO_SCHEMA_V1: &str = "perfgate.scenario.v1";
+pub const TRADEOFF_SCHEMA_V1: &str = "perfgate.tradeoff.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";
 pub const CONFIG_SCHEMA_V1: &str = "perfgate.config.v1";
 pub const RATCHET_SCHEMA_V1: &str = "perfgate.ratchet.v1";
