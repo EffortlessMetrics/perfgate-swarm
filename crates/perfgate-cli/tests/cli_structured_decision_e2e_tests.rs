@@ -65,6 +65,47 @@ min_improvement_ratio = 1.10
     .expect("write config");
 }
 
+fn write_probe_config(path: &Path, probe_compare_path: &Path) {
+    fs::write(
+        path,
+        format!(
+            r#"[defaults]
+repeat = 1
+warmup = 0
+threshold = 10.0
+warn_factor = 0.50
+noise_threshold = 1.0
+noise_policy = "warn"
+baseline_dir = "baselines"
+out_dir = "artifacts/perfgate"
+
+[[bench]]
+name = "parser"
+command = [{}]
+
+[[scenario]]
+name = "release_workload"
+weight = 1.0
+bench = "parser"
+probe_compare = "{}"
+
+[[tradeoff]]
+name = "memory_for_probe_speed"
+if_failed = "max_rss_kb"
+downgrade_to = "warn"
+
+[[tradeoff.require]]
+metric = "wall_ms"
+probe = "parser.batch_loop"
+min_improvement_ratio = 1.10
+"#,
+            command_toml_array(&success_command()),
+            toml_path(probe_compare_path)
+        ),
+    )
+    .expect("write probe config");
+}
+
 #[test]
 fn structured_decision_path_produces_scenario_and_tradeoff_receipts() {
     let temp_dir = tempdir().expect("create temp dir");
@@ -201,7 +242,8 @@ fn decision_evaluate_runs_structured_decision_workflow() {
     let temp_dir = tempdir().expect("create temp dir");
     let root = temp_dir.path();
     let config_path = root.join("perfgate.toml");
-    write_config(&config_path);
+    let probe_compare_path = root.join("artifacts/perfgate/parser/probe-compare.json");
+    write_probe_config(&config_path, &probe_compare_path);
 
     perfgate_cmd()
         .current_dir(root)
@@ -231,7 +273,8 @@ fn decision_evaluate_runs_structured_decision_workflow() {
 
     let compare_path = root.join("artifacts/perfgate/parser/compare.json");
     assert!(compare_path.exists(), "check should write compare receipt");
-    write_controlled_compare_receipt(&compare_path);
+    write_controlled_compare_receipt_with_wall(&compare_path, 96.0);
+    write_probe_compare_receipt(&probe_compare_path, 80.0);
 
     perfgate_cmd()
         .current_dir(root)
@@ -257,13 +300,23 @@ fn decision_evaluate_runs_structured_decision_workflow() {
     assert_eq!(tradeoff.schema, "perfgate.tradeoff.v1");
     assert!(tradeoff.decision.accepted_tradeoff);
     assert_eq!(tradeoff.decision.status, perfgate_types::MetricStatus::Warn);
+    assert_eq!(
+        tradeoff.rules[0].requirements[0].probe.as_deref(),
+        Some("parser.batch_loop")
+    );
+    assert_eq!(tradeoff.probes[0].name, "parser.batch_loop");
 
     let decision = fs::read_to_string(decision_path).expect("read decision md");
     assert!(decision.contains("perfgate tradeoff: warn"));
-    assert!(decision.contains("tradeoff 'memory_for_speed' accepted"));
+    assert!(decision.contains("tradeoff 'memory_for_probe_speed' accepted"));
+    assert!(decision.contains("Probe Evidence"));
 }
 
 fn write_controlled_compare_receipt(path: &Path) {
+    write_controlled_compare_receipt_with_wall(path, 80.0);
+}
+
+fn write_controlled_compare_receipt_with_wall(path: &Path, wall_current: f64) {
     let receipt = json!({
         "schema": "perfgate.compare.v1",
         "tool": {"name": "perfgate", "version": "0.16.0"},
@@ -285,9 +338,9 @@ fn write_controlled_compare_receipt(path: &Path) {
         "deltas": {
             "wall_ms": {
                 "baseline": 100.0,
-                "current": 80.0,
-                "ratio": 0.80,
-                "pct": -0.20,
+                "current": wall_current,
+                "ratio": wall_current / 100.0,
+                "pct": (wall_current - 100.0) / 100.0,
                 "regression": 0.0,
                 "status": "pass"
             },
@@ -317,4 +370,50 @@ fn write_controlled_compare_receipt(path: &Path) {
         serde_json::to_string_pretty(&receipt).expect("serialize controlled compare receipt"),
     )
     .expect("write controlled compare receipt");
+}
+
+fn write_probe_compare_receipt(path: &Path, wall_current: f64) {
+    let receipt = json!({
+        "schema": "perfgate.probe_compare.v1",
+        "tool": {"name": "perfgate", "version": "0.16.0"},
+        "run": {
+            "id": "probe-compare-run",
+            "started_at": "2026-05-08T00:00:00Z",
+            "ended_at": "2026-05-08T00:00:01Z",
+            "host": {"os": "linux", "arch": "x86_64"}
+        },
+        "scenario": "release_workload",
+        "probes": [{
+            "name": "parser.batch_loop",
+            "scope": "dominant",
+            "baseline_count": 1,
+            "current_count": 1,
+            "deltas": {
+                "wall_ms": {
+                    "baseline": 100.0,
+                    "current": wall_current,
+                    "ratio": wall_current / 100.0,
+                    "pct": (wall_current - 100.0) / 100.0,
+                    "regression": 0.0,
+                    "status": "pass"
+                }
+            },
+            "status": "pass"
+        }],
+        "verdict": {
+            "status": "pass",
+            "counts": {"pass": 1, "warn": 0, "fail": 0, "skip": 0},
+            "reasons": []
+        }
+    });
+
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize probe compare receipt"),
+    )
+    .expect("write probe compare receipt");
+}
+
+fn toml_path(path: &Path) -> String {
+    path.display().to_string().replace('\\', "/")
 }

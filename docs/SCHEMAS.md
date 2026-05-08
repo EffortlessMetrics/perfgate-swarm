@@ -110,6 +110,11 @@ perfgate tradeoff evaluate --config perfgate.toml --scenario artifacts/perfgate/
 The receipt records configured rules, requirement outcomes, the final decision,
 and the weighted deltas after any accepted downgrade.
 
+When a tradeoff requirement includes `probe = "name"`, evaluation uses
+scenario-attached `probe_compare_ref` receipts to find that probe's metric
+delta. Probe-backed requirement outcomes record the probe name, and matching
+probe deltas are copied into the tradeoff receipt's `probes` section for review.
+
 Render the decision evidence for review:
 
 ```bash

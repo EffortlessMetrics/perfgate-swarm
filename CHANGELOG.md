@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carry advisory probe names and probe-compare receipt references.
 - Added `perfgate tradeoff evaluate` to turn configured tradeoff rules and
   scenario receipts into `perfgate.tradeoff.v1` decision receipts.
+- Added probe-backed tradeoff requirements with `probe = "name"` so accepted
+  tradeoffs can depend on named probe improvements from attached probe-compare
+  evidence.
 - Added Markdown and PR-comment rendering for `perfgate.tradeoff.v1` decision
   receipts via `perfgate md --tradeoff` and `perfgate comment --tradeoff`.
 - Extended `xtask schema-compat` with baseline-service record, health-response,

@@ -3517,7 +3517,7 @@ fn execute_tradeoff_evaluate(args: TradeoffEvaluateArgs) -> anyhow::Result<()> {
 fn evaluate_configured_tradeoffs(
     config: &ConfigFile,
     config_path: &Path,
-    scenario: ScenarioReceipt,
+    mut scenario: ScenarioReceipt,
 ) -> anyhow::Result<perfgate_app::TradeoffEvaluateOutcome> {
     if config.tradeoffs.is_empty() {
         anyhow::bail!(
@@ -3525,12 +3525,54 @@ fn evaluate_configured_tradeoffs(
             config_path.display()
         );
     }
+    let (probe_compares, probe_warnings) = load_tradeoff_probe_compares(&scenario)?;
+    scenario.warnings.extend(probe_warnings);
 
     TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
         scenario,
+        probe_compares,
         rules: config.tradeoffs.clone(),
         tool: tool_info(),
     })
+}
+
+fn load_tradeoff_probe_compares(
+    scenario: &ScenarioReceipt,
+) -> anyhow::Result<(Vec<ProbeCompareReceipt>, Vec<String>)> {
+    let mut paths = BTreeSet::new();
+    let mut receipts = Vec::new();
+    let mut warnings = Vec::new();
+
+    for component in &scenario.components {
+        let Some(reference) = &component.probe_compare_ref else {
+            continue;
+        };
+        let Some(path) = reference.path.as_ref() else {
+            warnings.push(format!(
+                "scenario component '{}' probe compare reference has no path",
+                component.name
+            ));
+            continue;
+        };
+        if !paths.insert(path.clone()) {
+            continue;
+        }
+
+        let path = PathBuf::from(path);
+        if !location_exists(&path)? {
+            warnings.push(format!(
+                "probe compare evidence missing at {}",
+                path.display()
+            ));
+            continue;
+        }
+
+        let receipt: ProbeCompareReceipt = read_json_from_location(&path)
+            .with_context(|| format!("read tradeoff probe compare {}", path.display()))?;
+        receipts.push(receipt);
+    }
+
+    Ok((receipts, warnings))
 }
 
 fn execute_decision_action(action: DecisionAction) -> anyhow::Result<()> {
