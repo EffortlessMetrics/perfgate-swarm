@@ -34,6 +34,9 @@ pub const VERDICT_SCHEMA_V1: &str = "perfgate.verdict.v1";
 /// Schema identifier for audit event records.
 pub const AUDIT_SCHEMA_V1: &str = "perfgate.audit.v1";
 
+/// Schema identifier for health response fixtures.
+pub const HEALTH_SCHEMA_V1: &str = "perfgate.health.v1";
+
 /// Source of baseline creation.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]

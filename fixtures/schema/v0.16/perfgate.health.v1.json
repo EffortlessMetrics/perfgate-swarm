@@ -1,0 +1,14 @@
+{
+  "status": "degraded",
+  "version": "0.16.0",
+  "storage": {
+    "backend": "postgres",
+    "status": "unhealthy",
+    "detail": "query_error"
+  },
+  "pool": {
+    "idle": 0,
+    "active": 1,
+    "max": 20
+  }
+}

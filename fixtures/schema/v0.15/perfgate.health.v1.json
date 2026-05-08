@@ -1,0 +1,8 @@
+{
+  "status": "healthy",
+  "version": "0.15.1",
+  "storage": {
+    "backend": "memory",
+    "status": "healthy"
+  }
+}
