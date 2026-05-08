@@ -25,6 +25,7 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("paired"))
         .stdout(predicate::str::contains("audit"))
         .stdout(predicate::str::contains("scenario"))
+        .stdout(predicate::str::contains("tradeoff"))
         .stdout(predicate::str::contains("md"))
         .stdout(predicate::str::contains("export"))
         .stdout(predicate::str::contains("promote"))
@@ -242,6 +243,32 @@ fn cli_help_scenario_evaluate() {
         .stdout(predicate::str::contains("--workload-name"));
 }
 
+#[test]
+fn cli_help_tradeoff() {
+    perfgate_cmd()
+        .args(["tradeoff", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate configured tradeoff rules",
+        ))
+        .stdout(predicate::str::contains("evaluate"));
+}
+
+#[test]
+fn cli_help_tradeoff_evaluate() {
+    perfgate_cmd()
+        .args(["tradeoff", "evaluate", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate configured tradeoff rules into a perfgate.tradeoff.v1 receipt",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--scenario"))
+        .stdout(predicate::str::contains("--out"));
+}
+
 // ── insta full-output snapshot tests ─────────────────────────────────
 
 fn help_output(args: &[&str]) -> String {
@@ -377,5 +404,18 @@ fn snapshot_help_scenario_evaluate() {
     insta::assert_snapshot!(
         "help_scenario_evaluate",
         help_output(&["scenario", "evaluate", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_tradeoff() {
+    insta::assert_snapshot!("help_tradeoff", help_output(&["tradeoff", "--help"]));
+}
+
+#[test]
+fn snapshot_help_tradeoff_evaluate() {
+    insta::assert_snapshot!(
+        "help_tradeoff_evaluate",
+        help_output(&["tradeoff", "evaluate", "--help"])
     );
 }
