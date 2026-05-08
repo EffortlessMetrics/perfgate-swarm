@@ -43,7 +43,11 @@ jobs:
         with:
           toolchain: 1.93.0
       - name: Build release binaries
-        run: cargo build --release -p perfgate-cli --bin perfgate -p perfgate-selfbench
+        run: |
+          cargo build --release -p perfgate-cli --bin perfgate
+          cargo build --release -p perfgate-selfbench
+          ./target/release/perfgate --version
+          ./target/release/perfgate-selfbench noop
       - name: Make scripts executable
         run: chmod +x .ci/perf/*.sh
       - name: Run dogfooding
