@@ -24,6 +24,10 @@
       "name": "parser.batch_loop",
       "weight": 1.0,
       "benchmark": "large-file",
+      "probe_compare_ref": {
+        "path": "artifacts/perfgate/large-file/probe-compare.json",
+        "run_id": "probe-compare-run"
+      },
       "deltas": {
         "wall_ms": {
           "baseline": 100.0,

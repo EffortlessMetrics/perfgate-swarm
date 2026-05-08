@@ -262,6 +262,16 @@
         "name": {
           "type": "string"
         },
+        "probe_compare_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompareRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "probes": {
           "type": "array",
           "items": {

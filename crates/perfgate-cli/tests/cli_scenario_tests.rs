@@ -20,6 +20,7 @@ fn test_scenario_evaluate_writes_weighted_scenario_receipt() {
         90.0,
         "pass",
     );
+    write_probe_compare_receipt(&out_dir.join("large-file").join("probe-compare.json"));
     write_compare_receipt(
         &out_dir.join("small-edit").join("compare.json"),
         "small-edit",
@@ -49,13 +50,15 @@ command = ["echo", "small"]
 name = "large_file_parse"
 weight = 0.75
 bench = "large-file"
+probe_compare = "{}"
 
 [[scenario]]
 name = "small_edit"
 weight = 0.25
 bench = "small-edit"
 "#,
-            toml_path(&out_dir)
+            toml_path(&out_dir),
+            toml_path(&out_dir.join("large-file").join("probe-compare.json"))
         ),
     )
     .expect("failed to write config");
@@ -97,6 +100,20 @@ bench = "small-edit"
             .map(|path| path.replace('\\', "/")),
         Some(expected_compare_path.replace('\\', "/"))
     );
+    assert_eq!(receipt["components"][0]["probes"][0], "parser.tokenize");
+    assert_eq!(
+        receipt["components"][0]["probe_compare_ref"]["path"]
+            .as_str()
+            .map(|path| path.replace('\\', "/")),
+        Some(
+            out_dir
+                .join("large-file")
+                .join("probe-compare.json")
+                .display()
+                .to_string()
+                .replace('\\', "/")
+        )
+    );
 }
 
 #[test]
@@ -124,6 +141,70 @@ command = ["echo", "large"]
         .stderr(predicate::str::contains(
             "no [[scenario]] entries configured",
         ));
+}
+
+#[test]
+fn test_scenario_evaluate_records_missing_probe_compare_warning() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let out_dir = temp_dir.path().join("artifacts").join("perfgate");
+    write_compare_receipt(
+        &out_dir.join("large-file").join("compare.json"),
+        "large-file",
+        100.0,
+        90.0,
+        "pass",
+    );
+
+    let missing_probe_compare = out_dir
+        .join("large-file")
+        .join("missing-probe-compare.json");
+    let config_path = temp_dir.path().join("perfgate.toml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"[defaults]
+out_dir = "{}"
+
+[[bench]]
+name = "large-file"
+command = ["echo", "large"]
+
+[[scenario]]
+name = "large_file_parse"
+weight = 1.0
+bench = "large-file"
+probe_compare = "{}"
+"#,
+            toml_path(&out_dir),
+            toml_path(&missing_probe_compare)
+        ),
+    )
+    .expect("failed to write config");
+
+    let output_path = temp_dir.path().join("scenario.json");
+    perfgate_cmd()
+        .arg("scenario")
+        .arg("evaluate")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--out")
+        .arg(&output_path)
+        .assert()
+        .success();
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read scenario receipt"),
+    )
+    .expect("scenario receipt should be JSON");
+    assert!(
+        receipt["warnings"]
+            .as_array()
+            .expect("scenario warnings should be array")
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .is_some_and(|warning| warning.contains("probe evidence missing")))
+    );
 }
 
 fn write_compare_receipt(path: &Path, bench: &str, baseline: f64, current: f64, status: &str) {
@@ -185,6 +266,43 @@ fn write_compare_receipt(path: &Path, bench: &str, baseline: f64, current: f64, 
         serde_json::to_string_pretty(&receipt).expect("serialize compare fixture"),
     )
     .expect("failed to write compare fixture");
+}
+
+fn write_probe_compare_receipt(path: &Path) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("failed to create probe compare fixture directory");
+    }
+
+    let receipt = json!({
+        "schema": "perfgate.probe_compare.v1",
+        "tool": {"name": "perfgate", "version": "0.16.0"},
+        "run": {
+            "id": "probe-compare-run",
+            "started_at": "2026-05-08T00:00:00Z",
+            "ended_at": "2026-05-08T00:00:01Z",
+            "host": {"os": "linux", "arch": "x86_64"}
+        },
+        "scenario": "large_file_parse",
+        "probes": [{
+            "name": "parser.tokenize",
+            "scope": "local",
+            "baseline_count": 1,
+            "current_count": 1,
+            "deltas": {},
+            "status": "pass"
+        }],
+        "verdict": {
+            "status": "pass",
+            "counts": {"pass": 1, "warn": 0, "fail": 0, "skip": 0},
+            "reasons": []
+        }
+    });
+
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize probe compare fixture"),
+    )
+    .expect("failed to write probe compare fixture");
 }
 
 fn toml_path(path: &Path) -> String {

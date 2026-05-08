@@ -159,6 +159,9 @@ pub struct ScenarioComponent {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub compare_ref: Option<CompareRef>,
 
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub probe_compare_ref: Option<CompareRef>,
+
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub deltas: BTreeMap<String, Delta>,
 
@@ -429,6 +432,10 @@ mod tests {
                 weight: 1.0,
                 benchmark: Some("large-file".into()),
                 compare_ref: None,
+                probe_compare_ref: Some(CompareRef {
+                    path: Some("artifacts/perfgate/large-file/probe-compare.json".into()),
+                    run_id: Some("probe-current".into()),
+                }),
                 deltas: weighted_deltas.clone(),
                 probes: vec!["parser.tokenize".into()],
                 status: MetricStatus::Pass,

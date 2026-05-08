@@ -92,6 +92,10 @@ perfgate scenario evaluate --config perfgate.toml --out artifacts/perfgate/scena
 
 By default, each scenario reads `[defaults].out_dir/<bench>/compare.json`.
 Set `compare = "path/to/compare.json"` on a scenario to override that lookup.
+Set `probe_compare = "path/to/probe-compare.json"` to attach advisory probe
+delta evidence. Scenario receipts record the probe names and a
+`probe_compare_ref`; consumers follow that reference for full probe deltas, and
+probe evidence does not change the scenario verdict yet.
 
 ## Tradeoff Evaluation
 
