@@ -103,6 +103,29 @@ command and the resolved artifact paths to the job log and step summary. With
 `artifacts/perfgate/<bench>/` unless `out_dir` or `[defaults].out_dir`
 overrides the location.
 
+To surface structured scenario/tradeoff decisions in the job summary and PR
+comment, opt in to decision mode:
+
+```yaml
+      - name: Run perfgate
+        id: perfgate
+        uses: EffortlessMetrics/perfgate@v0.15.1
+        with:
+          config: perfgate.toml
+          all: "true"
+          require_baseline: "true"
+          decision: "true"
+          comment: "true"
+```
+
+Decision mode runs `perfgate decision evaluate --config perfgate.toml` after
+`check`, writes `scenario.json`, `tradeoff.json`, and `decision.md` under the
+resolved artifact directory, and appends `decision.md` to the GitHub step
+summary. If `check` reports a policy failure with exit code `2`, the action
+defers the final policy result to the decision receipt so an accepted tradeoff
+can downgrade the result according to configured policy. Runtime errors and
+`--fail-on-warn` failures still stop the action.
+
 ## 4) Manual PR performance gate workflow
 
 Create `.github/workflows/perfgate.yml`:
