@@ -203,6 +203,10 @@ The **core local gating pipeline** is production-quality:
 - **Baseline bootstrap UX** — `perfgate baseline status` and
   `perfgate baseline promote --all` cover the local-baseline path without
   requiring users to hand-map receipt files.
+- **Baseline server CLI coverage** — live server CLI workflows cover
+  upload/list/download/history/run/compare/promote plus delete,
+  submit-verdict, and verdict history across memory, SQLite, and PostgreSQL
+  when `PERFGATE_TEST_POSTGRES_URL` is configured.
 - **First-run e2e fixture** — the beginner flow now has an integration test
   that runs init, doctor, check, and baseline promotion against a generated
   project.

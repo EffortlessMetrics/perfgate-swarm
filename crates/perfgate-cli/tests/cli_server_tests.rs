@@ -5,6 +5,9 @@
 //! - `perfgate promote --to-server`
 //! - `perfgate baseline list --baseline-server`
 //! - `perfgate baseline upload`
+//! - `perfgate baseline submit-verdict`
+//! - `perfgate baseline verdicts`
+//! - `perfgate baseline delete`
 
 use perfgate_server::auth::Role;
 use perfgate_server::server::{ServerConfig, StorageBackend};
@@ -61,13 +64,20 @@ fn contributor_key() -> String {
     ["pg_test_", "fixtureonlynotsecretserverclitests000000"].concat()
 }
 
-fn live_server_config(project: &str, backend: StorageBackend, api_key: &str) -> ServerConfig {
-    ServerConfig::new().storage_backend(backend).scoped_api_key(
-        api_key,
-        Role::Contributor,
-        project,
-        None,
-    )
+fn admin_key() -> String {
+    ["pg_test_", "fixtureonlynotsecretadminserverclitest000000"].concat()
+}
+
+fn live_server_config(
+    project: &str,
+    backend: StorageBackend,
+    contributor_key: &str,
+    admin_key: &str,
+) -> ServerConfig {
+    ServerConfig::new()
+        .storage_backend(backend)
+        .scoped_api_key(contributor_key, Role::Contributor, project, None)
+        .scoped_api_key(admin_key, Role::Admin, project, None)
 }
 
 fn add_server_flags(cmd: &mut assert_cmd::Command, server_url: &str, project: &str, api_key: &str) {
@@ -581,9 +591,10 @@ fn test_compare_server_reference_with_baseline_project_without_global_project() 
 async fn live_server_cli_workflow_memory() {
     let project = unique_project("memory");
     let api_key = contributor_key();
-    let config = live_server_config(&project, StorageBackend::Memory, &api_key);
+    let admin_key = admin_key();
+    let config = live_server_config(&project, StorageBackend::Memory, &api_key, &admin_key);
 
-    run_live_server_cli_workflow(config, &project, &api_key).await;
+    run_live_server_cli_workflow(config, &project, &api_key, &admin_key).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -591,10 +602,11 @@ async fn live_server_cli_workflow_sqlite() {
     let temp_dir = TempDir::new().expect("failed to create temp dir");
     let project = unique_project("sqlite");
     let api_key = contributor_key();
-    let config = live_server_config(&project, StorageBackend::Sqlite, &api_key)
+    let admin_key = admin_key();
+    let config = live_server_config(&project, StorageBackend::Sqlite, &api_key, &admin_key)
         .sqlite_path(temp_dir.path().join("perfgate.db"));
 
-    run_live_server_cli_workflow(config, &project, &api_key).await;
+    run_live_server_cli_workflow(config, &project, &api_key, &admin_key).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -608,13 +620,19 @@ async fn live_server_cli_workflow_postgres() {
 
     let project = unique_project("postgres");
     let api_key = contributor_key();
-    let config =
-        live_server_config(&project, StorageBackend::Postgres, &api_key).postgres_url(postgres_url);
+    let admin_key = admin_key();
+    let config = live_server_config(&project, StorageBackend::Postgres, &api_key, &admin_key)
+        .postgres_url(postgres_url);
 
-    run_live_server_cli_workflow(config, &project, &api_key).await;
+    run_live_server_cli_workflow(config, &project, &api_key, &admin_key).await;
 }
 
-async fn run_live_server_cli_workflow(config: ServerConfig, project: &str, api_key: &str) {
+async fn run_live_server_cli_workflow(
+    config: ServerConfig,
+    project: &str,
+    api_key: &str,
+    admin_key: &str,
+) {
     let server = RunningTestServer::spawn(config).await;
     let temp_dir = TempDir::new().expect("failed to create temp dir");
     let baseline_file = fixtures_dir().join("baseline.json");
@@ -725,6 +743,67 @@ async fn run_live_server_cli_workflow(config: ServerConfig, project: &str, api_k
         compare_receipt["schema"].as_str(),
         Some("perfgate.compare.v1")
     );
+
+    let mut submit_verdict = perfgate_cmd();
+    submit_verdict
+        .arg("baseline")
+        .arg("submit-verdict")
+        .arg("--compare")
+        .arg(&compare_path)
+        .arg("--git-ref")
+        .arg("refs/heads/live-server-cli")
+        .arg("--git-sha")
+        .arg("0123456789abcdef0123456789abcdef01234567");
+    add_server_flags(&mut submit_verdict, server.url(), project, api_key);
+    submit_verdict
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Verdict submitted for benchmark"));
+
+    let mut verdicts = perfgate_cmd();
+    verdicts
+        .arg("baseline")
+        .arg("verdicts")
+        .arg("--benchmark")
+        .arg("test-benchmark")
+        .arg("--limit")
+        .arg("5");
+    add_server_flags(&mut verdicts, server.url(), project, api_key);
+    verdicts
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Verdict history"))
+        .stdout(predicate::str::contains("test-benchmark"))
+        .stdout(predicate::str::contains("refs/heads/live-server-cli"));
+
+    let mut delete = perfgate_cmd();
+    delete
+        .arg("baseline")
+        .arg("delete")
+        .arg("--benchmark")
+        .arg(&uploaded_bench)
+        .arg("--force");
+    add_server_flags(&mut delete, server.url(), project, admin_key);
+    delete
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(format!(
+            "Deleted baseline {uploaded_bench} version seed-v1 from server"
+        )));
+
+    let mut deleted_history = perfgate_cmd();
+    deleted_history
+        .arg("baseline")
+        .arg("history")
+        .arg("--benchmark")
+        .arg(&uploaded_bench);
+    add_server_flags(&mut deleted_history, server.url(), project, api_key);
+    deleted_history
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "No versions found for baseline '{uploaded_bench}'."
+        )));
 
     let mut promote = perfgate_cmd();
     promote
