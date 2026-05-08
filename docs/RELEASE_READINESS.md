@@ -1,14 +1,15 @@
 # Release Readiness
 
-Last verified: 2026-03-28 after publishing `v0.15.1`, publishing crates.io packages, and merging the release workflow and publish-preflight fixes.
+Last verified: 2026-05-08 after merging the 0.16 public-surface collapse,
+first-run onboarding hardening, server operations visibility, and health
+contract compatibility through PR #291.
 
 ## Current Main Snapshot
 
-Verified on 2026-05-07 after merging the 0.16 public-surface collapse through
-PR #268.
+Verified on 2026-05-08 after merging release-readiness work through PR #291.
 
 The current `main` branch is not a published release, but the 0.16 public crate
-surface is now in its intended release shape:
+surface and paved first-run workflow are now in their intended release shape:
 
 | Gate | Status | Evidence |
 |------|--------|----------|
@@ -18,7 +19,12 @@ surface is now in its intended release shape:
 | Package file-list proof | Release-prep gate | `cargo run -p xtask -- publish-check --package-list` |
 | Publish dry-run proof | Per-package release gate | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
 | GitHub Action install wiring | Passing | `cargo run -p xtask -- action-check` |
-| Full repo CI | Passing | Hosted `ci`, `fuzz`, and `perfgate-self` on PR #268 |
+| Schema compatibility | Passing | `cargo run -p xtask -- schema-compat`, including `/health` response fixtures |
+| Documentation examples | Passing | `cargo run -p xtask -- docs-check` and `cargo run -p xtask -- doc-test` |
+| First-run paved road | Covered | `crates/perfgate-cli/tests/cli_first_run_e2e_tests.rs` |
+| Baseline bootstrap UX | Covered | `crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs` |
+| Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, and dashboard audit view tests |
+| Full repo CI | Passing | Hosted `ci`, `fuzz`, and `perfgate-self` on PR #291 |
 
 The only publishable packages allowed by policy are:
 
@@ -40,6 +46,7 @@ cargo run -p xtask -- publish-check --dry-run --package perfgate-types
 cargo run -p xtask -- action-check
 cargo run -p xtask -- docs-check
 cargo run -p xtask -- doc-test
+cargo run -p xtask -- schema-compat
 cargo run -p xtask -- ci
 ```
 
@@ -57,6 +64,10 @@ The GitHub release workflow builds the platform archives, unpacks each generated
 archive, verifies the binary exists, and runs `perfgate --version` plus
 `perfgate doctor --help` on native targets before uploading release assets.
 
+The GitHub Action path is also guarded: `xtask action-check` verifies action
+inputs and install wiring, and the action prints a local reproduction command
+plus discovered artifact paths when `perfgate check` exits nonzero.
+
 Former implementation packages such as `perfgate-domain` and `perfgate-app`
 are workspace-only compatibility wrappers. Domain logic lives under
 `perfgate::domain`; app orchestration and runtime adapters live under
@@ -65,6 +76,17 @@ are workspace-only compatibility wrappers. Domain logic lives under
 For the current baseline-service surface, see
 [Baseline Service Notes](BASELINE_SERVICE_DESIGN.md) and
 [Getting Started with the Baseline Server](GETTING_STARTED_BASELINE_SERVER.md).
+
+For the current first-run path, see the `Start Here` section in
+[the README](../README.md). The documented happy path is:
+
+```bash
+cargo binstall perfgate-cli
+perfgate doctor
+perfgate init --ci github --profile standard
+perfgate check --config perfgate.toml --all
+perfgate baseline promote --config perfgate.toml --all
+```
 
 ## Historical Record: v0.15.1
 
@@ -174,13 +196,35 @@ The **core local gating pipeline** is production-quality:
 
 ## Added After v0.15.1 on Main
 
+- **Paved first-run setup** — `perfgate init --ci github --profile standard`
+  writes `perfgate.toml`, `.github/workflows/perfgate.yml`,
+  `baselines/.gitkeep`, and `.perfgate/README.md`; `--preset` remains a
+  compatibility alias.
+- **Baseline bootstrap UX** — `perfgate baseline status` and
+  `perfgate baseline promote --all` cover the local-baseline path without
+  requiring users to hand-map receipt files.
+- **First-run e2e fixture** — the beginner flow now has an integration test
+  that runs init, doctor, check, and baseline promotion against a generated
+  project.
+- **Action failure reproduction** — the composite action preserves artifacts
+  and prints the local `perfgate check` command needed to reproduce a failed
+  gate.
 - **API key management CLI** — `admin keys create|list|revoke|rotate`
   manages server API keys through the CLI.
 - **Audit logging** — baseline, verdict, and key mutations write audit events;
-  `GET /api/v1/audit` exposes the audit log.
+  `GET /api/v1/audit`, `perfgate audit list`, `perfgate audit export`, and the
+  dashboard expose the audit log.
+- **Server doctor and health detail** — `perfgate serve --doctor` preflights
+  the local SQLite path, WAL setup, and dashboard port; `/health` reports
+  sanitized storage detail and pool occupancy.
+- **Operational metrics** — `/metrics` exposes request, auth, upload, verdict,
+  baseline, and storage-error metrics with `perfgate_` names.
 - **Executable doc tests** — `cargo run -p xtask -- doc-test` validates
   documentation CLI examples plus TOML, JSON, and YAML snippets, and runs from
   `xtask ci`.
+- **Schema compatibility coverage** — `cargo run -p xtask -- schema-compat`
+  checks historical receipt fixtures plus 0.16 baseline-service, audit,
+  health, and fleet API fixtures.
 
 ## Post-Release Follow-Up
 
