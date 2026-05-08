@@ -31,7 +31,7 @@ The Coverage workflow runs on:
 Coverage workflow emits:
 
 - `coverage.json` -- JSON summary of coverage by file and function
-- `coverage.txt` -- Text report of line/branch/function coverage
+- `coverage.txt` -- Text coverage summary
 - `lcov.info` -- Standard LCOV format for tool integration
 - GitHub Actions artifact `coverage-report` (14-day retention)
 - Codecov dashboard
@@ -40,6 +40,11 @@ Coverage workflow emits:
 
 See `codecov.yml` for Codecov status and reporting settings.
 Current configuration uses informational (non-blocking) checks while real data accumulates on `main`.
+
+The coverage command uses `cargo llvm-cov nextest` for libtest-compatible
+workspace packages and excludes the root `perfgate-tests` package. That package
+owns the `harness = false` Cucumber/BDD test binary, which normal CI runs
+directly because nextest cannot enumerate it.
 
 ## Ratcheting
 
