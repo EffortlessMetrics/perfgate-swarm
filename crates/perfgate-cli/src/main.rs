@@ -4820,11 +4820,25 @@ fn execute_remote_baseline_action(
                 anyhow::bail!("Deletion not confirmed. Use --force to proceed.");
             }
 
-            let version_str = version.as_deref().unwrap_or("latest");
-
             rt.block_on(async {
+                let version_str = match version.as_deref() {
+                    Some(version) => version.to_string(),
+                    None => {
+                        client
+                            .get_latest_baseline(&project, &benchmark)
+                            .await
+                            .with_context(|| {
+                                format!(
+                                    "Failed to resolve latest baseline version for {}",
+                                    benchmark
+                                )
+                            })?
+                            .version
+                    }
+                };
+
                 client
-                    .delete_baseline(&project, &benchmark, version_str)
+                    .delete_baseline(&project, &benchmark, &version_str)
                     .await
                     .with_context(|| {
                         format!(
