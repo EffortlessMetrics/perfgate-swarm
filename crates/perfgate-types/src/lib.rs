@@ -1373,6 +1373,10 @@ pub struct ConfigFile {
     #[serde(default, rename = "bench")]
     pub benches: Vec<BenchConfigFile>,
 
+    /// Optional weighted workload scenarios evaluated from compare receipts.
+    #[serde(default, rename = "scenario")]
+    pub scenarios: Vec<ScenarioConfigFile>,
+
     /// Optional tradeoff rules that can downgrade a failed metric when explicit
     /// compensating improvements are present.
     #[serde(default, rename = "tradeoff")]
@@ -1404,6 +1408,33 @@ impl ConfigFile {
     pub fn validate(&self) -> Result<(), String> {
         for bench in &self.benches {
             validate_bench_name(&bench.name).map_err(|e| e.to_string())?;
+        }
+        for scenario in &self.scenarios {
+            if scenario.name.trim().is_empty() {
+                return Err("scenario name must not be empty".to_string());
+            }
+            if !scenario.weight.is_finite() || scenario.weight <= 0.0 {
+                return Err(format!(
+                    "scenario '{}' weight must be a positive finite number",
+                    scenario.name
+                ));
+            }
+            if scenario.bench.trim().is_empty() {
+                return Err(format!(
+                    "scenario '{}' must reference a benchmark",
+                    scenario.name
+                ));
+            }
+            if !self
+                .benches
+                .iter()
+                .any(|bench| bench.name == scenario.bench)
+            {
+                return Err(format!(
+                    "scenario '{}' references unknown benchmark '{}'",
+                    scenario.name, scenario.bench
+                ));
+            }
         }
         for rule in &self.tradeoffs {
             if rule.require.is_empty() {
@@ -1518,6 +1549,32 @@ pub struct BenchConfigFile {
     /// Optional scaling validation configuration.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub scaling: Option<ScalingConfig>,
+}
+
+/// Weighted scenario definition for workload-level evaluation.
+///
+/// A scenario references an existing `[[bench]]` entry and, by default,
+/// `perfgate scenario evaluate` reads that benchmark's `compare.json` from the
+/// configured artifact directory.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ScenarioConfigFile {
+    pub name: String,
+
+    /// Relative importance in the workload model.
+    pub weight: f64,
+
+    /// Configured benchmark that produces this scenario's compare receipt.
+    pub bench: String,
+
+    /// Optional human-readable description.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub description: Option<String>,
+
+    /// Optional explicit compare receipt path. When omitted, the CLI reads the
+    /// standard `out_dir/<bench>/compare.json` artifact.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub compare: Option<String>,
 }
 
 /// How ratcheting should update budgets.
@@ -1893,6 +1950,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![BenchConfigFile {
                 name: "bad|name".to_string(),
                 cwd: None,
@@ -1984,6 +2042,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -2013,6 +2072,7 @@ mod tests {
                 downgrade_to: TradeoffDowngrade::Warn,
             }],
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".to_string(),
                 cwd: None,
@@ -2028,6 +2088,63 @@ mod tests {
         };
 
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn config_file_parses_weighted_scenarios() {
+        let config: ConfigFile = toml::from_str(
+            r#"
+[defaults]
+threshold = 0.20
+out_dir = "artifacts/perfgate"
+
+[[bench]]
+name = "large-file"
+command = ["cargo", "bench", "--bench", "large_file"]
+
+[[scenario]]
+name = "large_file_parse"
+weight = 0.35
+bench = "large-file"
+description = "Parse a large file"
+"#,
+        )
+        .expect("parse config");
+
+        assert_eq!(config.scenarios.len(), 1);
+        assert_eq!(config.scenarios[0].name, "large_file_parse");
+        assert_eq!(config.scenarios[0].bench, "large-file");
+        assert_eq!(config.scenarios[0].weight, 0.35);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn config_file_validate_rejects_invalid_scenarios() {
+        let mut config: ConfigFile = toml::from_str(
+            r#"
+[[bench]]
+name = "large-file"
+command = ["echo", "large"]
+"#,
+        )
+        .expect("parse config");
+
+        config.scenarios = vec![ScenarioConfigFile {
+            name: "unknown".to_string(),
+            weight: 1.0,
+            bench: "missing-bench".to_string(),
+            description: None,
+            compare: None,
+        }];
+        assert!(config.validate().unwrap_err().contains("unknown benchmark"));
+
+        config.scenarios[0].bench = "large-file".to_string();
+        config.scenarios[0].weight = 0.0;
+        assert!(config.validate().unwrap_err().contains("positive finite"));
+
+        config.scenarios[0].weight = 1.0;
+        config.scenarios[0].name = " ".to_string();
+        assert!(config.validate().unwrap_err().contains("must not be empty"));
     }
 
     // ---- Serde round-trip unit tests ----
@@ -2414,6 +2531,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![BenchConfigFile {
                 name: "my-bench".into(),
                 cwd: Some("/home/user/project".into()),
@@ -2453,6 +2571,7 @@ mod tests {
             baseline_server: BaselineServerConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
+            scenarios: Vec::new(),
             benches: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -3541,6 +3660,7 @@ mod property_tests {
                 baseline_server,
                 tradeoffs: Vec::new(),
                 ratchet: None,
+                scenarios: Vec::new(),
                 benches,
             })
     }

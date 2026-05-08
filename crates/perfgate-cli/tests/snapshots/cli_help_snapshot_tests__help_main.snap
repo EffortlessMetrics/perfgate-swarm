@@ -1,6 +1,5 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
-assertion_line: 294
 expression: "help_output(&[\"--help\"])"
 ---
 Perf budgets and baseline diffs for CI / PR bots
@@ -24,6 +23,7 @@ Commands:
   audit List and export baseline service audit events
   summary Summarize one or more compare receipts in a terminal table
   aggregate Aggregate multiple run receipts (e.g. from a fleet) into a formal aggregate receipt
+  scenario Evaluate configured workload scenarios from compare receipts
   bisect Automatically find the commit that introduced a performance regression
   cargo-bench Wrap `cargo bench` and produce perfgate run receipts
   blame Analyze changes in Cargo.lock to identify dependency updates causing binary size regressions

@@ -24,6 +24,7 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("paired"))
         .stdout(predicate::str::contains("audit"))
+        .stdout(predicate::str::contains("scenario"))
         .stdout(predicate::str::contains("md"))
         .stdout(predicate::str::contains("export"))
         .stdout(predicate::str::contains("promote"))
@@ -214,6 +215,33 @@ fn cli_help_cargo_bench() {
         .stdout(predicate::str::contains("--compare"));
 }
 
+#[test]
+fn cli_help_scenario() {
+    perfgate_cmd()
+        .args(["scenario", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate configured workload scenarios",
+        ))
+        .stdout(predicate::str::contains("evaluate"));
+}
+
+#[test]
+fn cli_help_scenario_evaluate() {
+    perfgate_cmd()
+        .args(["scenario", "evaluate", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate configured scenarios into a perfgate.scenario.v1 receipt",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--scenario"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--workload-name"));
+}
+
 // ── insta full-output snapshot tests ─────────────────────────────────
 
 fn help_output(args: &[&str]) -> String {
@@ -336,5 +364,18 @@ fn snapshot_help_ratchet_preview() {
     insta::assert_snapshot!(
         "help_ratchet_preview",
         help_output(&["ratchet", "preview", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_scenario() {
+    insta::assert_snapshot!("help_scenario", help_output(&["scenario", "--help"]));
+}
+
+#[test]
+fn snapshot_help_scenario_evaluate() {
+    insta::assert_snapshot!(
+        "help_scenario_evaluate",
+        help_output(&["scenario", "evaluate", "--help"])
     );
 }

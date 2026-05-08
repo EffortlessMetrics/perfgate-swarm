@@ -28,6 +28,17 @@ name = "api_latency"
 command = ["./target/release/api-bench"]
 repeat = 10                                   # override defaults per bench
 scaling = { sizes = [100, 1000, 10000], expected = "O(n)", repeat = 5, r_squared_threshold = 0.90 }
+
+[[scenario]]
+name = "api_latency_release"
+weight = 0.60
+bench = "api_latency"
+description = "Release-gate API latency workload"
+
+[[scenario]]
+name = "pst_extract_batch"
+weight = 0.40
+bench = "pst_extract"
 ```
 
 ## Budget Configuration
@@ -61,6 +72,42 @@ scaling = { sizes = [100, 1000, 10000], expected = "O(n)", repeat = 7, r_squared
 | `expected` | Optional expected complexity class such as `O(n)` or `O(n^2)` |
 | `repeat` | Optional repetitions per input size |
 | `r_squared_threshold` | Optional minimum fit quality threshold |
+
+## Scenario Configuration
+
+Scenarios define a weighted workload model over configured benchmarks. After
+`perfgate check --config perfgate.toml --all` has produced compare receipts,
+evaluate the workload into a `perfgate.scenario.v1` receipt:
+
+```bash
+perfgate scenario evaluate --config perfgate.toml --out artifacts/perfgate/scenario.json
+```
+
+Each `[[scenario]]` references one `[[bench]]`. By default, `scenario evaluate`
+reads `compare.json` from `[defaults].out_dir/<bench>/compare.json`. Use
+`compare = "path/to/compare.json"` when the compare receipt lives somewhere
+else.
+
+```toml
+[[bench]]
+name = "large-file"
+command = ["cargo", "bench", "--bench", "large_file"]
+
+[[bench]]
+name = "small-edit"
+command = ["cargo", "bench", "--bench", "small_edit"]
+
+[[scenario]]
+name = "large_file_parse"
+weight = 0.35
+bench = "large-file"
+
+[[scenario]]
+name = "small_incremental_edit"
+weight = 0.50
+bench = "small-edit"
+compare = "artifacts/perfgate/small-edit/compare.json"
+```
 
 ## Presets
 

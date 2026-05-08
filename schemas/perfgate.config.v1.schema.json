@@ -33,6 +33,14 @@
         }
       ]
     },
+    "scenario": {
+      "description": "Optional weighted workload scenarios evaluated from compare receipts.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ScenarioConfigFile"
+      }
+    },
     "tradeoff": {
       "description": "Optional tradeoff rules that can downgrade a failed metric when explicit\ncompensating improvements are present.",
       "type": "array",
@@ -467,6 +475,43 @@
       },
       "required": [
         "sizes"
+      ]
+    },
+    "ScenarioConfigFile": {
+      "description": "Weighted scenario definition for workload-level evaluation.\n\nA scenario references an existing `[[bench]]` entry and, by default,\n`perfgate scenario evaluate` reads that benchmark's `compare.json` from the\nconfigured artifact directory.",
+      "type": "object",
+      "properties": {
+        "bench": {
+          "description": "Configured benchmark that produces this scenario's compare receipt.",
+          "type": "string"
+        },
+        "compare": {
+          "description": "Optional explicit compare receipt path. When omitted, the CLI reads the\nstandard `out_dir/<bench>/compare.json` artifact.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "description": "Optional human-readable description.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "weight": {
+          "description": "Relative importance in the workload model.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "name",
+        "weight",
+        "bench"
       ]
     },
     "TradeoffDowngrade": {

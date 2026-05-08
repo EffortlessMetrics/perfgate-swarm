@@ -23,9 +23,10 @@ use perfgate_app::{
     CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
     RatchetUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
-    SensorReportBuilder, SystemClock, classify_error, github_annotations, is_host_mismatch_reason,
-    preview_lines, redact_command_for_diagnostics, render_json_diff, render_markdown,
-    render_markdown_template, render_terminal_diff,
+    ScenarioEvaluateInput, ScenarioEvaluateRequest, ScenarioUseCase, SensorReportBuilder,
+    SystemClock, classify_error, github_annotations, is_host_mismatch_reason, preview_lines,
+    redact_command_for_diagnostics, render_json_diff, render_markdown, render_markdown_template,
+    render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::types::auth::Role;
@@ -47,8 +48,8 @@ use perfgate_types::{
     AggregateWeightMode, AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig,
     ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy,
     MetricStatus, OtelSpanIdentifiers, PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
-    RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, SensorVerdictStatus,
-    ToolInfo, VerdictStatus,
+    RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, ScenarioConfigFile,
+    SensorVerdictStatus, ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
@@ -64,6 +65,7 @@ const BASELINE_SERVER_NOT_CONFIGURED: &str = "baseline server is not configured;
 const DEFAULT_FALLBACK_BASELINE_DIR: &str = "baselines";
 const DEFAULT_ARTIFACT_DIR: &str = "artifacts/perfgate";
 const RUN_RECEIPT_FILE: &str = "run.json";
+const COMPARE_RECEIPT_FILE: &str = "compare.json";
 
 /// Output mode for the check command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
@@ -336,6 +338,12 @@ enum Command {
         /// Pretty-print JSON
         #[arg(long, default_value_t = false)]
         pretty: bool,
+    },
+
+    /// Evaluate configured workload scenarios from compare receipts.
+    Scenario {
+        #[command(subcommand)]
+        action: ScenarioAction,
     },
 
     /// Automatically find the commit that introduced a performance regression.
@@ -1243,6 +1251,39 @@ pub struct IngestArgs {
 pub enum IngestCommand {
     /// Ingest language-agnostic probe JSONL into a perfgate.probe.v1 receipt.
     Probes(IngestProbesArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ScenarioAction {
+    /// Evaluate configured scenarios into a perfgate.scenario.v1 receipt.
+    Evaluate(ScenarioEvaluateArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ScenarioEvaluateArgs {
+    /// Path to perfgate.toml.
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Evaluate only one configured scenario by name.
+    #[arg(long)]
+    pub scenario: Option<String>,
+
+    /// Name to use for the combined weighted workload receipt.
+    #[arg(long)]
+    pub workload_name: Option<String>,
+
+    /// Override artifact directory used for default compare receipt lookup.
+    #[arg(long)]
+    pub out_dir: Option<PathBuf>,
+
+    /// Output scenario receipt path.
+    #[arg(long, default_value = "scenario.json")]
+    pub out: PathBuf,
+
+    /// Pretty-print JSON.
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
 }
 
 #[derive(Debug, Args)]
@@ -2968,6 +3009,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             }
         }
 
+        Command::Scenario { action } => execute_scenario_action(action),
+
         Command::Bisect(args) => {
             let usecase = BisectUseCase::default();
             usecase.execute(BisectRequest {
@@ -3135,6 +3178,91 @@ fn execute_ingest_probes(args: IngestProbesArgs) -> anyhow::Result<()> {
         args.out.display()
     );
     Ok(())
+}
+
+fn execute_scenario_action(action: ScenarioAction) -> anyhow::Result<()> {
+    match action {
+        ScenarioAction::Evaluate(args) => execute_scenario_evaluate(args),
+    }
+}
+
+fn execute_scenario_evaluate(args: ScenarioEvaluateArgs) -> anyhow::Result<()> {
+    let config = load_config_file(&args.config)
+        .with_context(|| format!("failed to load {}", args.config.display()))?;
+    config
+        .validate()
+        .map_err(|error| anyhow::anyhow!("{} is invalid: {error}", args.config.display()))?;
+
+    if config.scenarios.is_empty() {
+        anyhow::bail!(
+            "no [[scenario]] entries configured in {}",
+            args.config.display()
+        );
+    }
+
+    let selected = select_configured_scenarios(&config, args.scenario.as_deref())?;
+    let out_dir = args
+        .out_dir
+        .clone()
+        .unwrap_or_else(|| resolve_configured_out_dir(None, Some(&config)));
+
+    let mut inputs = Vec::new();
+    for scenario in selected {
+        let compare_path = scenario_compare_path(scenario, &out_dir);
+        let compare: CompareReceipt = read_json_from_location(&compare_path)
+            .with_context(|| format!("read scenario compare {}", compare_path.display()))?;
+        let run_id = compare.current_ref.run_id.clone();
+        inputs.push(ScenarioEvaluateInput {
+            config: scenario.clone(),
+            compare_ref: CompareRef {
+                path: Some(compare_path.display().to_string()),
+                run_id,
+            },
+            compare,
+        });
+    }
+
+    let outcome = ScenarioUseCase::evaluate(ScenarioEvaluateRequest {
+        config,
+        inputs,
+        workload_name: args.workload_name,
+        tool: tool_info(),
+    })?;
+
+    write_json(&args.out, &outcome.receipt, args.pretty)?;
+    eprintln!("Scenario receipt written to {}", args.out.display());
+
+    match outcome.receipt.verdict.status {
+        VerdictStatus::Fail => exit_with_code(2),
+        VerdictStatus::Pass | VerdictStatus::Warn | VerdictStatus::Skip => Ok(()),
+    }
+}
+
+fn select_configured_scenarios<'a>(
+    config: &'a ConfigFile,
+    scenario: Option<&str>,
+) -> anyhow::Result<Vec<&'a ScenarioConfigFile>> {
+    if let Some(name) = scenario {
+        let selected: Vec<_> = config
+            .scenarios
+            .iter()
+            .filter(|candidate| candidate.name == name)
+            .collect();
+        if selected.is_empty() {
+            anyhow::bail!("scenario '{}' is not defined in the config file", name);
+        }
+        return Ok(selected);
+    }
+
+    Ok(config.scenarios.iter().collect())
+}
+
+fn scenario_compare_path(scenario: &ScenarioConfigFile, out_dir: &Path) -> PathBuf {
+    scenario
+        .compare
+        .as_deref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| out_dir.join(&scenario.bench).join(COMPARE_RECEIPT_FILE))
 }
 
 fn execute_badge(args: BadgeArgs) -> anyhow::Result<()> {
