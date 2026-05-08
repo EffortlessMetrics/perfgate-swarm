@@ -33,3 +33,20 @@ pub fn serve_asset(path: &str) -> Response {
         None => (StatusCode::NOT_FOUND, "Not Found").into_response(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    const INDEX_HTML: &str = include_str!("../../assets/index.html");
+
+    #[test]
+    fn dashboard_exposes_audit_events_panel() {
+        assert!(INDEX_HTML.contains("<h2>Audit Events</h2>"));
+        assert!(INDEX_HTML.contains("id=\"auditBody\""));
+        assert!(INDEX_HTML.contains("function loadAuditEvents()"));
+        assert!(INDEX_HTML.contains("'/api/v1/audit?limit='"));
+        assert!(INDEX_HTML.contains("fetch(url, { headers: authHeaders() })"));
+        assert!(INDEX_HTML.contains("id=\"auditAction\""));
+        assert!(INDEX_HTML.contains("id=\"auditResourceType\""));
+        assert!(INDEX_HTML.contains("id=\"auditActor\""));
+    }
+}

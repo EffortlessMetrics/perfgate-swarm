@@ -30,7 +30,7 @@ cargo run -p perfgate-cli -- serve --no-open
 | **Storage backends** | In-memory, SQLite, PostgreSQL |
 | **Auth** | API keys (scoped to project + benchmark regex), JWT (HS256), GitHub Actions OIDC, GitLab OIDC, custom OIDC |
 | **Role-based access** | Viewer, Contributor, Promoter, Admin |
-| **Web dashboard** | Embedded SPA served at `/` -- no extra deployment needed |
+| **Web dashboard** | Embedded SPA served at `/` with baseline, verdict, flakiness, and audit views |
 | **Fleet analytics** | Dependency-change impact tracking and cross-project alerts |
 | **Verdict history** | Record and query pass/warn/fail verdicts over time |
 | **Observability** | Structured JSON logging, request IDs, `/health`, `/metrics` |
