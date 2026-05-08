@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   benchmark compare receipts into `perfgate.scenario.v1` workload receipts.
 - Added `perfgate tradeoff evaluate` to turn configured tradeoff rules and
   scenario receipts into `perfgate.tradeoff.v1` decision receipts.
+- Added Markdown and PR-comment rendering for `perfgate.tradeoff.v1` decision
+  receipts via `perfgate md --tradeoff` and `perfgate comment --tradeoff`.
 - Extended `xtask schema-compat` with baseline-service record, health-response,
   and fleet fixtures so the 0.16 server API contract is checked alongside
   receipt compatibility.

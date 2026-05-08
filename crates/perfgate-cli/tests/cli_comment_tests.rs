@@ -7,6 +7,16 @@ use tempfile::tempdir;
 mod common;
 use common::{fixtures_dir, generate_compare_receipt, perfgate_cmd};
 
+fn tradeoff_fixture_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("fixtures")
+        .join("schema")
+        .join("v0.16")
+        .join("perfgate.tradeoff.v1.json")
+}
+
 fn generate_warn_compare(dir: &Path) -> PathBuf {
     let compare_path = dir.join("compare.json");
     generate_compare_receipt(
@@ -62,4 +72,23 @@ fn comment_dry_run_renders_report_receipt() {
         .success()
         .stdout(predicate::str::contains("<!-- perfgate -->"))
         .stdout(predicate::str::contains("perfgate: **warn**"));
+}
+
+#[test]
+fn comment_dry_run_renders_tradeoff_receipt() {
+    let mut cmd = perfgate_cmd();
+    cmd.arg("comment")
+        .arg("--tradeoff")
+        .arg(tradeoff_fixture_path())
+        .arg("--dry-run");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("<!-- perfgate -->"))
+        .stdout(predicate::str::contains("perfgate tradeoff: pass"))
+        .stdout(predicate::str::contains("large_file_parse"))
+        .stdout(predicate::str::contains(
+            "tokenizer-slower-if-parser-faster",
+        ))
+        .stdout(predicate::str::contains("Raw tradeoff data"));
 }

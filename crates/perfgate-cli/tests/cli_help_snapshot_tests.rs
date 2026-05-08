@@ -106,7 +106,22 @@ fn cli_help_md() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Render a Markdown summary"))
-        .stdout(predicate::str::contains("--compare"));
+        .stdout(predicate::str::contains("--compare"))
+        .stdout(predicate::str::contains("--tradeoff"));
+}
+
+#[test]
+fn cli_help_comment() {
+    perfgate_cmd()
+        .args(["comment", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Post or update a performance report comment",
+        ))
+        .stdout(predicate::str::contains("--compare"))
+        .stdout(predicate::str::contains("--report"))
+        .stdout(predicate::str::contains("--tradeoff"));
 }
 
 #[test]

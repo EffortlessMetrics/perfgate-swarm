@@ -142,6 +142,13 @@ Evaluate the rules against a scenario receipt to produce
 perfgate tradeoff evaluate --config perfgate.toml --scenario artifacts/perfgate/scenario.json --out artifacts/perfgate/tradeoff.json
 ```
 
+Render the decision for local review or PR comments:
+
+```bash
+perfgate md --tradeoff artifacts/perfgate/tradeoff.json --out artifacts/perfgate/tradeoff.md
+perfgate comment --tradeoff artifacts/perfgate/tradeoff.json --dry-run
+```
+
 `min_improvement_ratio` follows metric direction. For lower-is-better metrics
 such as `wall_ms`, `1.10` means the baseline/current ratio must be at least
 1.10. For higher-is-better metrics such as `throughput_per_s`, the
