@@ -90,6 +90,13 @@ perfgate tradeoff evaluate --config perfgate.toml --scenario artifacts/perfgate/
 The receipt records configured rules, requirement outcomes, the final decision,
 and the weighted deltas after any accepted downgrade.
 
+Render the decision evidence for review:
+
+```bash
+perfgate md --tradeoff artifacts/perfgate/tradeoff.json
+perfgate comment --tradeoff artifacts/perfgate/tradeoff.json --dry-run
+```
+
 ## Fixture Validation
 
 Validate JSON files against the vendored `sensor.report.v1` schema:

@@ -26,7 +26,7 @@ use perfgate_app::{
     ScenarioEvaluateInput, ScenarioEvaluateRequest, ScenarioUseCase, SensorReportBuilder,
     SystemClock, TradeoffEvaluateRequest, TradeoffUseCase, classify_error, github_annotations,
     is_host_mismatch_reason, preview_lines, redact_command_for_diagnostics, render_json_diff,
-    render_markdown, render_markdown_template, render_terminal_diff,
+    render_markdown, render_markdown_template, render_terminal_diff, render_tradeoff_markdown,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::types::auth::Role;
@@ -49,7 +49,7 @@ use perfgate_types::{
     ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy,
     MetricStatus, OtelSpanIdentifiers, PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
     RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, ScenarioConfigFile,
-    ScenarioReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
+    ScenarioReceipt, SensorVerdictStatus, ToolInfo, TradeoffReceipt, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
@@ -175,7 +175,11 @@ enum Command {
     /// Render a Markdown summary from a compare receipt.
     Md {
         #[arg(long)]
-        compare: PathBuf,
+        compare: Option<PathBuf>,
+
+        /// Path to a tradeoff receipt.
+        #[arg(long, conflicts_with = "compare")]
+        tradeoff: Option<PathBuf>,
 
         /// Output markdown path (default: stdout)
         #[arg(long)]
@@ -711,13 +715,17 @@ pub struct BisectArgs {
 
 #[derive(Debug, Args)]
 pub struct CommentArgs {
-    /// Path to a compare receipt (mutually exclusive with --report)
-    #[arg(long, conflicts_with = "report")]
+    /// Path to a compare receipt (mutually exclusive with --report and --tradeoff)
+    #[arg(long, conflicts_with_all = ["report", "tradeoff"])]
     pub compare: Option<PathBuf>,
 
-    /// Path to a report receipt (mutually exclusive with --compare)
-    #[arg(long, conflicts_with = "compare")]
+    /// Path to a report receipt (mutually exclusive with --compare and --tradeoff)
+    #[arg(long, conflicts_with_all = ["compare", "tradeoff"])]
     pub report: Option<PathBuf>,
+
+    /// Path to a tradeoff receipt (mutually exclusive with --compare and --report)
+    #[arg(long, conflicts_with_all = ["compare", "report"])]
+    pub tradeoff: Option<PathBuf>,
 
     /// GitHub token for API authentication.
     /// Can also be set via GITHUB_TOKEN environment variable.
@@ -2631,11 +2639,22 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
         Command::Md {
             compare,
+            tradeoff,
             out,
             template,
         } => {
-            let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare)?;
-            let md = render_markdown_with_optional_template(&compare_receipt, template.as_deref())?;
+            let md = if let Some(compare) = compare {
+                let compare_receipt: CompareReceipt = read_json(&compare)?;
+                render_markdown_with_optional_template(&compare_receipt, template.as_deref())?
+            } else if let Some(tradeoff) = tradeoff {
+                if template.is_some() {
+                    anyhow::bail!("--template is only supported with --compare");
+                }
+                let tradeoff_receipt: TradeoffReceipt = read_json(&tradeoff)?;
+                render_tradeoff_markdown(&tradeoff_receipt)
+            } else {
+                anyhow::bail!("Either --compare or --tradeoff is required");
+            };
 
             match out {
                 Some(path) => {
@@ -4242,6 +4261,7 @@ fn execute_comment(args: CommentArgs) -> anyhow::Result<()> {
     let CommentArgs {
         compare,
         report,
+        tradeoff,
         github_token,
         repo,
         pr,
@@ -4265,8 +4285,11 @@ fn execute_comment(args: CommentArgs) -> anyhow::Result<()> {
             explain_text: None,
         };
         github::render_comment_from_report(&report_receipt, &options)
+    } else if let Some(tradeoff_path) = tradeoff {
+        let tradeoff_receipt: TradeoffReceipt = read_json(&tradeoff_path)?;
+        github::render_comment_from_tradeoff(&tradeoff_receipt)
     } else {
-        anyhow::bail!("Either --compare or --report is required");
+        anyhow::bail!("Either --compare, --report, or --tradeoff is required");
     };
 
     // Dry-run: print and exit
