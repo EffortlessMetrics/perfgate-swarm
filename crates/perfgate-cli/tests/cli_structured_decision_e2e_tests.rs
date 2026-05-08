@@ -96,7 +96,9 @@ fn structured_decision_path_produces_scenario_and_tradeoff_receipts() {
             "--require-baseline",
         ])
         .assert()
-        .success();
+        // The live check can produce a policy failure on tiny one-shot
+        // commands; this fixture only needs it to emit the compare receipt.
+        .code(predicate::in_iter([0, 2]));
 
     let compare_path = root.join("artifacts/perfgate/parser/compare.json");
     assert!(compare_path.exists(), "check should write compare receipt");
@@ -223,7 +225,9 @@ fn decision_evaluate_runs_structured_decision_workflow() {
             "--require-baseline",
         ])
         .assert()
-        .success();
+        // The live check can produce a policy failure on tiny one-shot
+        // commands; this fixture only needs it to emit the compare receipt.
+        .code(predicate::in_iter([0, 2]));
 
     let compare_path = root.join("artifacts/perfgate/parser/compare.json");
     assert!(compare_path.exists(), "check should write compare receipt");

@@ -59,6 +59,7 @@ pub const AGGREGATE_SCHEMA_V1: &str = "perfgate.aggregate.v1";
 pub const BASELINE_SCHEMA_V1: &str = "perfgate.baseline.v1";
 pub const COMPARE_SCHEMA_V1: &str = "perfgate.compare.v1";
 pub const PROBE_SCHEMA_V1: &str = "perfgate.probe.v1";
+pub const PROBE_COMPARE_SCHEMA_V1: &str = "perfgate.probe_compare.v1";
 pub const SCENARIO_SCHEMA_V1: &str = "perfgate.scenario.v1";
 pub const TRADEOFF_SCHEMA_V1: &str = "perfgate.tradeoff.v1";
 pub const REPORT_SCHEMA_V1: &str = "perfgate.report.v1";

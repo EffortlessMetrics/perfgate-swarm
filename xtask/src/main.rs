@@ -16,10 +16,11 @@ const TARGET_PUBLIC_PACKAGES: [&str; 5] = [
     "perfgate-cli",
 ];
 
-const SCHEMA_FILES: [&str; 11] = [
+const SCHEMA_FILES: [&str; 12] = [
     "perfgate.run.v1.schema.json",
     "perfgate.compare.v1.schema.json",
     "perfgate.probe.v1.schema.json",
+    "perfgate.probe_compare.v1.schema.json",
     "perfgate.scenario.v1.schema.json",
     "perfgate.tradeoff.v1.schema.json",
     "perfgate.config.v1.schema.json",
@@ -2163,48 +2164,54 @@ fn cmd_schema(out_dir: &PathBuf) -> anyhow::Result<()> {
     write_schema(
         out_dir,
         SCHEMA_FILES[3],
-        schema_for!(perfgate_types::ScenarioReceipt),
+        schema_for!(perfgate_types::ProbeCompareReceipt),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[4],
-        schema_for!(perfgate_types::TradeoffReceipt),
+        schema_for!(perfgate_types::ScenarioReceipt),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[5],
-        schema_for!(perfgate_types::ConfigFile),
+        schema_for!(perfgate_types::TradeoffReceipt),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[6],
-        schema_for!(perfgate_types::PerfgateReport),
+        schema_for!(perfgate_types::ConfigFile),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[7],
-        schema_for!(perfgate_types::AggregateReceipt),
+        schema_for!(perfgate_types::PerfgateReport),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[8],
-        schema_for!(perfgate_types::RatchetReceipt),
+        schema_for!(perfgate_types::AggregateReceipt),
     )?;
 
     write_schema(
         out_dir,
         SCHEMA_FILES[9],
+        schema_for!(perfgate_types::RatchetReceipt),
+    )?;
+
+    write_schema(
+        out_dir,
+        SCHEMA_FILES[10],
         schema_for!(perfgate_types::RepairContextReceipt),
     )?;
 
     // Sensor report schema is vendored from contracts/, not generated.
     let vendored_schema = PathBuf::from("contracts/schemas/sensor.report.v1.schema.json");
-    let dest = out_dir.join(SCHEMA_FILES[10]);
+    let dest = out_dir.join(SCHEMA_FILES[11]);
     fs::copy(&vendored_schema, &dest).with_context(|| {
         format!(
             "copy vendored schema {} -> {}",
@@ -2303,6 +2310,9 @@ fn cmd_schema_compat(fixtures_dir: &Path) -> anyhow::Result<()> {
             }
             "perfgate.probe.v1" => {
                 serde_json::from_value::<perfgate_types::ProbeReceipt>(value).map(|_| ())
+            }
+            "perfgate.probe_compare.v1" => {
+                serde_json::from_value::<perfgate_types::ProbeCompareReceipt>(value).map(|_| ())
             }
             "perfgate.scenario.v1" => {
                 serde_json::from_value::<perfgate_types::ScenarioReceipt>(value).map(|_| ())
@@ -3762,6 +3772,11 @@ fn validate_versioned_json_example(
             serde_json::from_value::<perfgate_types::ProbeReceipt>(value)
                 .context("deserialize perfgate.probe.v1 example")?;
             Ok(Some(perfgate_types::PROBE_SCHEMA_V1))
+        }
+        Some(perfgate_types::PROBE_COMPARE_SCHEMA_V1) => {
+            serde_json::from_value::<perfgate_types::ProbeCompareReceipt>(value)
+                .context("deserialize perfgate.probe_compare.v1 example")?;
+            Ok(Some(perfgate_types::PROBE_COMPARE_SCHEMA_V1))
         }
         Some(perfgate_types::SCENARIO_SCHEMA_V1) => {
             serde_json::from_value::<perfgate_types::ScenarioReceipt>(value)

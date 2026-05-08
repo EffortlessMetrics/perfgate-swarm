@@ -12,9 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command availability, baseline presence, artifact directory writability, CI
   detection, and baseline-server health.
 - Added schema-first structured performance evidence contracts for
-  `perfgate.probe.v1`, `perfgate.scenario.v1`, and `perfgate.tradeoff.v1`.
+  `perfgate.probe.v1`, `perfgate.probe_compare.v1`,
+  `perfgate.scenario.v1`, and `perfgate.tradeoff.v1`.
 - Added `perfgate ingest probes --file probes.jsonl` to convert
   language-agnostic probe JSONL into `perfgate.probe.v1` receipts.
+- Added `perfgate probe compare` and `perfgate.probe_compare.v1` receipts for
+  named probe deltas between baseline and current structured evidence.
 - Added `perfgate scenario evaluate` to turn configured weighted scenarios and
   benchmark compare receipts into `perfgate.scenario.v1` workload receipts.
 - Added `perfgate tradeoff evaluate` to turn configured tradeoff rules and

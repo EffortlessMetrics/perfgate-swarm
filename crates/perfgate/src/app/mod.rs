@@ -20,6 +20,7 @@ mod explain;
 pub mod export;
 pub mod init;
 mod paired;
+mod probe;
 mod promote;
 mod ratchet;
 pub mod render;
@@ -46,6 +47,7 @@ pub use diff::{
 };
 pub use explain::{ExplainOutcome, ExplainRequest, ExplainUseCase};
 pub use paired::{PairedRunOutcome, PairedRunRequest, PairedRunUseCase};
+pub use probe::{ProbeCompareOutcome, ProbeCompareRequest, ProbeCompareUseCase};
 pub use promote::{PromoteRequest, PromoteResult, PromoteUseCase};
 pub use ratchet::{RatchetPlan, RatchetUseCase, is_host_mismatch_reason, preview_lines};
 pub use repair_context::redact_command_for_diagnostics;

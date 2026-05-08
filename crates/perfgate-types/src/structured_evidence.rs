@@ -81,6 +81,57 @@ pub struct ProbeReceipt {
     pub metadata: BTreeMap<String, String>,
 }
 
+/// Comparison evidence for one named probe.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ProbeCompareObservation {
+    pub name: String,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub parent: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub scope: Option<ProbeScope>,
+
+    pub baseline_count: u32,
+    pub current_count: u32,
+
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub deltas: BTreeMap<String, Delta>,
+
+    pub status: MetricStatus,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<String>,
+}
+
+/// A versioned receipt for named probe deltas (`perfgate.probe_compare.v1`).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct ProbeCompareReceipt {
+    pub schema: String,
+    pub tool: ToolInfo,
+    pub run: RunMeta,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub bench: Option<BenchMeta>,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub scenario: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub baseline_ref: Option<CompareRef>,
+
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub current_ref: Option<CompareRef>,
+
+    pub probes: Vec<ProbeCompareObservation>,
+    pub verdict: Verdict,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
 /// Scenario definition captured in a scenario evaluation receipt.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -264,8 +315,8 @@ pub struct TradeoffReceipt {
 mod tests {
     use super::*;
     use crate::{
-        PROBE_SCHEMA_V1, SCENARIO_SCHEMA_V1, TRADEOFF_SCHEMA_V1, U64Summary, VerdictCounts,
-        VerdictStatus,
+        PROBE_COMPARE_SCHEMA_V1, PROBE_SCHEMA_V1, SCENARIO_SCHEMA_V1, TRADEOFF_SCHEMA_V1,
+        U64Summary, VerdictCounts, VerdictStatus,
     };
 
     fn tool() -> ToolInfo {
@@ -392,6 +443,51 @@ mod tests {
         let parsed: ScenarioReceipt = serde_json::from_str(&json).expect("parse scenario receipt");
         assert_eq!(parsed.schema, SCENARIO_SCHEMA_V1);
         assert_eq!(parsed.scenario.name, "large_file_parse");
+    }
+
+    #[test]
+    fn probe_compare_receipt_round_trips() {
+        let receipt = ProbeCompareReceipt {
+            schema: PROBE_COMPARE_SCHEMA_V1.into(),
+            tool: tool(),
+            run: run(),
+            bench: Some(crate::BenchMeta {
+                name: "parser".into(),
+                cwd: None,
+                command: vec!["cargo".into(), "bench".into()],
+                repeat: 2,
+                warmup: 0,
+                work_units: None,
+                timeout_ms: None,
+            }),
+            scenario: Some("large_file_parse".into()),
+            baseline_ref: Some(CompareRef {
+                path: Some("baselines/probes.json".into()),
+                run_id: Some("baseline-run".into()),
+            }),
+            current_ref: Some(CompareRef {
+                path: Some("artifacts/perfgate/probes.json".into()),
+                run_id: Some("current-run".into()),
+            }),
+            probes: vec![ProbeCompareObservation {
+                name: "parser.tokenize".into(),
+                parent: Some("parser.total".into()),
+                scope: Some(ProbeScope::Local),
+                baseline_count: 1,
+                current_count: 1,
+                deltas: BTreeMap::from([("wall_ms".into(), wall_delta())]),
+                status: MetricStatus::Pass,
+                reasons: Vec::new(),
+            }],
+            verdict: verdict(),
+            warnings: Vec::new(),
+        };
+
+        let json = serde_json::to_string(&receipt).expect("serialize probe compare receipt");
+        let parsed: ProbeCompareReceipt =
+            serde_json::from_str(&json).expect("parse probe compare receipt");
+        assert_eq!(parsed.schema, PROBE_COMPARE_SCHEMA_V1);
+        assert_eq!(parsed.probes[0].name, "parser.tokenize");
     }
 
     #[test]

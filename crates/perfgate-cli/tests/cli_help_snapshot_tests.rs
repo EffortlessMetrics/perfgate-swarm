@@ -24,6 +24,7 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("paired"))
         .stdout(predicate::str::contains("audit"))
+        .stdout(predicate::str::contains("probe"))
         .stdout(predicate::str::contains("scenario"))
         .stdout(predicate::str::contains("tradeoff"))
         .stdout(predicate::str::contains("md"))
@@ -311,6 +312,30 @@ fn cli_help_decision_evaluate() {
         .stdout(predicate::str::contains("--decision-out"));
 }
 
+#[test]
+fn cli_help_probe() {
+    perfgate_cmd()
+        .args(["probe", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Compare named probe receipts"))
+        .stdout(predicate::str::contains("compare"));
+}
+
+#[test]
+fn cli_help_probe_compare() {
+    perfgate_cmd()
+        .args(["probe", "compare", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Compare two perfgate.probe.v1 receipts into a perfgate.probe_compare.v1 receipt",
+        ))
+        .stdout(predicate::str::contains("--baseline"))
+        .stdout(predicate::str::contains("--current"))
+        .stdout(predicate::str::contains("--out"));
+}
+
 // ── insta full-output snapshot tests ─────────────────────────────────
 
 fn help_output(args: &[&str]) -> String {
@@ -472,5 +497,18 @@ fn snapshot_help_decision_evaluate() {
     insta::assert_snapshot!(
         "help_decision_evaluate",
         help_output(&["decision", "evaluate", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_probe() {
+    insta::assert_snapshot!("help_probe", help_output(&["probe", "--help"]));
+}
+
+#[test]
+fn snapshot_help_probe_compare() {
+    insta::assert_snapshot!(
+        "help_probe_compare",
+        help_output(&["probe", "compare", "--help"])
     );
 }

@@ -21,12 +21,13 @@ use perfgate_app::{
     BadgeInput, BadgeStyle, BadgeType, BadgeUseCase, BenchOutcome, BisectRequest, BisectUseCase,
     BlameRequest, BlameUseCase, CheckOutcome, CheckRequest, CheckUseCase, Clock, CompareRequest,
     CompareUseCase, DiffRequest, DiffUseCase, ExplainRequest, ExplainUseCase, ExportFormat,
-    ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
-    RatchetUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
-    ScenarioEvaluateInput, ScenarioEvaluateRequest, ScenarioUseCase, SensorReportBuilder,
-    SystemClock, TradeoffEvaluateRequest, TradeoffUseCase, classify_error, github_annotations,
-    is_host_mismatch_reason, preview_lines, redact_command_for_diagnostics, render_json_diff,
-    render_markdown, render_markdown_template, render_terminal_diff, render_tradeoff_markdown,
+    ExportUseCase, PairedRunRequest, PairedRunUseCase, ProbeCompareRequest, ProbeCompareUseCase,
+    PromoteRequest, PromoteUseCase, RatchetUseCase, ReportRequest, ReportUseCase, RunBenchRequest,
+    RunBenchUseCase, ScenarioEvaluateInput, ScenarioEvaluateRequest, ScenarioUseCase,
+    SensorReportBuilder, SystemClock, TradeoffEvaluateRequest, TradeoffUseCase, classify_error,
+    github_annotations, is_host_mismatch_reason, preview_lines, redact_command_for_diagnostics,
+    render_json_diff, render_markdown, render_markdown_template, render_terminal_diff,
+    render_tradeoff_markdown,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::types::auth::Role;
@@ -47,9 +48,10 @@ use perfgate_types::error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_types::{
     AggregateWeightMode, AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig,
     ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy,
-    MetricStatus, OtelSpanIdentifiers, PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
-    RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, ScenarioConfigFile,
-    ScenarioReceipt, SensorVerdictStatus, ToolInfo, TradeoffReceipt, VerdictStatus,
+    MetricStatus, OtelSpanIdentifiers, PerfgateReport, ProbeReceipt, REPAIR_CONTEXT_SCHEMA_V1,
+    RatchetConfig, RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt,
+    ScenarioConfigFile, ScenarioReceipt, SensorVerdictStatus, ToolInfo, TradeoffReceipt,
+    VerdictStatus,
 };
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
@@ -348,6 +350,12 @@ enum Command {
     Decision {
         #[command(subcommand)]
         action: DecisionAction,
+    },
+
+    /// Compare named probe receipts and emit probe-level deltas.
+    Probe {
+        #[command(subcommand)]
+        action: ProbeAction,
     },
 
     /// Evaluate configured workload scenarios from compare receipts.
@@ -1274,6 +1282,12 @@ pub enum IngestCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum ProbeAction {
+    /// Compare two perfgate.probe.v1 receipts into a perfgate.probe_compare.v1 receipt.
+    Compare(ProbeCompareArgs),
+}
+
+#[derive(Debug, Subcommand)]
 pub enum ScenarioAction {
     /// Evaluate configured scenarios into a perfgate.scenario.v1 receipt.
     Evaluate(ScenarioEvaluateArgs),
@@ -1388,6 +1402,25 @@ pub struct IngestProbesArgs {
 
     /// Output file path.
     #[arg(long, default_value = "probe.json")]
+    pub out: PathBuf,
+
+    /// Pretty-print JSON.
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ProbeCompareArgs {
+    /// Baseline perfgate.probe.v1 receipt.
+    #[arg(long)]
+    pub baseline: PathBuf,
+
+    /// Current perfgate.probe.v1 receipt.
+    #[arg(long)]
+    pub current: PathBuf,
+
+    /// Output probe compare receipt path.
+    #[arg(long, default_value = "probe-compare.json")]
     pub out: PathBuf,
 
     /// Pretty-print JSON.
@@ -3107,6 +3140,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         }
 
         Command::Decision { action } => execute_decision_action(action),
+        Command::Probe { action } => execute_probe_action(action),
         Command::Scenario { action } => execute_scenario_action(action),
         Command::Tradeoff { action } => execute_tradeoff_action(action),
 
@@ -3276,6 +3310,37 @@ fn execute_ingest_probes(args: IngestProbesArgs) -> anyhow::Result<()> {
         args.file.display(),
         args.out.display()
     );
+    Ok(())
+}
+
+fn execute_probe_action(action: ProbeAction) -> anyhow::Result<()> {
+    match action {
+        ProbeAction::Compare(args) => execute_probe_compare(args),
+    }
+}
+
+fn execute_probe_compare(args: ProbeCompareArgs) -> anyhow::Result<()> {
+    let baseline: ProbeReceipt = read_json(&args.baseline)
+        .with_context(|| format!("read baseline probe receipt {}", args.baseline.display()))?;
+    let current: ProbeReceipt = read_json(&args.current)
+        .with_context(|| format!("read current probe receipt {}", args.current.display()))?;
+
+    let outcome = ProbeCompareUseCase::compare(ProbeCompareRequest {
+        baseline_ref: CompareRef {
+            path: Some(args.baseline.display().to_string()),
+            run_id: Some(baseline.run.id.clone()),
+        },
+        current_ref: CompareRef {
+            path: Some(args.current.display().to_string()),
+            run_id: Some(current.run.id.clone()),
+        },
+        baseline,
+        current,
+        tool: tool_info(),
+    })?;
+
+    write_json(&args.out, &outcome.receipt, args.pretty)?;
+    eprintln!("Probe compare receipt written to {}", args.out.display());
     Ok(())
 }
 

@@ -1,0 +1,500 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProbeCompareReceipt",
+  "description": "A versioned receipt for named probe deltas (`perfgate.probe_compare.v1`).",
+  "type": "object",
+  "properties": {
+    "baseline_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CompareRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "bench": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BenchMeta"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "current_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CompareRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ProbeCompareObservation"
+      }
+    },
+    "run": {
+      "$ref": "#/$defs/RunMeta"
+    },
+    "scenario": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolInfo"
+    },
+    "verdict": {
+      "$ref": "#/$defs/Verdict"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "tool",
+    "run",
+    "probes",
+    "verdict"
+  ],
+  "$defs": {
+    "BenchMeta": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "argv vector (no shell parsing).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "description": "Optional working directory (stringified path).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "warmup": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "work_units": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "name",
+        "command",
+        "repeat",
+        "warmup"
+      ]
+    },
+    "CompareRef": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Delta": {
+      "type": "object",
+      "properties": {
+        "baseline": {
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "type": "number",
+          "format": "double"
+        },
+        "cv": {
+          "description": "Coefficient of variation for the current run.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "noise_threshold": {
+          "description": "Noise threshold used for this comparison.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "pct": {
+          "description": "(current - baseline) / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "ratio": {
+          "description": "current / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "regression": {
+          "description": "Positive regression amount, normalized as a fraction.",
+          "type": "number",
+          "format": "double"
+        },
+        "significance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Significance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statistic": {
+          "$ref": "#/$defs/MetricStatistic"
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        }
+      },
+      "required": [
+        "baseline",
+        "current",
+        "ratio",
+        "pct",
+        "regression",
+        "status"
+      ]
+    },
+    "HostInfo": {
+      "type": "object",
+      "properties": {
+        "arch": {
+          "description": "CPU architecture (e.g., \"x86_64\", \"aarch64\")",
+          "type": "string"
+        },
+        "cpu_count": {
+          "description": "Number of logical CPUs (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "hostname_hash": {
+          "description": "Hashed hostname for fingerprinting (opt-in, privacy-preserving).\nWhen present, this is a SHA-256 hash of the actual hostname.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memory_bytes": {
+          "description": "Total system memory in bytes (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "os": {
+          "description": "Operating system (e.g., \"linux\", \"macos\", \"windows\")",
+          "type": "string"
+        }
+      },
+      "required": [
+        "os",
+        "arch"
+      ]
+    },
+    "MetricStatistic": {
+      "type": "string",
+      "enum": [
+        "median",
+        "p95"
+      ]
+    },
+    "MetricStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "ProbeCompareObservation": {
+      "description": "Comparison evidence for one named probe.",
+      "type": "object",
+      "properties": {
+        "baseline_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "current_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "deltas": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Delta"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProbeScope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        }
+      },
+      "required": [
+        "name",
+        "baseline_count",
+        "current_count",
+        "status"
+      ]
+    },
+    "ProbeScope": {
+      "description": "Scope of a named performance probe inside a workload.",
+      "type": "string",
+      "enum": [
+        "local",
+        "enclosing",
+        "dominant",
+        "total"
+      ]
+    },
+    "RunMeta": {
+      "type": "object",
+      "properties": {
+        "ended_at": {
+          "type": "string"
+        },
+        "host": {
+          "$ref": "#/$defs/HostInfo"
+        },
+        "id": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "started_at",
+        "ended_at",
+        "host"
+      ]
+    },
+    "Significance": {
+      "type": "object",
+      "properties": {
+        "alpha": {
+          "type": "number",
+          "format": "double"
+        },
+        "baseline_samples": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "ci_lower": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "ci_upper": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "current_samples": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "p_value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "significant": {
+          "type": "boolean"
+        },
+        "test": {
+          "$ref": "#/$defs/SignificanceTest"
+        }
+      },
+      "required": [
+        "test",
+        "alpha",
+        "significant",
+        "baseline_samples",
+        "current_samples"
+      ]
+    },
+    "SignificanceTest": {
+      "type": "string",
+      "enum": [
+        "welch_t"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    },
+    "Verdict": {
+      "description": "Overall verdict for a comparison, with pass/warn/fail counts.\n\n# Examples\n\n```\nuse perfgate_types::{Verdict, VerdictStatus, VerdictCounts};\n\nlet verdict = Verdict {\n    status: VerdictStatus::Pass,\n    counts: VerdictCounts { pass: 2, warn: 0, fail: 0, skip: 0 },\n    reasons: vec![],\n};\nassert_eq!(verdict.status, VerdictStatus::Pass);\n\nlet failing = Verdict {\n    status: VerdictStatus::Fail,\n    counts: VerdictCounts { pass: 1, warn: 0, fail: 1, skip: 0 },\n    reasons: vec![\"wall_ms.fail\".into()],\n};\nassert_eq!(failing.status, VerdictStatus::Fail);\nassert!(!failing.reasons.is_empty());\n```",
+      "type": "object",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/VerdictCounts"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/VerdictStatus"
+        }
+      },
+      "required": [
+        "status",
+        "counts",
+        "reasons"
+      ]
+    },
+    "VerdictCounts": {
+      "type": "object",
+      "properties": {
+        "fail": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "pass": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "VerdictStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    }
+  }
+}
