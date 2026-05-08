@@ -708,6 +708,65 @@
                 </div>
             </div>
         </div>
+
+        <!-- Audit Events -->
+        <div class="card">
+            <h2>Audit Events</h2>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Action:</label>
+                    <select id="auditAction" onchange="resetAndLoadAuditEvents()">
+                        <option value="">All</option>
+                        <option value="create">Create</option>
+                        <option value="update">Update</option>
+                        <option value="delete">Delete</option>
+                        <option value="promote">Promote</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Resource:</label>
+                    <select id="auditResourceType" onchange="resetAndLoadAuditEvents()">
+                        <option value="">All</option>
+                        <option value="baseline">Baseline</option>
+                        <option value="key">Key</option>
+                        <option value="verdict">Verdict</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Actor:</label>
+                    <input type="text" id="auditActor" placeholder="actor" onkeydown="auditActorKeydown(event)">
+                </div>
+                <button onclick="resetAndLoadAuditEvents()">Load Audit</button>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Action</th>
+                            <th>Resource</th>
+                            <th>Resource ID</th>
+                            <th>Project</th>
+                            <th>Actor</th>
+                        </tr>
+                    </thead>
+                    <tbody id="auditBody">
+                        <tr><td colspan="6" class="empty-state"><p>No audit events loaded</p></td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="auditPagination" class="pagination" style="display:none;">
+                <span id="auditPaginationInfo"></span>
+                <div class="pagination-controls">
+                    <button class="btn-sm btn-secondary" id="auditPrevBtn" onclick="changeAuditPage(-1)" disabled>&laquo; Prev</button>
+                    <span id="auditPageIndicator"></span>
+                    <button class="btn-sm btn-secondary" id="auditNextBtn" onclick="changeAuditPage(1)" disabled>Next &raquo;</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Benchmark Detail View -->
@@ -777,6 +836,9 @@
         let verdictPage = 0;
         let verdictPageSize = 20;
         let totalVerdicts = 0;
+        let auditPage = 0;
+        let auditPageSize = 20;
+        let totalAuditEvents = 0;
 
         /* ======= Utilities ======= */
         function getProject() {
@@ -853,6 +915,11 @@
                 cls = 'badge-noise-elevated';
             }
             return '<span class="badge ' + cls + '">' + score.toFixed(2) + ' ' + label + '</span>';
+        }
+
+        function auditActionBadge(action) {
+            var safe = escHtml(action || '-');
+            return '<span class="badge">' + safe + '</span>';
         }
 
         /* ======= API fetch ======= */
@@ -1073,6 +1140,87 @@
             verdictPage += delta;
             if (verdictPage < 0) verdictPage = 0;
             loadVerdicts();
+        }
+
+        /* ======= Audit events ======= */
+        function auditActorKeydown(e) {
+            if (e.key === 'Enter') resetAndLoadAuditEvents();
+        }
+
+        function resetAndLoadAuditEvents() {
+            auditPage = 0;
+            loadAuditEvents();
+        }
+
+        async function loadAuditEvents() {
+            var project = getProject();
+            var body = document.getElementById('auditBody');
+            body.innerHTML = loadingRow(6);
+
+            var url = '/api/v1/audit?limit=' + auditPageSize
+                + '&offset=' + (auditPage * auditPageSize)
+                + '&project=' + encodeURIComponent(project);
+
+            var action = document.getElementById('auditAction').value;
+            var resourceType = document.getElementById('auditResourceType').value;
+            var actor = document.getElementById('auditActor').value.trim();
+
+            if (action) url += '&action=' + encodeURIComponent(action);
+            if (resourceType) url += '&resource_type=' + encodeURIComponent(resourceType);
+            if (actor) url += '&actor=' + encodeURIComponent(actor);
+
+            var data = await fetchApi(url);
+            if (!data) {
+                body.innerHTML = emptyRow(6, 'Failed to load audit events.');
+                document.getElementById('auditPagination').style.display = 'none';
+                return;
+            }
+
+            var events = data.events || [];
+            totalAuditEvents = data.pagination ? data.pagination.total : events.length;
+
+            if (events.length === 0) {
+                body.innerHTML = emptyRow(6, 'No audit events match your filters.');
+                document.getElementById('auditPagination').style.display = 'none';
+                return;
+            }
+
+            body.innerHTML = '';
+            events.forEach(function(event) {
+                var row = document.createElement('tr');
+                row.innerHTML =
+                    '<td>' + fmtDate(event.timestamp) + '</td>'
+                    + '<td>' + auditActionBadge(event.action) + '</td>'
+                    + '<td>' + escHtml(event.resource_type || '-') + '</td>'
+                    + '<td><code>' + escHtml(event.resource_id || event.id || '-') + '</code></td>'
+                    + '<td>' + escHtml(event.project || '-') + '</td>'
+                    + '<td><code>' + escHtml(event.actor || '-') + '</code></td>';
+                body.appendChild(row);
+            });
+
+            updateAuditPagination();
+        }
+
+        function updateAuditPagination() {
+            var pag = document.getElementById('auditPagination');
+            var totalPages = Math.max(1, Math.ceil(totalAuditEvents / auditPageSize));
+            if (totalAuditEvents <= auditPageSize) {
+                pag.style.display = 'none';
+                return;
+            }
+            pag.style.display = 'flex';
+            document.getElementById('auditPaginationInfo').textContent =
+                totalAuditEvents + ' audit events total';
+            document.getElementById('auditPageIndicator').textContent =
+                'Page ' + (auditPage + 1) + ' of ' + totalPages;
+            document.getElementById('auditPrevBtn').disabled = auditPage === 0;
+            document.getElementById('auditNextBtn').disabled = auditPage >= totalPages - 1;
+        }
+
+        function changeAuditPage(delta) {
+            auditPage += delta;
+            if (auditPage < 0) auditPage = 0;
+            loadAuditEvents();
         }
 
         /* ======= Benchmark history ======= */
