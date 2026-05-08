@@ -1437,11 +1437,25 @@ impl ConfigFile {
             }
         }
         for rule in &self.tradeoffs {
+            if rule.name.trim().is_empty() {
+                return Err("tradeoff name must not be empty".to_string());
+            }
             if rule.require.is_empty() {
                 return Err(format!(
                     "tradeoff '{}' must require at least one compensating metric",
                     rule.name
                 ));
+            }
+            for requirement in &rule.require {
+                if !requirement.min_improvement_ratio.is_finite()
+                    || requirement.min_improvement_ratio <= 0.0
+                {
+                    return Err(format!(
+                        "tradeoff '{}' requirement for '{}' must use a positive finite improvement ratio",
+                        rule.name,
+                        requirement.metric.as_str()
+                    ));
+                }
             }
         }
         Ok(())
@@ -2088,6 +2102,48 @@ mod tests {
         };
 
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn config_file_validate_rejects_invalid_tradeoff_rules() {
+        let mut config = ConfigFile {
+            defaults: DefaultsConfig::default(),
+            baseline_server: BaselineServerConfig::default(),
+            tradeoffs: vec![TradeoffRule {
+                name: "memory_for_speed".to_string(),
+                if_failed: Metric::MaxRssKb,
+                require: vec![TradeoffRequirement {
+                    metric: Metric::WallMs,
+                    min_improvement_ratio: 1.10,
+                }],
+                downgrade_to: TradeoffDowngrade::Warn,
+            }],
+            ratchet: None,
+            scenarios: Vec::new(),
+            benches: vec![BenchConfigFile {
+                name: "my-bench".to_string(),
+                cwd: None,
+                work: None,
+                timeout: None,
+                command: vec!["echo".to_string()],
+                repeat: None,
+                warmup: None,
+                metrics: None,
+                budgets: None,
+                scaling: None,
+            }],
+        };
+        assert!(config.validate().is_ok());
+
+        config.tradeoffs[0].name = " ".to_string();
+        assert!(config.validate().unwrap_err().contains("must not be empty"));
+
+        config.tradeoffs[0].name = "memory_for_speed".to_string();
+        config.tradeoffs[0].require[0].min_improvement_ratio = 0.0;
+        assert!(config.validate().unwrap_err().contains("positive finite"));
+
+        config.tradeoffs[0].require[0].min_improvement_ratio = f64::NAN;
+        assert!(config.validate().unwrap_err().contains("positive finite"));
     }
 
     #[test]

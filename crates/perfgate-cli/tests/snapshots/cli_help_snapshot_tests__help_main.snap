@@ -24,6 +24,7 @@ Commands:
   summary Summarize one or more compare receipts in a terminal table
   aggregate Aggregate multiple run receipts (e.g. from a fleet) into a formal aggregate receipt
   scenario Evaluate configured workload scenarios from compare receipts
+  tradeoff Evaluate configured tradeoff rules against scenario evidence
   bisect Automatically find the commit that introduced a performance regression
   cargo-bench Wrap `cargo bench` and produce perfgate run receipts
   blame Analyze changes in Cargo.lock to identify dependency updates causing binary size regressions

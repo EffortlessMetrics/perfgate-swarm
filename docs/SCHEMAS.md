@@ -10,7 +10,7 @@ perfgate uses versioned JSON receipts at every stage of the pipeline.
 | `perfgate.compare.v1` | `compare`, `check`, `paired` | Comparison of current run against baseline |
 | `perfgate.probe.v1` | `ingest probes` | Named probe observations from internal phases or external instrumentation |
 | `perfgate.scenario.v1` | `scenario evaluate` | Weighted workload-scenario evidence across benchmarks, phases, or probe groups |
-| `perfgate.tradeoff.v1` | schema-first contract | Structured decision evidence for accepted or rejected performance tradeoffs |
+| `perfgate.tradeoff.v1` | `tradeoff evaluate` | Structured decision evidence for accepted or rejected performance tradeoffs |
 | `perfgate.report.v1` | `report`, `check` | Cockpit-compatible report envelope with findings, summary, and optional `profile_path` diagnostic |
 | `sensor.report.v1` | `check --mode cockpit` | Sensor integration envelope for dashboards |
 | `perfgate.baseline.v1` | baseline service | Stored baseline record returned by the server |
@@ -76,6 +76,19 @@ perfgate scenario evaluate --config perfgate.toml --out artifacts/perfgate/scena
 
 By default, each scenario reads `[defaults].out_dir/<bench>/compare.json`.
 Set `compare = "path/to/compare.json"` on a scenario to override that lookup.
+
+## Tradeoff Evaluation
+
+`perfgate tradeoff evaluate` reads configured `[[tradeoff]]` rules and a
+`perfgate.scenario.v1` receipt, then writes a `perfgate.tradeoff.v1` decision
+receipt:
+
+```bash
+perfgate tradeoff evaluate --config perfgate.toml --scenario artifacts/perfgate/scenario.json --out artifacts/perfgate/tradeoff.json
+```
+
+The receipt records configured rules, requirement outcomes, the final decision,
+and the weighted deltas after any accepted downgrade.
 
 ## Fixture Validation
 

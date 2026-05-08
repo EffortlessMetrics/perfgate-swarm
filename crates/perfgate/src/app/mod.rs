@@ -29,6 +29,7 @@ pub mod runtime;
 mod scenario;
 pub mod sensor;
 mod sensor_report;
+mod tradeoff;
 mod trend;
 pub mod watch;
 
@@ -56,6 +57,7 @@ pub use sensor_report::{
     BenchOutcome, SensorCheckOptions, SensorReportBuilder, classify_error,
     default_engine_capability, run_sensor_check, sensor_fingerprint,
 };
+pub use tradeoff::{TradeoffEvaluateOutcome, TradeoffEvaluateRequest, TradeoffUseCase};
 pub use trend::{
     TrendOutcome, TrendRequest, TrendUseCase, format_trend_chart, format_trend_output,
 };

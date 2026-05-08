@@ -39,6 +39,15 @@ description = "Release-gate API latency workload"
 name = "pst_extract_batch"
 weight = 0.40
 bench = "pst_extract"
+
+[[tradeoff]]
+name = "memory-for-latency"
+if_failed = "max_rss_kb"
+downgrade_to = "warn"
+
+[[tradeoff.require]]
+metric = "wall_ms"
+min_improvement_ratio = 1.10
 ```
 
 ## Budget Configuration
@@ -108,6 +117,35 @@ weight = 0.50
 bench = "small-edit"
 compare = "artifacts/perfgate/small-edit/compare.json"
 ```
+
+## Tradeoff Configuration
+
+Tradeoff rules make accepted performance exchanges explicit. They only apply to
+metrics that are already failing, and every required compensating improvement
+must be present and satisfied.
+
+```toml
+[[tradeoff]]
+name = "memory-for-latency"
+if_failed = "max_rss_kb"
+downgrade_to = "warn"
+
+[[tradeoff.require]]
+metric = "wall_ms"
+min_improvement_ratio = 1.10
+```
+
+Evaluate the rules against a scenario receipt to produce
+`perfgate.tradeoff.v1` decision evidence:
+
+```bash
+perfgate tradeoff evaluate --config perfgate.toml --scenario artifacts/perfgate/scenario.json --out artifacts/perfgate/tradeoff.json
+```
+
+`min_improvement_ratio` follows metric direction. For lower-is-better metrics
+such as `wall_ms`, `1.10` means the baseline/current ratio must be at least
+1.10. For higher-is-better metrics such as `throughput_per_s`, the
+current/baseline ratio must be at least 1.10.
 
 ## Presets
 

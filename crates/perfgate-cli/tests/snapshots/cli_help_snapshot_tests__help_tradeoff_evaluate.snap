@@ -1,0 +1,19 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+expression: "help_output(&[\"tradeoff\", \"evaluate\", \"--help\"])"
+---
+Evaluate configured tradeoff rules into a perfgate.tradeoff.v1 receipt
+
+Usage: perfgate tradeoff evaluate [OPTIONS] --scenario <SCENARIO>
+
+Options:
+      --config <CONFIG> Path to perfgate.toml [default: perfgate.toml]
+      --scenario <SCENARIO> Path to a perfgate.scenario.v1 receipt
+      --out <OUT> Output tradeoff receipt path [default: tradeoff.json]
+      --pretty Pretty-print JSON
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

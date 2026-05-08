@@ -24,9 +24,9 @@ use perfgate_app::{
     ExportUseCase, PairedRunRequest, PairedRunUseCase, PromoteRequest, PromoteUseCase,
     RatchetUseCase, ReportRequest, ReportUseCase, RunBenchRequest, RunBenchUseCase,
     ScenarioEvaluateInput, ScenarioEvaluateRequest, ScenarioUseCase, SensorReportBuilder,
-    SystemClock, classify_error, github_annotations, is_host_mismatch_reason, preview_lines,
-    redact_command_for_diagnostics, render_json_diff, render_markdown, render_markdown_template,
-    render_terminal_diff,
+    SystemClock, TradeoffEvaluateRequest, TradeoffUseCase, classify_error, github_annotations,
+    is_host_mismatch_reason, preview_lines, redact_command_for_diagnostics, render_json_diff,
+    render_markdown, render_markdown_template, render_terminal_diff,
     watch::{Debouncer, WatchRunRequest, WatchState, execute_watch_run, render_watch_display},
 };
 use perfgate_client::types::auth::Role;
@@ -49,7 +49,7 @@ use perfgate_types::{
     ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy,
     MetricStatus, OtelSpanIdentifiers, PerfgateReport, REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig,
     RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt, ScenarioConfigFile,
-    SensorVerdictStatus, ToolInfo, VerdictStatus,
+    ScenarioReceipt, SensorVerdictStatus, ToolInfo, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
@@ -344,6 +344,12 @@ enum Command {
     Scenario {
         #[command(subcommand)]
         action: ScenarioAction,
+    },
+
+    /// Evaluate configured tradeoff rules against scenario evidence.
+    Tradeoff {
+        #[command(subcommand)]
+        action: TradeoffAction,
     },
 
     /// Automatically find the commit that introduced a performance regression.
@@ -1259,6 +1265,12 @@ pub enum ScenarioAction {
     Evaluate(ScenarioEvaluateArgs),
 }
 
+#[derive(Debug, Subcommand)]
+pub enum TradeoffAction {
+    /// Evaluate configured tradeoff rules into a perfgate.tradeoff.v1 receipt.
+    Evaluate(TradeoffEvaluateArgs),
+}
+
 #[derive(Debug, Args)]
 pub struct ScenarioEvaluateArgs {
     /// Path to perfgate.toml.
@@ -1279,6 +1291,25 @@ pub struct ScenarioEvaluateArgs {
 
     /// Output scenario receipt path.
     #[arg(long, default_value = "scenario.json")]
+    pub out: PathBuf,
+
+    /// Pretty-print JSON.
+    #[arg(long, default_value_t = false)]
+    pub pretty: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct TradeoffEvaluateArgs {
+    /// Path to perfgate.toml.
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Path to a perfgate.scenario.v1 receipt.
+    #[arg(long)]
+    pub scenario: PathBuf,
+
+    /// Output tradeoff receipt path.
+    #[arg(long, default_value = "tradeoff.json")]
     pub out: PathBuf,
 
     /// Pretty-print JSON.
@@ -3010,6 +3041,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         }
 
         Command::Scenario { action } => execute_scenario_action(action),
+        Command::Tradeoff { action } => execute_tradeoff_action(action),
 
         Command::Bisect(args) => {
             let usecase = BisectUseCase::default();
@@ -3263,6 +3295,43 @@ fn scenario_compare_path(scenario: &ScenarioConfigFile, out_dir: &Path) -> PathB
         .as_deref()
         .map(PathBuf::from)
         .unwrap_or_else(|| out_dir.join(&scenario.bench).join(COMPARE_RECEIPT_FILE))
+}
+
+fn execute_tradeoff_action(action: TradeoffAction) -> anyhow::Result<()> {
+    match action {
+        TradeoffAction::Evaluate(args) => execute_tradeoff_evaluate(args),
+    }
+}
+
+fn execute_tradeoff_evaluate(args: TradeoffEvaluateArgs) -> anyhow::Result<()> {
+    let config = load_config_file(&args.config)
+        .with_context(|| format!("failed to load {}", args.config.display()))?;
+    config
+        .validate()
+        .map_err(|error| anyhow::anyhow!("{} is invalid: {error}", args.config.display()))?;
+
+    if config.tradeoffs.is_empty() {
+        anyhow::bail!(
+            "no [[tradeoff]] entries configured in {}",
+            args.config.display()
+        );
+    }
+
+    let scenario: ScenarioReceipt = read_json(&args.scenario)
+        .with_context(|| format!("read scenario receipt {}", args.scenario.display()))?;
+    let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+        scenario,
+        rules: config.tradeoffs,
+        tool: tool_info(),
+    })?;
+
+    write_json(&args.out, &outcome.receipt, args.pretty)?;
+    eprintln!("Tradeoff receipt written to {}", args.out.display());
+
+    match outcome.receipt.verdict.status {
+        VerdictStatus::Fail => exit_with_code(2),
+        VerdictStatus::Pass | VerdictStatus::Warn | VerdictStatus::Skip => Ok(()),
+    }
 }
 
 fn execute_badge(args: BadgeArgs) -> anyhow::Result<()> {
