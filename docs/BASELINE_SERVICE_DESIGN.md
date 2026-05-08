@@ -41,6 +41,9 @@ The current server binary supports:
 
 For local development, prefer `perfgate serve`. For a shared deployment,
 prefer `perfgate-server` directly.
+Run `perfgate serve --doctor` before starting the local sandbox when you want
+to verify the SQLite path, WAL setup, and dashboard port without keeping a
+server process running.
 
 The SQLite backend is intended for one server process. File-backed SQLite
 connections are configured with WAL mode and a 5 second busy timeout so normal
@@ -155,6 +158,7 @@ The main server-aware CLI workflows are:
 | `admin keys revoke` | revoke an API key |
 | `admin keys rotate` | create a replacement key and revoke the old key |
 | `serve` | run a local baseline server/dashboard in local mode |
+| `serve --doctor` | preflight the local SQLite path, WAL setup, and dashboard port |
 
 Cross-project compare is currently a CLI-side lookup override for baseline
 fetches. It does not change server-side auth or the project used by other
