@@ -20,6 +20,7 @@ perfgate-server --storage-type sqlite --database-url ./perfgate.db \
   --api-keys admin:pg_live_<32+alnum>:my-project
 
 # Local single-user sandbox
+cargo run -p perfgate-cli -- serve --doctor
 cargo run -p perfgate-cli -- serve --no-open
 ```
 

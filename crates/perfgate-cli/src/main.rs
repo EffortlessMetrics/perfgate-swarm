@@ -663,6 +663,10 @@ pub struct ServeArgs {
     #[arg(long)]
     pub db: Option<PathBuf>,
 
+    /// Check the local server database path and port, then exit
+    #[arg(long, default_value_t = false)]
+    pub doctor: bool,
+
     /// Do not open the browser automatically
     #[arg(long, default_value_t = false)]
     pub no_open: bool,
@@ -3635,12 +3639,24 @@ fn default_data_dir() -> anyhow::Result<PathBuf> {
     Ok(dir)
 }
 
+fn serve_db_path(db: Option<PathBuf>) -> anyhow::Result<PathBuf> {
+    match db {
+        Some(path) => Ok(path),
+        None => Ok(default_data_dir()?.join("data.db")),
+    }
+}
+
+fn serve_api_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}/api/v1")
+}
+
 /// Start the local dashboard server.
 fn execute_serve(args: ServeArgs) -> anyhow::Result<()> {
-    let db_path = match args.db {
-        Some(p) => p,
-        None => default_data_dir()?.join("data.db"),
-    };
+    let db_path = serve_db_path(args.db)?;
+
+    if args.doctor {
+        return execute_serve_doctor(args.port, &db_path);
+    }
 
     // Ensure the parent directory exists for the database file.
     if let Some(parent) = db_path.parent() {
@@ -3650,11 +3666,16 @@ fn execute_serve(args: ServeArgs) -> anyhow::Result<()> {
 
     let bind_addr = format!("127.0.0.1:{}", args.port);
     let url = format!("http://127.0.0.1:{}", args.port);
+    let api_url = serve_api_url(args.port);
+    let health_url = format!("http://127.0.0.1:{}/health", args.port);
 
     eprintln!("perfgate serve");
     eprintln!("  database : {}", db_path.display());
     eprintln!("  dashboard: {url}");
+    eprintln!("  api      : {api_url}");
+    eprintln!("  health   : {health_url}");
     eprintln!("  auth     : disabled (local mode)");
+    eprintln!("  upload   : PERFGATE_LOCAL_DB={api_url} perfgate run --local-db ...");
     eprintln!();
     eprintln!("Press Ctrl+C to stop.");
 
@@ -3678,6 +3699,91 @@ fn execute_serve(args: ServeArgs) -> anyhow::Result<()> {
     })?;
 
     Ok(())
+}
+
+fn execute_serve_doctor(port: u16, db_path: &Path) -> anyhow::Result<()> {
+    let bind_addr = format!("127.0.0.1:{port}");
+    let url = format!("http://127.0.0.1:{port}");
+    let api_url = serve_api_url(port);
+    let health_url = format!("http://127.0.0.1:{port}/health");
+    let checks = vec![
+        serve_database_directory_check(db_path),
+        serve_sqlite_check(db_path),
+        serve_bind_check(&bind_addr),
+    ];
+
+    println!("perfgate serve doctor");
+    println!();
+    println!("{:<4} {:<18} {}", "INFO", "database", db_path.display());
+    println!("{:<4} {:<18} {}", "INFO", "dashboard", url);
+    println!("{:<4} {:<18} {}", "INFO", "api", api_url);
+    println!("{:<4} {:<18} {}", "INFO", "health", health_url);
+    for check in &checks {
+        println!(
+            "{:<4} {:<18} {}",
+            check.status.as_str(),
+            check.name,
+            check.detail
+        );
+    }
+
+    let failed = checks
+        .iter()
+        .filter(|check| check.status == DoctorStatus::Fail)
+        .count();
+    println!();
+    println!("Summary: {failed} failed check{}", plural(failed));
+
+    if failed > 0 {
+        anyhow::bail!("serve doctor found {failed} failed check{}", plural(failed));
+    }
+
+    Ok(())
+}
+
+fn serve_database_directory_check(db_path: &Path) -> DoctorCheck {
+    match ensure_database_directory_writable(db_path) {
+        Ok(parent) => DoctorCheck::ok("database dir", format!("{} writable", parent.display())),
+        Err(error) => DoctorCheck::fail("database dir", error.to_string()),
+    }
+}
+
+fn ensure_database_directory_writable(db_path: &Path) -> anyhow::Result<PathBuf> {
+    let parent = db_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)
+        .with_context(|| format!("create database directory {}", parent.display()))?;
+
+    let probe = parent.join(format!(".perfgate-serve-doctor-{}.tmp", std::process::id()));
+    fs::write(&probe, b"perfgate serve doctor\n")
+        .with_context(|| format!("write probe file {}", probe.display()))?;
+    fs::remove_file(&probe).with_context(|| format!("remove probe file {}", probe.display()))?;
+    Ok(parent.to_path_buf())
+}
+
+fn serve_sqlite_check(db_path: &Path) -> DoctorCheck {
+    match perfgate_server::SqliteStore::new(db_path, None) {
+        Ok(_) => DoctorCheck::ok("sqlite storage", "opened, initialized, and WAL configured"),
+        Err(error) => DoctorCheck::fail(
+            "sqlite storage",
+            format!("{} not usable: {error}", db_path.display()),
+        ),
+    }
+}
+
+fn serve_bind_check(bind_addr: &str) -> DoctorCheck {
+    match std::net::TcpListener::bind(bind_addr) {
+        Ok(listener) => {
+            drop(listener);
+            DoctorCheck::ok("dashboard bind", format!("{bind_addr} available"))
+        }
+        Err(error) => DoctorCheck::fail(
+            "dashboard bind",
+            format!("{bind_addr} unavailable: {error}"),
+        ),
+    }
 }
 
 /// Open a URL in the default browser.

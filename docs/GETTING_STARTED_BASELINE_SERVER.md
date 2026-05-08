@@ -18,6 +18,16 @@ shared baseline service.
 
 ## Local Sandbox
 
+Preflight the local SQLite database path and dashboard port:
+
+```bash
+cargo run -p perfgate-cli -- serve --doctor --port 8484
+```
+
+The preflight opens and initializes the SQLite database, verifies WAL setup,
+checks that `127.0.0.1:8484` is available, and prints the dashboard, API, and
+health URLs it will use.
+
 Start a local server on `127.0.0.1:8484`:
 
 ```bash

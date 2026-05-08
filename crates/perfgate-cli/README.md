@@ -79,6 +79,7 @@ Commands are organized by workflow stage.
 |-------------|---------|
 | `promote`   | Copy a run receipt into baseline storage |
 | `baseline`  | Manage baselines on a centralized server (list, upload, download, delete, history, verdicts, migrate) |
+| `serve`     | Start or preflight a local SQLite-backed dashboard server |
 | `aggregate` | Merge multiple run receipts (e.g. from a fleet) into one |
 | `fleet`     | Fleet-wide dependency regression alerts and impact analysis |
 
