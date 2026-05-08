@@ -1,6 +1,7 @@
 //! End-to-end fixture for the structured decision evidence path.
 
 use predicates::prelude::*;
+use serde_json::json;
 use std::fs;
 use std::path::Path;
 use tempfile::tempdir;
@@ -50,13 +51,13 @@ weight = 1.0
 bench = "parser"
 
 [[tradeoff]]
-name = "wall-clock-safety"
-if_failed = "wall_ms"
+name = "memory_for_speed"
+if_failed = "max_rss_kb"
 downgrade_to = "warn"
 
 [[tradeoff.require]]
 metric = "wall_ms"
-min_improvement_ratio = 1.01
+min_improvement_ratio = 1.10
 "#,
             command_toml_array(&success_command())
         ),
@@ -99,6 +100,9 @@ fn structured_decision_path_produces_scenario_and_tradeoff_receipts() {
 
     let compare_path = root.join("artifacts/perfgate/parser/compare.json");
     assert!(compare_path.exists(), "check should write compare receipt");
+    // The live check proves canonical artifact placement. A controlled compare
+    // keeps the tradeoff decision deterministic across OS metric collectors.
+    write_controlled_compare_receipt(&compare_path);
 
     let scenario_path = root.join("artifacts/perfgate/scenario.json");
     perfgate_cmd()
@@ -112,7 +116,7 @@ fn structured_decision_path_produces_scenario_and_tradeoff_receipts() {
             "artifacts/perfgate/scenario.json",
         ])
         .assert()
-        .success()
+        .code(2)
         .stderr(predicate::str::contains("Scenario receipt written"));
 
     let scenario: perfgate_types::ScenarioReceipt =
@@ -123,6 +127,10 @@ fn structured_decision_path_produces_scenario_and_tradeoff_receipts() {
     assert_eq!(scenario.components.len(), 1);
     assert_eq!(scenario.components[0].benchmark.as_deref(), Some("parser"));
     assert!(scenario.weighted_deltas.contains_key("wall_ms"));
+    assert_eq!(
+        scenario.weighted_deltas["max_rss_kb"].status,
+        perfgate_types::MetricStatus::Fail
+    );
 
     let tradeoff_path = root.join("artifacts/perfgate/tradeoff.json");
     perfgate_cmd()
@@ -148,11 +156,24 @@ fn structured_decision_path_produces_scenario_and_tradeoff_receipts() {
     assert_eq!(tradeoff.scenario.as_deref(), Some("release_workload"));
     assert_eq!(tradeoff.configured_rules.len(), 1);
     assert_eq!(tradeoff.rules.len(), 1);
-    assert_eq!(tradeoff.rules[0].name, "wall-clock-safety");
+    assert_eq!(tradeoff.rules[0].name, "memory_for_speed");
+    assert_eq!(
+        tradeoff.rules[0].status,
+        perfgate_types::TradeoffDecisionStatus::Accepted
+    );
+    assert!(tradeoff.rules[0].accepted);
+    assert_eq!(tradeoff.rules[0].requirements.len(), 1);
+    assert!(tradeoff.rules[0].requirements[0].satisfied);
+    assert!(tradeoff.decision.accepted_tradeoff);
+    assert_eq!(tradeoff.decision.status, perfgate_types::MetricStatus::Warn);
+    assert_eq!(
+        tradeoff.weighted_deltas["max_rss_kb"].status,
+        perfgate_types::MetricStatus::Warn
+    );
     assert_eq!(
         tradeoff.verdict.status,
-        perfgate_types::VerdictStatus::Pass,
-        "tradeoff command exit code should match the final pass verdict"
+        perfgate_types::VerdictStatus::Warn,
+        "tradeoff command exit code should allow accepted warn verdicts"
     );
 
     perfgate_cmd()
@@ -168,6 +189,63 @@ fn structured_decision_path_produces_scenario_and_tradeoff_receipts() {
         .success();
     let decision =
         fs::read_to_string(root.join("artifacts/perfgate/decision.md")).expect("read decision md");
-    assert!(decision.contains("perfgate tradeoff: pass"));
-    assert!(decision.contains("wall-clock-safety"));
+    assert!(decision.contains("perfgate tradeoff: warn"));
+    assert!(decision.contains("tradeoff 'memory_for_speed' accepted"));
+    assert!(decision.contains("memory_for_speed"));
+}
+
+fn write_controlled_compare_receipt(path: &Path) {
+    let receipt = json!({
+        "schema": "perfgate.compare.v1",
+        "tool": {"name": "perfgate", "version": "0.16.0"},
+        "bench": {
+            "name": "parser",
+            "command": success_command(),
+            "repeat": 1,
+            "warmup": 0
+        },
+        "baseline_ref": {
+            "path": "baselines/parser.json",
+            "run_id": "parser-baseline"
+        },
+        "current_ref": {
+            "path": "artifacts/perfgate/parser/run.json",
+            "run_id": "parser-current"
+        },
+        "budgets": {},
+        "deltas": {
+            "wall_ms": {
+                "baseline": 100.0,
+                "current": 80.0,
+                "ratio": 0.80,
+                "pct": -0.20,
+                "regression": 0.0,
+                "status": "pass"
+            },
+            "max_rss_kb": {
+                "baseline": 100.0,
+                "current": 1200.0,
+                "ratio": 12.0,
+                "pct": 11.0,
+                "regression": 11.0,
+                "status": "fail"
+            }
+        },
+        "verdict": {
+            "status": "fail",
+            "counts": {
+                "pass": 1,
+                "warn": 0,
+                "fail": 1,
+                "skip": 0
+            },
+            "reasons": ["max_rss_kb_fail"]
+        }
+    });
+
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize controlled compare receipt"),
+    )
+    .expect("write controlled compare receipt");
 }
