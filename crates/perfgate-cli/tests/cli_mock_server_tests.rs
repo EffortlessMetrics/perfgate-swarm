@@ -4,7 +4,7 @@ use perfgate_types::{BASELINE_SCHEMA_V1, RUN_SCHEMA_V1};
 use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 mod common;
@@ -123,6 +123,25 @@ fn key_entry(id: &str, project: &str, revoked: bool) -> serde_json::Value {
         } else {
             serde_json::Value::Null
         }
+    })
+}
+
+fn audit_event(
+    id: &str,
+    project: &str,
+    action: &str,
+    resource_type: &str,
+    resource_id: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "timestamp": "2026-01-01T00:00:00Z",
+        "actor": "key-admin",
+        "action": action,
+        "resource_type": resource_type,
+        "resource_id": resource_id,
+        "project": project,
+        "metadata": {"benchmark": "parser"}
     })
 }
 
@@ -335,6 +354,125 @@ async fn test_admin_keys_rotate_with_mock_server() {
         .stderr(predicate::str::contains(
             "Rotated API key key-old -> key-new",
         ));
+}
+
+#[tokio::test]
+async fn test_audit_list_with_mock_server() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/audit"))
+        .and(header("Authorization", "Bearer admin-key"))
+        .and(query_param("project", "my-project"))
+        .and(query_param("action", "create"))
+        .and(query_param("resource_type", "baseline"))
+        .and(query_param("limit", "25"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "events": [
+                audit_event("audit-1", "my-project", "create", "baseline", "bl-1")
+            ],
+            "pagination": {
+                "limit": 25,
+                "offset": 0,
+                "total": 1,
+                "has_more": false
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("admin-key")
+        .arg("audit")
+        .arg("list")
+        .arg("--project")
+        .arg("my-project")
+        .arg("--action")
+        .arg("create")
+        .arg("--resource-type")
+        .arg("baseline")
+        .arg("--limit")
+        .arg("25");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Audit events (1 of 1):"))
+        .stdout(predicate::str::contains("audit-1"))
+        .stdout(predicate::str::contains("my-project"))
+        .stdout(predicate::str::contains("key-admin"));
+}
+
+#[tokio::test]
+async fn test_audit_export_jsonl_with_mock_server() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/audit"))
+        .and(header("Authorization", "Bearer admin-key"))
+        .and(query_param("project", "my-project"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "events": [
+                audit_event("audit-1", "my-project", "promote", "baseline", "bl-1"),
+                audit_event("audit-2", "my-project", "delete", "key", "key-1")
+            ],
+            "pagination": {
+                "limit": 50,
+                "offset": 0,
+                "total": 2,
+                "has_more": false
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("admin-key")
+        .arg("audit")
+        .arg("export")
+        .arg("--project")
+        .arg("my-project")
+        .arg("--format")
+        .arg("jsonl");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"id\":\"audit-1\""))
+        .stdout(predicate::str::contains("\"action\":\"promote\""))
+        .stdout(predicate::str::contains("\"id\":\"audit-2\""))
+        .stdout(predicate::str::contains("\"resource_type\":\"key\""));
+}
+
+#[tokio::test]
+async fn test_audit_list_reports_authorization_failure() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v1/audit"))
+        .and(header("Authorization", "Bearer viewer-key"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "error": "forbidden",
+            "message": "admin scope is required"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("--baseline-server")
+        .arg(format!("{}/api/v1", mock_server.uri()))
+        .arg("--api-key")
+        .arg("viewer-key")
+        .arg("audit")
+        .arg("list");
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to list audit events"));
 }
 
 #[tokio::test]

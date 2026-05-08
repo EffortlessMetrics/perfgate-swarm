@@ -6,6 +6,7 @@
 //! - Uploading and downloading baselines
 //! - Listing baselines with filtering
 //! - Promoting and deleting baselines
+//! - Listing admin audit events
 //! - Health checking
 //! - Automatic fallback to local storage when the server is unavailable
 //!
@@ -111,11 +112,12 @@ pub use config::{
 pub use error::ClientError;
 pub use fallback::FallbackClient;
 pub use types::{
-    AffectedProject, BaselineRecord, BaselineSource, BaselineSummary, DeleteBaselineResponse,
-    DependencyChange, DependencyEvent, DependencyImpactQuery, DependencyImpactResponse, FleetAlert,
-    HealthResponse, ListBaselinesQuery, ListBaselinesResponse, ListFleetAlertsQuery,
-    ListFleetAlertsResponse, ListVerdictsQuery, ListVerdictsResponse, PaginationInfo,
-    PromoteBaselineRequest, PromoteBaselineResponse, RecordDependencyEventRequest,
+    AffectedProject, AuditAction, AuditEvent, AuditResourceType, BaselineRecord, BaselineSource,
+    BaselineSummary, DeleteBaselineResponse, DependencyChange, DependencyEvent,
+    DependencyImpactQuery, DependencyImpactResponse, FleetAlert, HealthResponse,
+    ListAuditEventsQuery, ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse,
+    ListFleetAlertsQuery, ListFleetAlertsResponse, ListVerdictsQuery, ListVerdictsResponse,
+    PaginationInfo, PromoteBaselineRequest, PromoteBaselineResponse, RecordDependencyEventRequest,
     RecordDependencyEventResponse, StorageHealth, SubmitVerdictRequest, UploadBaselineRequest,
     UploadBaselineResponse, VerdictRecord,
 };

@@ -145,6 +145,8 @@ The main server-aware CLI workflows are:
 | `baseline flaky` | inspect benchmarks with elevated historical noise |
 | `baseline submit-verdict` | persist compare verdicts |
 | `baseline migrate` | upload local baseline JSON files recursively |
+| `audit list` | inspect append-only audit events |
+| `audit export --format jsonl` | export audit events for operators or compliance review |
 | `fleet alerts` | list fleet-wide dependency regression alerts |
 | `fleet impact` | inspect the project impact of a dependency |
 | `fleet record-event` | record a dependency change event with performance delta |

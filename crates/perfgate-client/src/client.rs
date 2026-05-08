@@ -349,6 +349,41 @@ impl BaselineClient {
         .await
     }
 
+    /// Lists audit events. Requires an admin API key on authenticated servers.
+    pub async fn list_audit_events(
+        &self,
+        query: &ListAuditEventsQuery,
+    ) -> Result<ListAuditEventsResponse, ClientError> {
+        self.execute_with_retry(|| {
+            let url = self.url("audit");
+            debug!(url = %url, "Listing audit events");
+
+            let client = self.inner.clone();
+            let query = query.clone();
+            async move {
+                let response = client
+                    .get(url)
+                    .query(&query)
+                    .send()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status().as_u16();
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ClientError::from_http(status, &body));
+                }
+
+                let body = response
+                    .json::<ListAuditEventsResponse>()
+                    .await
+                    .map_err(ClientError::RequestError)?;
+                Ok(body)
+            }
+        })
+        .await
+    }
+
     /// Checks the health of the baseline service.
     pub async fn health_check(&self) -> Result<HealthResponse, ClientError> {
         let url = self.url("health");
@@ -633,7 +668,7 @@ impl BaselineClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn test_config(url: &str) -> ClientConfig {
@@ -714,5 +749,53 @@ mod tests {
 
         assert_eq!(response.version, "v2.0.0");
         assert_eq!(response.promoted_from, "v1.0.0");
+    }
+
+    #[tokio::test]
+    async fn test_list_audit_events() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/audit"))
+            .and(query_param("project", "my-project"))
+            .and(query_param("action", "create"))
+            .and(query_param("resource_type", "baseline"))
+            .and(query_param("limit", "25"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "events": [{
+                    "id": "audit_123",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "actor": "key-admin",
+                    "action": "create",
+                    "resource_type": "baseline",
+                    "resource_id": "bl_123",
+                    "project": "my-project",
+                    "metadata": {"benchmark": "parser"}
+                }],
+                "pagination": {
+                    "limit": 25,
+                    "offset": 0,
+                    "total": 1,
+                    "has_more": false
+                }
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = BaselineClient::new(test_config(&mock_server.uri())).unwrap();
+        let response = client
+            .list_audit_events(&ListAuditEventsQuery {
+                project: Some("my-project".to_string()),
+                action: Some("create".to_string()),
+                resource_type: Some("baseline".to_string()),
+                limit: 25,
+                ..ListAuditEventsQuery::default()
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(response.events.len(), 1);
+        assert_eq!(response.events[0].id, "audit_123");
+        assert_eq!(response.events[0].project, "my-project");
     }
 }

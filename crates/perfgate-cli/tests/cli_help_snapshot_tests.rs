@@ -23,6 +23,7 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("check"))
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("paired"))
+        .stdout(predicate::str::contains("audit"))
         .stdout(predicate::str::contains("md"))
         .stdout(predicate::str::contains("export"))
         .stdout(predicate::str::contains("promote"))
@@ -140,6 +141,17 @@ fn cli_help_baseline() {
         .stdout(predicate::str::contains("promote"))
         .stdout(predicate::str::contains("list"))
         .stdout(predicate::str::contains("download"));
+}
+
+#[test]
+fn cli_help_audit() {
+    perfgate_cmd()
+        .args(["audit", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("List and export"))
+        .stdout(predicate::str::contains("list"))
+        .stdout(predicate::str::contains("export"));
 }
 
 #[test]

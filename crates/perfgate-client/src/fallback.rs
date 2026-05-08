@@ -174,6 +174,14 @@ impl FallbackClient {
         self.client.list_verdicts(project, query).await
     }
 
+    /// Lists audit events (server only, no fallback).
+    pub async fn list_audit_events(
+        &self,
+        query: &ListAuditEventsQuery,
+    ) -> Result<ListAuditEventsResponse, ClientError> {
+        self.client.list_audit_events(query).await
+    }
+
     /// Checks server health.
     pub async fn health_check(&self) -> Result<HealthResponse, ClientError> {
         self.client.health_check().await
