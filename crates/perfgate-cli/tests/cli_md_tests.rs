@@ -256,8 +256,11 @@ fn test_md_tradeoff_receipt_stdout() {
         .stdout(predicate::str::contains(
             "tokenizer-slower-if-parser-faster",
         ))
-        .stdout(predicate::str::contains("Weighted Outcome"))
-        .stdout(predicate::str::contains("Probe Evidence"));
+        .stdout(predicate::str::contains("Summary"))
+        .stdout(predicate::str::contains("Weighted Workload"))
+        .stdout(predicate::str::contains("Probe Evidence"))
+        .stdout(predicate::str::contains("Accepted / Rejected Tradeoffs"))
+        .stdout(predicate::str::contains("Local Reproduction"));
 }
 
 /// Test markdown output contains verdict reasons when present

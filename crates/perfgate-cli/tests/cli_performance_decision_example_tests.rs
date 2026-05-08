@@ -121,13 +121,32 @@ fn performance_decision_example_runs_end_to_end() {
         tradeoff.rules[0].requirements[0].probe.as_deref(),
         Some("parser.batch_loop")
     );
-    assert_eq!(tradeoff.probes[0].name, "parser.batch_loop");
+    assert!(
+        tradeoff
+            .probes
+            .iter()
+            .any(|probe| probe.name == "parser.batch_loop")
+    );
+    assert!(
+        tradeoff
+            .probes
+            .iter()
+            .any(|probe| probe.name == "parser.tokenize")
+    );
 
     let decision =
         fs::read_to_string(root.join("artifacts/perfgate/decision.md")).expect("read decision md");
     assert!(decision.contains("perfgate tradeoff: warn"));
     assert!(decision.contains("tradeoff 'memory_for_probe_speed' accepted"));
+    assert!(decision.contains("Weighted Workload"));
     assert!(decision.contains("Probe Evidence"));
+    assert!(decision.contains("parser.tokenize"));
+    assert!(decision.contains("+2.07%"));
+    assert!(decision.contains("parser.batch_loop"));
+    assert!(decision.contains("-10.40%"));
+    assert!(decision.contains("Accepted / Rejected Tradeoffs"));
+    assert!(decision.contains("Evidence Files"));
+    assert!(decision.contains("Local Reproduction"));
 }
 
 fn copy_dir_all(source: &Path, destination: &Path) {

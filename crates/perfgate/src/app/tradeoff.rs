@@ -7,7 +7,7 @@ use perfgate_types::{
     VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC, VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED,
     Verdict,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -68,7 +68,7 @@ impl TradeoffUseCase {
             }
             rule_outcomes.push(outcome);
         }
-        let probes = tradeoff_probe_outcomes(&rule_outcomes, &probe_index);
+        let probes = tradeoff_probe_outcomes(&probe_index);
 
         let mut verdict = verdict_from_weighted_deltas(&weighted_deltas);
         verdict
@@ -306,27 +306,17 @@ fn index_probe_compares(
 }
 
 fn tradeoff_probe_outcomes(
-    rule_outcomes: &[TradeoffRuleOutcome],
     probe_index: &BTreeMap<String, ProbeCompareObservation>,
 ) -> Vec<TradeoffProbeOutcome> {
-    let probe_names: BTreeSet<String> = rule_outcomes
-        .iter()
-        .flat_map(|rule| rule.requirements.iter())
-        .filter_map(|requirement| requirement.probe.clone())
-        .collect();
-
-    probe_names
-        .iter()
-        .filter_map(|name| {
-            let probe = probe_index.get(name)?;
-            Some(TradeoffProbeOutcome {
-                name: probe.name.clone(),
-                scope: probe.scope,
-                weight: None,
-                deltas: probe.deltas.clone(),
-                status: probe.status,
-                reason: probe.reasons.first().cloned(),
-            })
+    probe_index
+        .values()
+        .map(|probe| TradeoffProbeOutcome {
+            name: probe.name.clone(),
+            scope: probe.scope,
+            weight: None,
+            deltas: probe.deltas.clone(),
+            status: probe.status,
+            reason: probe.reasons.first().cloned(),
         })
         .collect()
 }
@@ -663,7 +653,8 @@ mod tests {
                 .as_deref()
                 .is_some_and(|reason| reason.contains("required probe"))
         );
-        assert_eq!(receipt.probes.len(), 0);
+        assert_eq!(receipt.probes.len(), 1);
+        assert_eq!(receipt.probes[0].name, "parser.tokenize");
         assert_eq!(receipt.verdict.status, VerdictStatus::Fail);
     }
 }
