@@ -163,6 +163,19 @@ such as `wall_ms`, `1.10` means the baseline/current ratio must be at least
 1.10. For higher-is-better metrics such as `throughput_per_s`, the
 current/baseline ratio must be at least 1.10.
 
+## Probe Comparison
+
+Probe receipts can be compared before they are attached to scenario or
+tradeoff evidence:
+
+```bash
+perfgate probe compare --baseline baselines/probes.json --current artifacts/perfgate/probes.json --out artifacts/perfgate/probe-compare.json
+```
+
+The first comparison surface is advisory. It matches probe observations by
+name, compares shared numeric metrics, and writes `perfgate.probe_compare.v1`
+with warnings for missing probes or metrics.
+
 ## Presets
 
 Bundled presets in `presets/`:

@@ -9,6 +9,7 @@ perfgate uses versioned JSON receipts at every stage of the pipeline.
 | `perfgate.run.v1` | `run`, `check` | Raw measurement data from a benchmark execution |
 | `perfgate.compare.v1` | `compare`, `check`, `paired` | Comparison of current run against baseline |
 | `perfgate.probe.v1` | `ingest probes` | Named probe observations from internal phases or external instrumentation |
+| `perfgate.probe_compare.v1` | `probe compare` | Probe-level deltas between two probe receipts |
 | `perfgate.scenario.v1` | `scenario evaluate` | Weighted workload-scenario evidence across benchmarks, phases, or probe groups |
 | `perfgate.tradeoff.v1` | `tradeoff evaluate` | Structured decision evidence for accepted or rejected performance tradeoffs |
 | `perfgate.report.v1` | `report`, `check` | Cockpit-compatible report envelope with findings, summary, and optional `profile_path` diagnostic |
@@ -28,6 +29,7 @@ perfgate also commits generated schemas for tooling and editor integration:
 |------|---------|
 | `schemas/perfgate.config.v1.schema.json` | Validates `perfgate.toml` / JSON config shape, including optional per-benchmark scaling configuration |
 | `schemas/perfgate.probe.v1.schema.json` | Validates probe receipts for named phase/span metrics from external instrumentation |
+| `schemas/perfgate.probe_compare.v1.schema.json` | Validates probe delta receipts used to explain local phase movement |
 | `schemas/perfgate.scenario.v1.schema.json` | Validates weighted scenario receipts used to explain workload-level outcomes |
 | `schemas/perfgate.tradeoff.v1.schema.json` | Validates tradeoff receipts that explain why local regressions were accepted or rejected |
 | `schemas/perfgate.report.v1.schema.json` | Validates report receipts, including additive diagnostics such as `profile_path` |
@@ -63,6 +65,20 @@ become metrics:
 ```json
 {"probe":"parser.tokenize","scope":"local","wall_ms":12.4,"alloc_bytes":184320,"items":10000}
 ```
+
+## Probe Comparison
+
+`perfgate probe compare` reads two `perfgate.probe.v1` receipts, matches
+probes by name, compares shared numeric metrics, and writes a
+`perfgate.probe_compare.v1` receipt:
+
+```bash
+perfgate probe compare --baseline baselines/probes.json --current artifacts/perfgate/probes.json --out artifacts/perfgate/probe-compare.json
+```
+
+Missing probes or missing metrics are recorded as warnings instead of policy
+failures. This keeps early probe evidence advisory while still producing
+durable deltas that scenario and tradeoff workflows can attach later.
 
 ## Scenario Evaluation
 
@@ -139,7 +155,8 @@ It also checks v0.16 baseline-service and fleet contract fixtures for
 `perfgate.baseline.v1`, `perfgate.verdict.v1`, `perfgate.audit.v1`,
 `perfgate.health.v1`, `perfgate.dependency_event.v1`, and
 `perfgate.fleet_alert.v1`, plus structured-evidence fixtures for
-`perfgate.probe.v1`, `perfgate.scenario.v1`, and `perfgate.tradeoff.v1`.
+`perfgate.probe.v1`, `perfgate.probe_compare.v1`,
+`perfgate.scenario.v1`, and `perfgate.tradeoff.v1`.
 
 ## Versioning Policy
 

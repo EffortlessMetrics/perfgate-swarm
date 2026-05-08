@@ -1,0 +1,66 @@
+{
+  "schema": "perfgate.probe_compare.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.16.0"
+  },
+  "run": {
+    "id": "probe-compare-run",
+    "started_at": "2026-05-08T00:00:00Z",
+    "ended_at": "2026-05-08T00:00:01Z",
+    "host": {
+      "os": "linux",
+      "arch": "x86_64"
+    }
+  },
+  "bench": {
+    "name": "parser",
+    "command": [
+      "cargo",
+      "bench"
+    ],
+    "repeat": 2,
+    "warmup": 0
+  },
+  "scenario": "large_file_parse",
+  "baseline_ref": {
+    "path": "baselines/probes.json",
+    "run_id": "baseline-run"
+  },
+  "current_ref": {
+    "path": "artifacts/perfgate/probes.json",
+    "run_id": "current-run"
+  },
+  "probes": [
+    {
+      "name": "parser.tokenize",
+      "parent": "parser.total",
+      "scope": "local",
+      "baseline_count": 1,
+      "current_count": 1,
+      "deltas": {
+        "wall_ms": {
+          "baseline": 12.0,
+          "current": 13.0,
+          "ratio": 1.0833333333333333,
+          "pct": 0.08333333333333333,
+          "regression": 0.08333333333333333,
+          "status": "warn"
+        }
+      },
+      "status": "warn",
+      "reasons": []
+    }
+  ],
+  "verdict": {
+    "status": "warn",
+    "counts": {
+      "pass": 0,
+      "warn": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "reasons": []
+  },
+  "warnings": []
+}

@@ -60,6 +60,7 @@ Commands are organized by workflow stage.
 | Command   | Purpose |
 |-----------|---------|
 | `compare` | Diff current vs baseline, emit a `perfgate.compare.v1` receipt |
+| `probe compare` | Compare named probe receipts, emit a `perfgate.probe_compare.v1` receipt |
 | `blame`   | Identify which Cargo.lock dependency changes caused a regression |
 | `explain` | Generate AI-ready diagnostic prompts for regressions |
 
