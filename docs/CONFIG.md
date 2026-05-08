@@ -142,6 +142,21 @@ metric = "wall_ms"
 min_improvement_ratio = 1.10
 ```
 
+Requirements can also target a named probe from scenario-attached
+`perfgate.probe_compare.v1` evidence:
+
+```toml
+[[tradeoff.require]]
+metric = "wall_ms"
+probe = "parser.batch_loop"
+min_improvement_ratio = 1.10
+```
+
+When `probe` is set, `tradeoff evaluate` follows the scenario component's
+`probe_compare_ref` and evaluates the requirement against that probe's metric
+delta. Missing probe evidence leaves the requirement unsatisfied; it does not
+silently fall back to weighted scenario deltas.
+
 Evaluate the rules against a scenario receipt to produce
 `perfgate.tradeoff.v1` decision evidence:
 

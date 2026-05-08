@@ -1,18 +1,20 @@
 use crate::domain::budget::{aggregate_verdict, reason_token};
 use perfgate_types::{
-    Delta, HostInfo, Metric, MetricStatus, RunMeta, ScenarioReceipt, TRADEOFF_SCHEMA_V1, ToolInfo,
-    TradeoffDecision, TradeoffDecisionStatus, TradeoffDowngrade, TradeoffReceipt,
+    Delta, HostInfo, Metric, MetricStatus, PROBE_COMPARE_SCHEMA_V1, ProbeCompareObservation,
+    ProbeCompareReceipt, RunMeta, ScenarioReceipt, TRADEOFF_SCHEMA_V1, ToolInfo, TradeoffDecision,
+    TradeoffDecisionStatus, TradeoffDowngrade, TradeoffProbeOutcome, TradeoffReceipt,
     TradeoffRequirement, TradeoffRequirementOutcome, TradeoffRule, TradeoffRuleOutcome,
     VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC, VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED,
     Verdict,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct TradeoffEvaluateRequest {
     pub scenario: ScenarioReceipt,
+    pub probe_compares: Vec<ProbeCompareReceipt>,
     pub rules: Vec<TradeoffRule>,
     pub tool: ToolInfo,
 }
@@ -29,14 +31,24 @@ impl TradeoffUseCase {
         if req.rules.is_empty() {
             anyhow::bail!("no tradeoff rules provided");
         }
+        for probe_compare in &req.probe_compares {
+            if probe_compare.schema != PROBE_COMPARE_SCHEMA_V1 {
+                anyhow::bail!(
+                    "probe compare receipt must use schema '{}', got '{}'",
+                    PROBE_COMPARE_SCHEMA_V1,
+                    probe_compare.schema
+                );
+            }
+        }
 
         let mut weighted_deltas = req.scenario.weighted_deltas.clone();
+        let (probe_index, probe_warnings) = index_probe_compares(&req.probe_compares);
         let mut rule_outcomes = Vec::new();
         let mut accepted_reasons = Vec::new();
         let mut rejected_reasons = Vec::new();
 
         for rule in &req.rules {
-            let outcome = evaluate_rule(rule, &weighted_deltas);
+            let outcome = evaluate_rule(rule, &weighted_deltas, &probe_index);
             if outcome.accepted {
                 if let Some(delta) = weighted_deltas.get_mut(rule.if_failed.as_str()) {
                     delta.status = downgrade_status(rule.downgrade_to);
@@ -56,6 +68,7 @@ impl TradeoffUseCase {
             }
             rule_outcomes.push(outcome);
         }
+        let probes = tradeoff_probe_outcomes(&rule_outcomes, &probe_index);
 
         let mut verdict = verdict_from_weighted_deltas(&weighted_deltas);
         verdict
@@ -72,6 +85,11 @@ impl TradeoffUseCase {
             reason: decision_reason(accepted, &rule_outcomes, &verdict),
         };
 
+        let mut warnings = req.scenario.warnings;
+        for warning in probe_warnings {
+            push_unique(&mut warnings, warning);
+        }
+
         let receipt = TradeoffReceipt {
             schema: TRADEOFF_SCHEMA_V1.to_string(),
             tool: req.tool,
@@ -81,11 +99,11 @@ impl TradeoffUseCase {
             current_ref: req.scenario.current_ref,
             configured_rules: req.rules,
             rules: rule_outcomes,
-            probes: Vec::new(),
+            probes,
             weighted_deltas,
             decision,
             verdict,
-            warnings: req.scenario.warnings,
+            warnings,
         };
 
         Ok(TradeoffEvaluateOutcome { receipt })
@@ -95,6 +113,7 @@ impl TradeoffUseCase {
 fn evaluate_rule(
     rule: &TradeoffRule,
     weighted_deltas: &BTreeMap<String, Delta>,
+    probe_index: &BTreeMap<String, ProbeCompareObservation>,
 ) -> TradeoffRuleOutcome {
     let Some(target) = weighted_deltas.get(rule.if_failed.as_str()) else {
         return TradeoffRuleOutcome {
@@ -106,7 +125,7 @@ fn evaluate_rule(
                 "failed metric '{}' is not present",
                 rule.if_failed.as_str()
             )),
-            requirements: evaluate_requirements(&rule.require, weighted_deltas),
+            requirements: evaluate_requirements(&rule.require, weighted_deltas, probe_index),
         };
     };
 
@@ -120,11 +139,11 @@ fn evaluate_rule(
                 "metric '{}' is not failing",
                 rule.if_failed.as_str()
             )),
-            requirements: evaluate_requirements(&rule.require, weighted_deltas),
+            requirements: evaluate_requirements(&rule.require, weighted_deltas, probe_index),
         };
     }
 
-    let requirements = evaluate_requirements(&rule.require, weighted_deltas);
+    let requirements = evaluate_requirements(&rule.require, weighted_deltas, probe_index);
     let accepted =
         !requirements.is_empty() && requirements.iter().all(|requirement| requirement.satisfied);
 
@@ -149,15 +168,20 @@ fn evaluate_rule(
 fn evaluate_requirements(
     requirements: &[TradeoffRequirement],
     weighted_deltas: &BTreeMap<String, Delta>,
+    probe_index: &BTreeMap<String, ProbeCompareObservation>,
 ) -> Vec<TradeoffRequirementOutcome> {
     requirements
         .iter()
         .map(|requirement| {
+            if requirement.probe.is_some() {
+                return evaluate_probe_requirement(requirement, probe_index);
+            }
+
             let metric_key = requirement.metric.as_str();
             let Some(delta) = weighted_deltas.get(metric_key) else {
                 return TradeoffRequirementOutcome {
                     metric: metric_key.to_string(),
-                    probe: None,
+                    probe: requirement.probe.clone(),
                     required_change: required_change(requirement),
                     observed_change: None,
                     satisfied: false,
@@ -173,7 +197,7 @@ fn evaluate_requirements(
 
             TradeoffRequirementOutcome {
                 metric: metric_key.to_string(),
-                probe: None,
+                probe: requirement.probe.clone(),
                 required_change: required_change(requirement),
                 observed_change: Some(delta.pct),
                 satisfied,
@@ -187,6 +211,122 @@ fn evaluate_requirements(
                     requirement.min_improvement_ratio
                 )),
             }
+        })
+        .collect()
+}
+
+fn evaluate_probe_requirement(
+    requirement: &TradeoffRequirement,
+    probe_index: &BTreeMap<String, ProbeCompareObservation>,
+) -> TradeoffRequirementOutcome {
+    let metric_key = requirement.metric.as_str();
+    let Some(probe_name) = requirement.probe.as_deref() else {
+        return TradeoffRequirementOutcome {
+            metric: metric_key.to_string(),
+            probe: None,
+            required_change: required_change(requirement),
+            observed_change: None,
+            satisfied: false,
+            status: MetricStatus::Fail,
+            reason: Some("required probe missing".to_string()),
+        };
+    };
+
+    let Some(probe) = probe_index.get(probe_name) else {
+        return TradeoffRequirementOutcome {
+            metric: metric_key.to_string(),
+            probe: Some(probe_name.to_string()),
+            required_change: required_change(requirement),
+            observed_change: None,
+            satisfied: false,
+            status: MetricStatus::Fail,
+            reason: Some(format!("required probe '{probe_name}' missing")),
+        };
+    };
+
+    let Some(delta) = probe.deltas.get(metric_key) else {
+        return TradeoffRequirementOutcome {
+            metric: metric_key.to_string(),
+            probe: Some(probe_name.to_string()),
+            required_change: required_change(requirement),
+            observed_change: None,
+            satisfied: false,
+            status: MetricStatus::Fail,
+            reason: Some(format!(
+                "required probe '{probe_name}' metric '{metric_key}' missing"
+            )),
+        };
+    };
+
+    let observed_ratio = improvement_ratio(delta, requirement.metric);
+    let satisfied = observed_ratio
+        .map(|ratio| ratio >= requirement.min_improvement_ratio)
+        .unwrap_or(false);
+
+    TradeoffRequirementOutcome {
+        metric: metric_key.to_string(),
+        probe: Some(probe_name.to_string()),
+        required_change: required_change(requirement),
+        observed_change: Some(delta.pct),
+        satisfied,
+        status: if satisfied {
+            MetricStatus::Pass
+        } else {
+            MetricStatus::Fail
+        },
+        reason: (!satisfied).then_some(format!(
+            "requires improvement ratio >= {:.6}",
+            requirement.min_improvement_ratio
+        )),
+    }
+}
+
+fn index_probe_compares(
+    probe_compares: &[ProbeCompareReceipt],
+) -> (BTreeMap<String, ProbeCompareObservation>, Vec<String>) {
+    let mut index = BTreeMap::new();
+    let mut warnings = Vec::new();
+    for receipt in probe_compares {
+        warnings.extend(
+            receipt
+                .warnings
+                .iter()
+                .map(|warning| format!("probe compare warning: {warning}")),
+        );
+        for probe in &receipt.probes {
+            if index.insert(probe.name.clone(), probe.clone()).is_some() {
+                warnings.push(format!(
+                    "probe '{}' appeared in more than one probe compare receipt; last value used",
+                    probe.name
+                ));
+            }
+        }
+    }
+    (index, warnings)
+}
+
+fn tradeoff_probe_outcomes(
+    rule_outcomes: &[TradeoffRuleOutcome],
+    probe_index: &BTreeMap<String, ProbeCompareObservation>,
+) -> Vec<TradeoffProbeOutcome> {
+    let probe_names: BTreeSet<String> = rule_outcomes
+        .iter()
+        .flat_map(|rule| rule.requirements.iter())
+        .filter_map(|requirement| requirement.probe.clone())
+        .collect();
+
+    probe_names
+        .iter()
+        .filter_map(|name| {
+            let probe = probe_index.get(name)?;
+            Some(TradeoffProbeOutcome {
+                name: probe.name.clone(),
+                scope: probe.scope,
+                weight: None,
+                deltas: probe.deltas.clone(),
+                status: probe.status,
+                reason: probe.reasons.first().cloned(),
+            })
         })
         .collect()
 }
@@ -287,7 +427,10 @@ fn make_run_meta() -> RunMeta {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use perfgate_types::{SCENARIO_SCHEMA_V1, ScenarioMeta, VerdictCounts, VerdictStatus};
+    use perfgate_types::{
+        PROBE_COMPARE_SCHEMA_V1, ProbeCompareObservation, ProbeCompareReceipt, ProbeScope,
+        SCENARIO_SCHEMA_V1, ScenarioMeta, VerdictCounts, VerdictStatus,
+    };
 
     fn scenario_receipt(wall_current: f64, memory_status: MetricStatus) -> ScenarioReceipt {
         ScenarioReceipt {
@@ -352,9 +495,62 @@ mod tests {
             if_failed: Metric::MaxRssKb,
             require: vec![TradeoffRequirement {
                 metric: Metric::WallMs,
+                probe: None,
                 min_improvement_ratio: 1.10,
             }],
             downgrade_to,
+        }
+    }
+
+    fn memory_for_probe_speed_rule(downgrade_to: TradeoffDowngrade) -> TradeoffRule {
+        TradeoffRule {
+            name: "memory_for_probe_speed".to_string(),
+            if_failed: Metric::MaxRssKb,
+            require: vec![TradeoffRequirement {
+                metric: Metric::WallMs,
+                probe: Some("parser.batch_loop".to_string()),
+                min_improvement_ratio: 1.10,
+            }],
+            downgrade_to,
+        }
+    }
+
+    fn probe_compare_receipt(probe_name: &str, wall_current: f64) -> ProbeCompareReceipt {
+        ProbeCompareReceipt {
+            schema: PROBE_COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+            run: make_run_meta(),
+            bench: None,
+            scenario: Some("release_workload".to_string()),
+            baseline_ref: None,
+            current_ref: None,
+            probes: vec![ProbeCompareObservation {
+                name: probe_name.to_string(),
+                parent: None,
+                scope: Some(ProbeScope::Dominant),
+                baseline_count: 1,
+                current_count: 1,
+                deltas: BTreeMap::from([(
+                    "wall_ms".to_string(),
+                    delta(100.0, wall_current, MetricStatus::Pass),
+                )]),
+                status: MetricStatus::Pass,
+                reasons: Vec::new(),
+            }],
+            verdict: Verdict {
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: 1,
+                    warn: 0,
+                    fail: 0,
+                    skip: 0,
+                },
+                reasons: Vec::new(),
+            },
+            warnings: Vec::new(),
         }
     }
 
@@ -362,6 +558,7 @@ mod tests {
     fn tradeoff_evaluate_accepts_satisfied_rule() {
         let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
             scenario: scenario_receipt(80.0, MetricStatus::Fail),
+            probe_compares: Vec::new(),
             rules: vec![memory_for_speed_rule(TradeoffDowngrade::Warn)],
             tool: ToolInfo {
                 name: "perfgate".to_string(),
@@ -389,6 +586,7 @@ mod tests {
     fn tradeoff_evaluate_rejects_unsatisfied_rule() {
         let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
             scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: Vec::new(),
             rules: vec![memory_for_speed_rule(TradeoffDowngrade::Pass)],
             tool: ToolInfo {
                 name: "perfgate".to_string(),
@@ -411,5 +609,61 @@ mod tests {
                 .reasons
                 .contains(&VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED.to_string())
         );
+    }
+
+    #[test]
+    fn tradeoff_evaluate_accepts_satisfied_probe_requirement() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: vec![probe_compare_receipt("parser.batch_loop", 80.0)],
+            rules: vec![memory_for_probe_speed_rule(TradeoffDowngrade::Warn)],
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(receipt.decision.accepted_tradeoff);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Accepted);
+        assert_eq!(
+            receipt.rules[0].requirements[0].probe.as_deref(),
+            Some("parser.batch_loop")
+        );
+        assert_eq!(
+            receipt.rules[0].requirements[0].observed_change,
+            Some(-0.20)
+        );
+        assert_eq!(receipt.probes.len(), 1);
+        assert_eq!(receipt.probes[0].name, "parser.batch_loop");
+        assert_eq!(receipt.verdict.status, VerdictStatus::Warn);
+    }
+
+    #[test]
+    fn tradeoff_evaluate_rejects_missing_probe_requirement() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: vec![probe_compare_receipt("parser.tokenize", 80.0)],
+            rules: vec![memory_for_probe_speed_rule(TradeoffDowngrade::Pass)],
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(!receipt.decision.accepted_tradeoff);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Rejected);
+        assert_eq!(receipt.rules[0].requirements[0].observed_change, None);
+        assert!(
+            receipt.rules[0].requirements[0]
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("required probe"))
+        );
+        assert_eq!(receipt.probes.len(), 0);
+        assert_eq!(receipt.verdict.status, VerdictStatus::Fail);
     }
 }

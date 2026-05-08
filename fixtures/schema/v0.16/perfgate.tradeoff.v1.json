@@ -14,6 +14,20 @@
     }
   },
   "scenario": "large_file_parse",
+  "configured_rules": [
+    {
+      "name": "tokenizer-slower-if-parser-faster",
+      "if_failed": "wall_ms",
+      "require": [
+        {
+          "metric": "wall_ms",
+          "probe": "parser.batch_loop",
+          "min_improvement_ratio": 1.1
+        }
+      ],
+      "downgrade_to": "pass"
+    }
+  ],
   "rules": [
     {
       "name": "tokenizer-slower-if-parser-faster",

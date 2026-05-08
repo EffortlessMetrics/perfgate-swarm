@@ -1448,6 +1448,16 @@ impl ConfigFile {
                 ));
             }
             for requirement in &rule.require {
+                if requirement
+                    .probe
+                    .as_ref()
+                    .is_some_and(|probe| probe.trim().is_empty())
+                {
+                    return Err(format!(
+                        "tradeoff '{}' requirement probe must not be empty",
+                        rule.name
+                    ));
+                }
                 if !requirement.min_improvement_ratio.is_finite()
                     || requirement.min_improvement_ratio <= 0.0
                 {
@@ -1726,6 +1736,11 @@ pub struct BudgetOverride {
 pub struct TradeoffRequirement {
     /// Metric that must improve sufficiently for the tradeoff to apply.
     pub metric: Metric,
+
+    /// Optional probe name. When set, the requirement is evaluated against
+    /// attached probe comparison evidence instead of weighted scenario deltas.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub probe: Option<String>,
 
     /// Minimum required improvement ratio.
     ///
@@ -2121,6 +2136,7 @@ mod tests {
                 if_failed: Metric::MaxRssKb,
                 require: vec![TradeoffRequirement {
                     metric: Metric::WallMs,
+                    probe: None,
                     min_improvement_ratio: 1.10,
                 }],
                 downgrade_to: TradeoffDowngrade::Warn,
@@ -2146,6 +2162,12 @@ mod tests {
         assert!(config.validate().unwrap_err().contains("must not be empty"));
 
         config.tradeoffs[0].name = "memory_for_speed".to_string();
+        config.tradeoffs[0].require[0].probe = Some(" ".to_string());
+        assert!(config.validate().unwrap_err().contains("must not be empty"));
+
+        config.tradeoffs[0].require[0].probe = Some("parser.batch_loop".to_string());
+        assert!(config.validate().is_ok());
+
         config.tradeoffs[0].require[0].min_improvement_ratio = 0.0;
         assert!(config.validate().unwrap_err().contains("positive finite"));
 

@@ -541,6 +541,13 @@
           "description": "Minimum required improvement ratio.\n\nFor higher-is-better metrics, this is `current / baseline`.\nFor lower-is-better metrics, this is `baseline / current`.",
           "type": "number",
           "format": "double"
+        },
+        "probe": {
+          "description": "Optional probe name. When set, the requirement is evaluated against\nattached probe comparison evidence instead of weighted scenario deltas.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

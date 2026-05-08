@@ -242,6 +242,7 @@ mod tradeoff_tests {
             if_failed: Metric::MaxRssKb,
             require: vec![TradeoffRequirement {
                 metric: Metric::ThroughputPerS,
+                probe: None,
                 min_improvement_ratio,
             }],
             downgrade_to: TradeoffDowngrade::Warn,
@@ -302,6 +303,7 @@ mod tradeoff_tests {
                 if_failed: Metric::MaxRssKb,
                 require: vec![TradeoffRequirement {
                     metric: Metric::ThroughputPerS,
+                    probe: None,
                     min_improvement_ratio: 1.5,
                 }],
                 downgrade_to: TradeoffDowngrade::Pass,
@@ -472,6 +474,7 @@ mod tradeoff_tests {
             if_failed: Metric::MaxRssKb,
             require: vec![TradeoffRequirement {
                 metric: Metric::WallMs,
+                probe: None,
                 min_improvement_ratio: 1.1,
             }],
             downgrade_to: TradeoffDowngrade::Warn,
@@ -490,6 +493,41 @@ mod tradeoff_tests {
                 .verdict
                 .reasons
                 .contains(&"tradeoff_memory_for_latency_applied".to_string())
+        );
+    }
+
+    #[test]
+    fn probe_requirement_does_not_apply_without_probe_context() {
+        let baseline = base_stats(100, 1000, 1000);
+        let current = base_stats(80, 1300, 1000);
+        let budgets = BTreeMap::from([
+            (Metric::WallMs, Budget::new(0.20, 0.1, Direction::Lower)),
+            (Metric::MaxRssKb, Budget::new(0.15, 0.1, Direction::Lower)),
+        ]);
+        let rule = TradeoffRule {
+            name: "memory_for_probe_latency".to_string(),
+            if_failed: Metric::MaxRssKb,
+            require: vec![TradeoffRequirement {
+                metric: Metric::WallMs,
+                probe: Some("parser.batch_loop".to_string()),
+                min_improvement_ratio: 1.1,
+            }],
+            downgrade_to: TradeoffDowngrade::Warn,
+        };
+
+        let comparison =
+            compare_stats_with_tradeoffs(&baseline, &current, &budgets, &[rule]).unwrap();
+
+        assert_eq!(comparison.verdict.status, VerdictStatus::Fail);
+        assert_eq!(
+            comparison.deltas.get(&Metric::MaxRssKb).unwrap().status,
+            MetricStatus::Fail
+        );
+        assert!(
+            comparison
+                .verdict
+                .reasons
+                .contains(&VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC.to_string())
         );
     }
 }
@@ -1004,6 +1042,12 @@ fn apply_tradeoffs(
             let mut satisfied = !rule.require.is_empty();
 
             for requirement in &rule.require {
+                if requirement.probe.is_some() {
+                    missing_required_metric = true;
+                    satisfied = false;
+                    break;
+                }
+
                 let Some(required_delta) = deltas.get(&requirement.metric) else {
                     missing_required_metric = true;
                     satisfied = false;
