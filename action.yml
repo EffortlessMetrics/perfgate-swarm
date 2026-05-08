@@ -366,7 +366,7 @@ runs:
 
           local listing
           listing="$(mktemp)"
-          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name comment.md -o -name 'perfgate.*.json' -o -name 'sensor.report.v1.json' \) | sort > "${listing}"
+          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name tradeoff.json -o -name comment.md -o -name 'perfgate.*.json' -o -name 'sensor.report.v1.json' \) | sort > "${listing}"
 
           local count
           count="$(wc -l < "${listing}" | tr -d ' ')"
@@ -434,7 +434,7 @@ runs:
       run: |
         set -euo pipefail
 
-        # Find a compare or report receipt to comment on.
+        # Find a tradeoff, compare, or report receipt to comment on.
         # In standard mode, report.json is a perfgate.report.v1.
         # In cockpit mode, report.json is a sensor.report.v1 (not
         # parseable as --report), so we look for extras/ receipts first.
@@ -442,26 +442,40 @@ runs:
         pr_num="${{ github.event.pull_request.number }}"
         posted=false
 
-        # 1. Cockpit single-bench extras
+        # 1. Tradeoff decision receipts, when workflows produced them explicitly.
+        if [[ "${posted}" == "false" && -f "${out}/tradeoff.json" ]]; then
+          perfgate comment --tradeoff "${out}/tradeoff.json" --pr "${pr_num}" || true
+          posted=true
+        fi
+        if [[ "${posted}" == "false" && -f "${out}/perfgate.tradeoff.v1.json" ]]; then
+          perfgate comment --tradeoff "${out}/perfgate.tradeoff.v1.json" --pr "${pr_num}" || true
+          posted=true
+        fi
+        if [[ "${posted}" == "false" && -f "${out}/extras/perfgate.tradeoff.v1.json" ]]; then
+          perfgate comment --tradeoff "${out}/extras/perfgate.tradeoff.v1.json" --pr "${pr_num}" || true
+          posted=true
+        fi
+
+        # 2. Cockpit single-bench extras
         if [[ "${posted}" == "false" && -f "${out}/extras/perfgate.report.v1.json" ]]; then
           perfgate comment --report "${out}/extras/perfgate.report.v1.json" --pr "${pr_num}" || true
           posted=true
         fi
 
-        # 2. Standard mode report.json (perfgate.report.v1)
+        # 3. Standard mode report.json (perfgate.report.v1)
         if [[ "${posted}" == "false" && -f "${out}/report.json" && "${{ inputs.mode }}" != "cockpit" ]]; then
           perfgate comment --report "${out}/report.json" --pr "${pr_num}" || true
           posted=true
         fi
 
-        # 3. Standard mode compare.json
+        # 4. Standard mode compare.json
         if [[ "${posted}" == "false" && -f "${out}/compare.json" ]]; then
           perfgate comment --compare "${out}/compare.json" --pr "${pr_num}" || true
           posted=true
         fi
 
         if [[ "${posted}" == "false" ]]; then
-          echo "No compare or report receipt found; skipping PR comment." >&2
+          echo "No tradeoff, compare, or report receipt found; skipping PR comment." >&2
         fi
 
     - name: Upload perfgate artifacts

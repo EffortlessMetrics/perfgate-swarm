@@ -4,10 +4,21 @@
 
 use predicates::prelude::*;
 use std::fs;
+use std::path::PathBuf;
 use tempfile::tempdir;
 
 mod common;
 use common::{fixtures_dir, generate_compare_receipt, perfgate_cmd};
+
+fn tradeoff_fixture_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("fixtures")
+        .join("schema")
+        .join("v0.16")
+        .join("perfgate.tradeoff.v1.json")
+}
 
 /// Test markdown generation from compare receipt with pass verdict
 /// Verify output contains expected table structure and verdict emoji
@@ -227,9 +238,26 @@ fn test_md_missing_compare_argument() {
     let mut cmd = perfgate_cmd();
     cmd.arg("md");
 
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Either --compare or --tradeoff is required",
+    ));
+}
+
+#[test]
+fn test_md_tradeoff_receipt_stdout() {
+    let mut cmd = perfgate_cmd();
+    cmd.arg("md").arg("--tradeoff").arg(tradeoff_fixture_path());
+
     cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("--compare"));
+        .success()
+        .stdout(predicate::str::contains("perfgate tradeoff"))
+        .stdout(predicate::str::contains("large_file_parse"))
+        .stdout(predicate::str::contains("accepted"))
+        .stdout(predicate::str::contains(
+            "tokenizer-slower-if-parser-faster",
+        ))
+        .stdout(predicate::str::contains("Weighted Outcome"))
+        .stdout(predicate::str::contains("Probe Evidence"));
 }
 
 /// Test markdown output contains verdict reasons when present

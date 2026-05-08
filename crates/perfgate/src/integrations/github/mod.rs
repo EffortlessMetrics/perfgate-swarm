@@ -16,7 +16,7 @@ pub mod types;
 pub use client::{COMMENT_MARKER, GitHubClient};
 pub use comment::{
     CommentOptions, parse_github_repository, parse_pr_number_from_ref, render_comment,
-    render_comment_from_report,
+    render_comment_from_report, render_comment_from_tradeoff,
 };
 pub use error::GitHubError;
 pub use types::GitHubComment;

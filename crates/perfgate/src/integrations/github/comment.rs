@@ -6,9 +6,9 @@
 use super::client::COMMENT_MARKER;
 use crate::app::render::{
     direction_str, format_metric_with_statistic, format_pct, format_value, metric_status_icon,
-    render_reason_line,
+    render_reason_line, render_tradeoff_markdown,
 };
-use perfgate_types::{CompareReceipt, PerfgateReport, VerdictStatus};
+use perfgate_types::{CompareReceipt, PerfgateReport, TradeoffReceipt, VerdictStatus};
 
 /// Options for customizing the rendered comment.
 #[derive(Debug, Clone, Default)]
@@ -146,6 +146,27 @@ pub fn render_comment_from_report(report: &PerfgateReport, options: &CommentOpti
             ));
         }
     }
+
+    out.push_str("\n---\n");
+    out.push_str("*Posted by [perfgate](https://github.com/EffortlessMetrics/perfgate)*\n");
+
+    out
+}
+
+/// Render a full PR comment body from a `TradeoffReceipt`.
+pub fn render_comment_from_tradeoff(tradeoff: &TradeoffReceipt) -> String {
+    let mut out = String::new();
+
+    out.push_str(COMMENT_MARKER);
+    out.push('\n');
+    out.push_str(&render_tradeoff_markdown(tradeoff));
+
+    out.push_str("\n<details>\n<summary>Raw tradeoff data</summary>\n\n");
+    out.push_str("```json\n");
+    if let Ok(json) = serde_json::to_string_pretty(tradeoff) {
+        out.push_str(&json);
+    }
+    out.push_str("\n```\n\n</details>\n");
 
     out.push_str("\n---\n");
     out.push_str("*Posted by [perfgate](https://github.com/EffortlessMetrics/perfgate)*\n");

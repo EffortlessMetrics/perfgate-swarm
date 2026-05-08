@@ -67,7 +67,7 @@ pub use render::{
     direction_str, format_metric, format_metric_with_statistic, format_pct, format_value,
     github_annotations, markdown_template_context, metric_status_icon, metric_status_str,
     parse_reason_token, render_complexity_section, render_markdown, render_markdown_template,
-    render_reason_line,
+    render_reason_line, render_tradeoff_markdown,
 };
 
 // Re-export export functionality from the app-owned presentation module for backward compatibility.

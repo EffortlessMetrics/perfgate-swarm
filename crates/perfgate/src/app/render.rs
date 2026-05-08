@@ -10,7 +10,7 @@ pub mod summary;
 use anyhow::Context;
 use perfgate_types::{
     CompareReceipt, ComplexityGateResult, ComplexityGateStatus, Direction, Metric, MetricStatistic,
-    MetricStatus,
+    MetricStatus, TradeoffDecisionStatus, TradeoffReceipt,
 };
 use serde_json::json;
 
@@ -71,6 +71,132 @@ pub fn render_markdown(compare: &CompareReceipt) -> String {
         for r in &compare.verdict.reasons {
             out.push_str(&render_reason_line(compare, r));
         }
+    }
+
+    out
+}
+
+/// Render a [`TradeoffReceipt`] as Markdown for review comments and local diagnostics.
+pub fn render_tradeoff_markdown(tradeoff: &TradeoffReceipt) -> String {
+    let mut out = String::new();
+
+    let header = match tradeoff.verdict.status {
+        perfgate_types::VerdictStatus::Pass => "✅ perfgate tradeoff: pass",
+        perfgate_types::VerdictStatus::Warn => "⚠️ perfgate tradeoff: warn",
+        perfgate_types::VerdictStatus::Fail => "❌ perfgate tradeoff: fail",
+        perfgate_types::VerdictStatus::Skip => "⏭️ perfgate tradeoff: skip",
+    };
+
+    out.push_str(header);
+    out.push_str("\n\n");
+
+    if let Some(scenario) = &tradeoff.scenario {
+        out.push_str(&format!("**Scenario:** `{scenario}`\n\n"));
+    }
+
+    out.push_str(&format!(
+        "**Decision:** {} - {}\n\n",
+        metric_status_icon(tradeoff.decision.status),
+        tradeoff.decision.reason
+    ));
+
+    if !tradeoff.weighted_deltas.is_empty() {
+        out.push_str("### Weighted Outcome\n\n");
+        out.push_str("| metric | baseline | current | delta | status |\n");
+        out.push_str("|---|---:|---:|---:|---|\n");
+        for (metric_key, delta) in &tradeoff.weighted_deltas {
+            let (baseline, current, unit) = Metric::parse_key(metric_key)
+                .map(|metric| {
+                    (
+                        format_value(metric, delta.baseline),
+                        format_value(metric, delta.current),
+                        metric.display_unit(),
+                    )
+                })
+                .unwrap_or_else(|| {
+                    (
+                        format!("{:.3}", delta.baseline),
+                        format!("{:.3}", delta.current),
+                        "",
+                    )
+                });
+            out.push_str(&format!(
+                "| `{metric_key}` | {baseline} {unit} | {current} {unit} | {delta_pct} | {status} |\n",
+                delta_pct = format_pct(delta.pct),
+                status = metric_status_icon(delta.status),
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !tradeoff.rules.is_empty() {
+        out.push_str("### Tradeoff Rules\n\n");
+        out.push_str("| rule | decision | downgrade | requirements |\n");
+        out.push_str("|---|---|---|---|\n");
+        for rule in &tradeoff.rules {
+            let requirements = if rule.requirements.is_empty() {
+                "none".to_string()
+            } else {
+                rule.requirements
+                    .iter()
+                    .map(|requirement| {
+                        let observed = requirement
+                            .observed_change
+                            .map(format_pct)
+                            .unwrap_or_else(|| "missing".to_string());
+                        format!(
+                            "`{}` observed {} / required {} {}",
+                            requirement.metric,
+                            observed,
+                            format_pct(requirement.required_change),
+                            metric_status_icon(requirement.status)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("<br>")
+            };
+            let downgrade = rule
+                .downgrade_to
+                .map(tradeoff_downgrade_label)
+                .unwrap_or("-");
+            out.push_str(&format!(
+                "| `{}` | {} | `{}` | {} |\n",
+                rule.name,
+                tradeoff_decision_label(rule.status),
+                downgrade,
+                requirements
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !tradeoff.probes.is_empty() {
+        out.push_str("### Probe Evidence\n\n");
+        out.push_str("| probe | scope | status | reason |\n");
+        out.push_str("|---|---|---|---|\n");
+        for probe in &tradeoff.probes {
+            let scope = probe
+                .scope
+                .map(|scope| format!("{:?}", scope).to_lowercase())
+                .unwrap_or_else(|| "-".to_string());
+            let reason = probe.reason.as_deref().unwrap_or("-");
+            out.push_str(&format!(
+                "| `{}` | `{}` | {} | {} |\n",
+                probe.name,
+                scope,
+                metric_status_icon(probe.status),
+                reason
+            ));
+        }
+        out.push('\n');
+    }
+
+    if !tradeoff.warnings.is_empty() {
+        out.push_str("### Warnings\n\n");
+        for warning in &tradeoff.warnings {
+            out.push_str(&format!("- {warning}\n"));
+        }
+        out.push('\n');
     }
 
     out
@@ -349,11 +475,27 @@ pub fn metric_status_str(status: MetricStatus) -> &'static str {
     }
 }
 
+fn tradeoff_decision_label(status: TradeoffDecisionStatus) -> &'static str {
+    match status {
+        TradeoffDecisionStatus::Accepted => "accepted",
+        TradeoffDecisionStatus::Rejected => "rejected",
+        TradeoffDecisionStatus::NotEvaluated => "not evaluated",
+    }
+}
+
+fn tradeoff_downgrade_label(downgrade: perfgate_types::TradeoffDowngrade) -> &'static str {
+    match downgrade {
+        perfgate_types::TradeoffDowngrade::Warn => "warn",
+        perfgate_types::TradeoffDowngrade::Pass => "pass",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, Budget, CompareRef, Delta, ToolInfo, Verdict, VerdictCounts, VerdictStatus,
+        BenchMeta, Budget, CompareRef, Delta, RunMeta, ToolInfo, TradeoffDecision,
+        TradeoffRuleOutcome, Verdict, VerdictCounts, VerdictStatus,
     };
     use std::collections::BTreeMap;
 
@@ -416,12 +558,117 @@ mod tests {
         }
     }
 
+    fn make_tradeoff_receipt(status: MetricStatus) -> TradeoffReceipt {
+        let mut weighted_deltas = BTreeMap::new();
+        weighted_deltas.insert(
+            "wall_ms".to_string(),
+            Delta {
+                baseline: 100.0,
+                current: 88.0,
+                ratio: 0.88,
+                pct: -0.12,
+                regression: 0.0,
+                cv: None,
+                noise_threshold: None,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status: MetricStatus::Pass,
+            },
+        );
+        weighted_deltas.insert(
+            "max_rss_kb".to_string(),
+            Delta {
+                baseline: 100.0,
+                current: 115.0,
+                ratio: 1.15,
+                pct: 0.15,
+                regression: 0.15,
+                cv: None,
+                noise_threshold: None,
+                statistic: MetricStatistic::Median,
+                significance: None,
+                status,
+            },
+        );
+
+        TradeoffReceipt {
+            schema: perfgate_types::TRADEOFF_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+            run: RunMeta {
+                id: "tradeoff-run".to_string(),
+                started_at: "2026-05-08T00:00:00Z".to_string(),
+                ended_at: "2026-05-08T00:00:01Z".to_string(),
+                host: perfgate_types::HostInfo {
+                    os: "linux".to_string(),
+                    arch: "x86_64".to_string(),
+                    cpu_count: None,
+                    memory_bytes: None,
+                    hostname_hash: None,
+                },
+            },
+            scenario: Some("release_workload".to_string()),
+            baseline_ref: None,
+            current_ref: None,
+            configured_rules: Vec::new(),
+            rules: vec![TradeoffRuleOutcome {
+                name: "memory_for_speed".to_string(),
+                status: TradeoffDecisionStatus::Accepted,
+                accepted: true,
+                downgrade_to: Some(perfgate_types::TradeoffDowngrade::Warn),
+                reason: Some("all required compensating improvements were satisfied".to_string()),
+                requirements: vec![perfgate_types::TradeoffRequirementOutcome {
+                    metric: "wall_ms".to_string(),
+                    probe: None,
+                    required_change: -0.10,
+                    observed_change: Some(-0.12),
+                    satisfied: true,
+                    status: MetricStatus::Pass,
+                    reason: None,
+                }],
+            }],
+            probes: Vec::new(),
+            weighted_deltas,
+            decision: TradeoffDecision {
+                accepted_tradeoff: true,
+                status,
+                reason: "tradeoff 'memory_for_speed' accepted".to_string(),
+            },
+            verdict: Verdict {
+                status: VerdictStatus::Warn,
+                counts: VerdictCounts {
+                    pass: 1,
+                    warn: 1,
+                    fail: 0,
+                    skip: 0,
+                },
+                reasons: vec!["tradeoff_memory_for_speed_applied".to_string()],
+            },
+            warnings: Vec::new(),
+        }
+    }
+
     #[test]
     fn markdown_renders_table() {
         let receipt = make_compare_receipt(MetricStatus::Pass);
         let md = render_markdown(&receipt);
         assert!(md.contains("| metric | baseline"));
         assert!(md.contains("wall_ms"));
+    }
+
+    #[test]
+    fn tradeoff_markdown_renders_decision_and_rules() {
+        let receipt = make_tradeoff_receipt(MetricStatus::Warn);
+        let md = render_tradeoff_markdown(&receipt);
+
+        assert!(md.contains("perfgate tradeoff: warn"));
+        assert!(md.contains("**Scenario:** `release_workload`"));
+        assert!(md.contains("tradeoff 'memory_for_speed' accepted"));
+        assert!(md.contains("| `max_rss_kb` |"));
+        assert!(md.contains("| `memory_for_speed` | accepted | `warn` |"));
+        assert!(md.contains("`wall_ms` observed -12.00% / required -10.00%"));
     }
 
     #[test]
