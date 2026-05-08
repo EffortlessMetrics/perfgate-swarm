@@ -238,6 +238,15 @@ enum DogfoodAction {
     },
     /// Turn nightly outputs into refreshed baseline files.
     Promote,
+    /// Export nightly run/compare receipts into persisted trend files.
+    ExportTrends {
+        /// Directory containing perfgate output artifacts.
+        #[arg(long, default_value = "artifacts/perfgate")]
+        artifacts_dir: PathBuf,
+        /// Directory where trend files are written.
+        #[arg(long, default_value = "artifacts/trends")]
+        out_dir: PathBuf,
+    },
     /// Generate a compact Markdown/JSON summary of drift, noise, and recommendations.
     Summarize {
         /// Directory containing perfgate export trends
@@ -2007,6 +2016,16 @@ fn run<const N: usize>(bin: &str, args: [&str; N]) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn run_command(command: &mut std::process::Command) -> anyhow::Result<()> {
+    let status = command
+        .status()
+        .with_context(|| format!("running {:?}", command))?;
+    if !status.success() {
+        anyhow::bail!("{:?} failed: {status}", command);
+    }
+    Ok(())
+}
+
 fn run_with_env<const N: usize>(
     bin: &str,
     args: [&str; N],
@@ -2652,6 +2671,10 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
             println!("Promoted {} baselines.", count);
             Ok(())
         }
+        DogfoodAction::ExportTrends {
+            artifacts_dir,
+            out_dir,
+        } => export_dogfood_trends(&artifacts_dir, &out_dir),
         DogfoodAction::Summarize { dir } => {
             println!("Generating trend variance summary...");
             let pattern = format!("{}/**/*.jsonl", dir.display());
@@ -2717,6 +2740,133 @@ fn cmd_dogfood(action: DogfoodAction) -> anyhow::Result<()> {
 
             Ok(())
         }
+    }
+}
+
+fn export_dogfood_trends(artifacts_dir: &Path, out_dir: &Path) -> anyhow::Result<()> {
+    println!(
+        "Exporting dogfooding trends from {} to {}...",
+        artifacts_dir.display(),
+        out_dir.display()
+    );
+    fs::create_dir_all(out_dir)?;
+
+    let extras_dir = artifacts_dir.join("extras");
+
+    let run_pattern = dogfood_receipt_pattern(&extras_dir, "perfgate.run.v1.json");
+    let run_receipts: Vec<_> = glob(&run_pattern)?.collect::<Result<Vec<_>, _>>()?;
+    let compare_pattern = dogfood_receipt_pattern(&extras_dir, "perfgate.compare.v1.json");
+    let compare_receipts: Vec<_> = glob(&compare_pattern)?.collect::<Result<Vec<_>, _>>()?;
+
+    if run_receipts.is_empty() && compare_receipts.is_empty() {
+        anyhow::bail!(
+            "no dogfooding receipts found under {}",
+            extras_dir.display()
+        );
+    }
+
+    let perfgate = release_perfgate_bin()?;
+
+    let mut run_count = 0;
+    for receipt in run_receipts {
+        let bench = dogfood_bench_slug(&extras_dir, &receipt, "perfgate.run.v1.json")?;
+        let out = out_dir.join(format!("history-{bench}.jsonl"));
+        println!(
+            "  Exporting run trend {} -> {}",
+            receipt.display(),
+            out.display()
+        );
+        run_command(
+            std::process::Command::new(&perfgate)
+                .arg("export")
+                .arg("--run")
+                .arg(&receipt)
+                .arg("--format")
+                .arg("jsonl")
+                .arg("--out")
+                .arg(&out),
+        )?;
+        run_count += 1;
+    }
+
+    let mut compare_count = 0;
+    for receipt in compare_receipts {
+        let bench = dogfood_bench_slug(&extras_dir, &receipt, "perfgate.compare.v1.json")?;
+        let out = out_dir.join(format!("metrics-{bench}.prom"));
+        println!(
+            "  Exporting compare trend {} -> {}",
+            receipt.display(),
+            out.display()
+        );
+        run_command(
+            std::process::Command::new(&perfgate)
+                .arg("export")
+                .arg("--compare")
+                .arg(&receipt)
+                .arg("--format")
+                .arg("prometheus")
+                .arg("--out")
+                .arg(&out),
+        )?;
+        compare_count += 1;
+    }
+
+    println!("Exported {run_count} run trend file(s) and {compare_count} compare metric file(s).");
+    Ok(())
+}
+
+fn dogfood_receipt_pattern(extras_dir: &Path, file_name: &str) -> String {
+    let root = extras_dir.display().to_string().replace('\\', "/");
+    format!("{}/**/{}", root.trim_end_matches('/'), file_name)
+}
+
+fn dogfood_bench_slug(
+    extras_dir: &Path,
+    receipt: &Path,
+    file_name: &str,
+) -> anyhow::Result<String> {
+    let rel = receipt.strip_prefix(extras_dir).with_context(|| {
+        format!(
+            "{} is not under {}",
+            receipt.display(),
+            extras_dir.display()
+        )
+    })?;
+    let bench_path = rel
+        .parent()
+        .with_context(|| format!("{} has no benchmark parent", receipt.display()))?;
+
+    if receipt.file_name().and_then(|name| name.to_str()) != Some(file_name) {
+        anyhow::bail!("unexpected receipt path: {}", receipt.display());
+    }
+
+    let slug = bench_path
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    if slug.is_empty() {
+        anyhow::bail!("{} does not identify a benchmark", receipt.display());
+    }
+
+    Ok(slug)
+}
+
+fn release_perfgate_bin() -> anyhow::Result<PathBuf> {
+    let binary_name = if cfg!(windows) {
+        "perfgate.exe"
+    } else {
+        "perfgate"
+    };
+    let path = Path::new("target").join("release").join(binary_name);
+    if path.is_file() {
+        Ok(path)
+    } else {
+        anyhow::bail!(
+            "perfgate release binary not found at {}; build it with `cargo build --release -p perfgate-cli --bin perfgate`",
+            path.display()
+        );
     }
 }
 
@@ -4417,6 +4567,48 @@ pkg-fmt = "zip"
             err.to_string().contains("timed-out sample"),
             "unexpected: {}",
             err
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn dogfood_receipt_pattern_uses_glob_safe_separators() {
+        let pattern = dogfood_receipt_pattern(
+            Path::new(r"artifacts\perfgate\extras"),
+            "perfgate.run.v1.json",
+        );
+
+        assert_eq!(pattern, "artifacts/perfgate/extras/**/perfgate.run.v1.json");
+    }
+
+    #[test]
+    fn dogfood_bench_slug_joins_nested_receipt_components() {
+        let extras = Path::new("artifacts").join("perfgate").join("extras");
+        let receipt = extras
+            .join("cli")
+            .join("compare-small")
+            .join("perfgate.run.v1.json");
+
+        let slug = dogfood_bench_slug(&extras, &receipt, "perfgate.run.v1.json")
+            .expect("nested dogfood receipt should produce slug");
+
+        assert_eq!(slug, "cli-compare-small");
+    }
+
+    #[test]
+    fn dogfood_export_trends_rejects_missing_receipts_before_requiring_binary() {
+        let temp_dir = unique_temp_dir("perfgate_dogfood_export_empty");
+        let artifacts_dir = temp_dir.join("artifacts").join("perfgate");
+        let out_dir = temp_dir.join("trends");
+
+        let err = export_dogfood_trends(&artifacts_dir, &out_dir).unwrap_err();
+        let msg = err.to_string();
+
+        assert!(
+            msg.contains("no dogfooding receipts found"),
+            "unexpected: {}",
+            msg
         );
 
         let _ = fs::remove_dir_all(&temp_dir);
