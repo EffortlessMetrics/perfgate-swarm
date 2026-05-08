@@ -502,6 +502,13 @@
         "name": {
           "type": "string"
         },
+        "probe_compare": {
+          "description": "Optional probe comparison receipt path. When present, scenario\nevaluation attaches probe names and a receipt reference without making\nprobes part of the scenario verdict.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "weight": {
           "description": "Relative importance in the workload model.",
           "type": "number",

@@ -95,7 +95,9 @@ perfgate scenario evaluate --config perfgate.toml --out artifacts/perfgate/scena
 Each `[[scenario]]` references one `[[bench]]`. By default, `scenario evaluate`
 reads `compare.json` from `[defaults].out_dir/<bench>/compare.json`. Use
 `compare = "path/to/compare.json"` when the compare receipt lives somewhere
-else.
+else. Use `probe_compare = "path/to/probe-compare.json"` to attach advisory
+probe-level evidence from `perfgate probe compare`; scenario verdicts still come
+from benchmark compare receipts and weighted deltas.
 
 ```toml
 [[bench]]
@@ -110,6 +112,7 @@ command = ["cargo", "bench", "--bench", "small_edit"]
 name = "large_file_parse"
 weight = 0.35
 bench = "large-file"
+probe_compare = "artifacts/perfgate/large-file/probe-compare.json"
 
 [[scenario]]
 name = "small_incremental_edit"
@@ -117,6 +120,10 @@ weight = 0.50
 bench = "small-edit"
 compare = "artifacts/perfgate/small-edit/compare.json"
 ```
+
+When a configured `probe_compare` file is missing, `scenario evaluate` records a
+warning in the scenario receipt instead of failing. This keeps probe evidence
+explicit and advisory until tradeoff policy opts into using it.
 
 ## Tradeoff Configuration
 

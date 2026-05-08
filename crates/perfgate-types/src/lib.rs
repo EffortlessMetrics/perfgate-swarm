@@ -1590,6 +1590,12 @@ pub struct ScenarioConfigFile {
     /// standard `out_dir/<bench>/compare.json` artifact.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub compare: Option<String>,
+
+    /// Optional probe comparison receipt path. When present, scenario
+    /// evaluation attaches probe names and a receipt reference without making
+    /// probes part of the scenario verdict.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub probe_compare: Option<String>,
 }
 
 /// How ratcheting should update budgets.
@@ -2164,6 +2170,7 @@ name = "large_file_parse"
 weight = 0.35
 bench = "large-file"
 description = "Parse a large file"
+probe_compare = "artifacts/perfgate/large-file/probe-compare.json"
 "#,
         )
         .expect("parse config");
@@ -2172,6 +2179,10 @@ description = "Parse a large file"
         assert_eq!(config.scenarios[0].name, "large_file_parse");
         assert_eq!(config.scenarios[0].bench, "large-file");
         assert_eq!(config.scenarios[0].weight, 0.35);
+        assert_eq!(
+            config.scenarios[0].probe_compare.as_deref(),
+            Some("artifacts/perfgate/large-file/probe-compare.json")
+        );
         assert!(config.validate().is_ok());
     }
 
@@ -2192,6 +2203,7 @@ command = ["echo", "large"]
             bench: "missing-bench".to_string(),
             description: None,
             compare: None,
+            probe_compare: None,
         }];
         assert!(config.validate().unwrap_err().contains("unknown benchmark"));
 

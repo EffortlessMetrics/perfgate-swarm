@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   named probe deltas between baseline and current structured evidence.
 - Added `perfgate scenario evaluate` to turn configured weighted scenarios and
   benchmark compare receipts into `perfgate.scenario.v1` workload receipts.
+- Added optional scenario `probe_compare` references so workload receipts can
+  carry advisory probe names and probe-compare receipt references.
 - Added `perfgate tradeoff evaluate` to turn configured tradeoff rules and
   scenario receipts into `perfgate.tradeoff.v1` decision receipts.
 - Added Markdown and PR-comment rendering for `perfgate.tradeoff.v1` decision

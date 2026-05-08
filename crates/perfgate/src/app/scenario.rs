@@ -1,8 +1,8 @@
 use crate::domain::budget::{aggregate_verdict, calculate_regression, determine_status};
 use perfgate_types::{
-    CompareReceipt, CompareRef, ConfigFile, Delta, HostInfo, Metric, MetricStatus, RunMeta,
-    SCENARIO_SCHEMA_V1, ScenarioComponent, ScenarioConfigFile, ScenarioMeta, ScenarioReceipt,
-    ToolInfo,
+    CompareReceipt, CompareRef, ConfigFile, Delta, HostInfo, Metric, MetricStatus,
+    PROBE_COMPARE_SCHEMA_V1, ProbeCompareReceipt, RunMeta, SCENARIO_SCHEMA_V1, ScenarioComponent,
+    ScenarioConfigFile, ScenarioMeta, ScenarioReceipt, ToolInfo,
 };
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
@@ -23,6 +23,9 @@ pub struct ScenarioEvaluateInput {
     pub config: ScenarioConfigFile,
     pub compare_ref: CompareRef,
     pub compare: CompareReceipt,
+    pub probe_compare_ref: Option<CompareRef>,
+    pub probe_compare: Option<ProbeCompareReceipt>,
+    pub probe_compare_warning: Option<String>,
 }
 
 #[derive(Debug)]
@@ -45,6 +48,16 @@ impl ScenarioUseCase {
                     input.config.name,
                     input.config.bench,
                     input.compare.bench.name
+                );
+            }
+            if let Some(probe_compare) = &input.probe_compare
+                && probe_compare.schema != PROBE_COMPARE_SCHEMA_V1
+            {
+                anyhow::bail!(
+                    "scenario '{}' probe compare receipt must use schema '{}', got '{}'",
+                    input.config.name,
+                    PROBE_COMPARE_SCHEMA_V1,
+                    probe_compare.schema
                 );
             }
         }
@@ -88,8 +101,19 @@ fn build_components(inputs: &[ScenarioEvaluateInput]) -> Vec<ScenarioComponent> 
             weight: input.config.weight,
             benchmark: Some(input.config.bench.clone()),
             compare_ref: Some(input.compare_ref.clone()),
+            probe_compare_ref: input.probe_compare_ref.clone(),
             deltas: stringify_deltas(&input.compare.deltas),
-            probes: Vec::new(),
+            probes: input
+                .probe_compare
+                .as_ref()
+                .map(|receipt| {
+                    receipt
+                        .probes
+                        .iter()
+                        .map(|probe| probe.name.clone())
+                        .collect()
+                })
+                .unwrap_or_default(),
             status: metric_status_from_verdict(input.compare.verdict.status),
             reasons: input.compare.verdict.reasons.clone(),
         })
@@ -193,6 +217,27 @@ fn build_warnings(
             ));
         }
     }
+    for input in inputs {
+        if let Some(warning) = &input.probe_compare_warning {
+            warnings.push(warning.clone());
+        }
+        if let Some(probe_compare) = &input.probe_compare {
+            if let Some(scenario) = &probe_compare.scenario
+                && scenario != &input.config.name
+            {
+                warnings.push(format!(
+                    "scenario '{}' attached probe compare receipt for scenario '{}'",
+                    input.config.name, scenario
+                ));
+            }
+            warnings.extend(probe_compare.warnings.iter().map(|warning| {
+                format!(
+                    "scenario '{}' probe compare warning: {}",
+                    input.config.name, warning
+                )
+            }));
+        }
+    }
     warnings
 }
 
@@ -248,8 +293,8 @@ fn make_run_meta() -> RunMeta {
 mod tests {
     use super::*;
     use perfgate_types::{
-        BenchMeta, COMPARE_SCHEMA_V1, DefaultsConfig, MetricStatistic, Verdict, VerdictCounts,
-        VerdictStatus,
+        BenchMeta, COMPARE_SCHEMA_V1, DefaultsConfig, MetricStatistic, PROBE_COMPARE_SCHEMA_V1,
+        ProbeCompareObservation, ProbeScope, Verdict, VerdictCounts, VerdictStatus,
     };
 
     fn compare_receipt(
@@ -319,6 +364,56 @@ mod tests {
         }
     }
 
+    fn probe_compare_receipt(probes: &[&str]) -> ProbeCompareReceipt {
+        ProbeCompareReceipt {
+            schema: PROBE_COMPARE_SCHEMA_V1.to_string(),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            run: RunMeta {
+                id: "probe-compare-run".to_string(),
+                started_at: "2026-05-08T00:00:00Z".to_string(),
+                ended_at: "2026-05-08T00:00:01Z".to_string(),
+                host: HostInfo {
+                    os: "linux".to_string(),
+                    arch: "x86_64".to_string(),
+                    cpu_count: None,
+                    memory_bytes: None,
+                    hostname_hash: None,
+                },
+            },
+            bench: None,
+            scenario: Some("large_file_parse".to_string()),
+            baseline_ref: None,
+            current_ref: None,
+            probes: probes
+                .iter()
+                .map(|name| ProbeCompareObservation {
+                    name: (*name).to_string(),
+                    parent: None,
+                    scope: Some(ProbeScope::Local),
+                    baseline_count: 1,
+                    current_count: 1,
+                    deltas: BTreeMap::new(),
+                    status: MetricStatus::Pass,
+                    reasons: Vec::new(),
+                })
+                .collect(),
+            verdict: Verdict {
+                status: VerdictStatus::Pass,
+                counts: VerdictCounts {
+                    pass: probes.len() as u32,
+                    warn: 0,
+                    fail: 0,
+                    skip: 0,
+                },
+                reasons: Vec::new(),
+            },
+            warnings: vec!["probe warning".to_string()],
+        }
+    }
+
     fn scenario_input(
         name: &str,
         weight: f64,
@@ -332,12 +427,16 @@ mod tests {
                 bench: bench.to_string(),
                 description: None,
                 compare: None,
+                probe_compare: None,
             },
             compare_ref: CompareRef {
                 path: Some(format!("artifacts/{bench}/compare.json")),
                 run_id: compare.current_ref.run_id.clone(),
             },
             compare,
+            probe_compare_ref: None,
+            probe_compare: None,
+            probe_compare_warning: None,
         }
     }
 
@@ -401,5 +500,127 @@ mod tests {
         .expect_err("mismatched benchmark should fail");
 
         assert!(err.to_string().contains("expected compare receipt"));
+    }
+
+    #[test]
+    fn scenario_evaluate_attaches_probe_compare_names_and_reference() {
+        let mut input = scenario_input(
+            "large_file_parse",
+            1.0,
+            "large-file",
+            compare_receipt("large-file", 100.0, 90.0, MetricStatus::Pass),
+        );
+        input.config.probe_compare =
+            Some("artifacts/perfgate/large-file/probe-compare.json".into());
+        input.probe_compare_ref = Some(CompareRef {
+            path: Some("artifacts/perfgate/large-file/probe-compare.json".into()),
+            run_id: Some("probe-compare-run".into()),
+        });
+        input.probe_compare = Some(probe_compare_receipt(&[
+            "parser.tokenize",
+            "parser.batch_loop",
+        ]));
+
+        let outcome = ScenarioUseCase::evaluate(ScenarioEvaluateRequest {
+            config: ConfigFile::default(),
+            inputs: vec![input],
+            workload_name: None,
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        })
+        .expect("evaluate scenario");
+
+        let component = &outcome.receipt.components[0];
+        assert_eq!(
+            component.probes,
+            vec![
+                "parser.tokenize".to_string(),
+                "parser.batch_loop".to_string()
+            ]
+        );
+        assert_eq!(
+            component
+                .probe_compare_ref
+                .as_ref()
+                .and_then(|reference| reference.run_id.as_deref()),
+            Some("probe-compare-run")
+        );
+        assert!(
+            outcome
+                .receipt
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("probe warning"))
+        );
+        assert_eq!(outcome.receipt.verdict.status, VerdictStatus::Pass);
+    }
+
+    #[test]
+    fn scenario_evaluate_rejects_wrong_probe_compare_schema() {
+        let mut input = scenario_input(
+            "large_file_parse",
+            1.0,
+            "large-file",
+            compare_receipt("large-file", 100.0, 90.0, MetricStatus::Pass),
+        );
+        let mut probe_compare = probe_compare_receipt(&["parser.tokenize"]);
+        probe_compare.schema = "perfgate.probe_compare.v0".to_string();
+        input.probe_compare = Some(probe_compare);
+
+        let err = ScenarioUseCase::evaluate(ScenarioEvaluateRequest {
+            config: ConfigFile::default(),
+            inputs: vec![input],
+            workload_name: None,
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        })
+        .expect_err("wrong probe compare schema should fail");
+
+        assert!(
+            err.to_string()
+                .contains("probe compare receipt must use schema")
+        );
+    }
+
+    #[test]
+    fn scenario_evaluate_records_advisory_probe_warnings() {
+        let mut input = scenario_input(
+            "large_file_parse",
+            1.0,
+            "large-file",
+            compare_receipt("large-file", 100.0, 90.0, MetricStatus::Pass),
+        );
+        let mut probe_compare = probe_compare_receipt(&["parser.tokenize"]);
+        probe_compare.scenario = Some("other_scenario".to_string());
+        input.probe_compare = Some(probe_compare);
+        input.probe_compare_warning =
+            Some("probe evidence missing for scenario 'large_file_parse'".to_string());
+
+        let outcome = ScenarioUseCase::evaluate(ScenarioEvaluateRequest {
+            config: ConfigFile::default(),
+            inputs: vec![input],
+            workload_name: None,
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        })
+        .expect("evaluate scenario with advisory probe warnings");
+
+        assert_eq!(outcome.receipt.verdict.status, VerdictStatus::Pass);
+        assert!(
+            outcome
+                .receipt
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("probe evidence missing"))
+        );
+        assert!(outcome.receipt.warnings.iter().any(|warning| {
+            warning.contains("attached probe compare receipt for scenario 'other_scenario'")
+        }));
     }
 }

@@ -48,10 +48,10 @@ use perfgate_types::error::{ConfigValidationError, IoError, PerfgateError};
 use perfgate_types::{
     AggregateWeightMode, AggregationPolicy, BASELINE_REASON_NO_BASELINE, BaselineServerConfig,
     ChangedFilesSummary, CompareReceipt, CompareRef, ConfigFile, FailIfNOfM, HostMismatchPolicy,
-    MetricStatus, OtelSpanIdentifiers, PerfgateReport, ProbeReceipt, REPAIR_CONTEXT_SCHEMA_V1,
-    RatchetConfig, RepairContextReceipt, RepairGitMetadata, RepairMetricBreach, RunReceipt,
-    ScenarioConfigFile, ScenarioReceipt, SensorVerdictStatus, ToolInfo, TradeoffReceipt,
-    VerdictStatus,
+    MetricStatus, OtelSpanIdentifiers, PerfgateReport, ProbeCompareReceipt, ProbeReceipt,
+    REPAIR_CONTEXT_SCHEMA_V1, RatchetConfig, RepairContextReceipt, RepairGitMetadata,
+    RepairMetricBreach, RunReceipt, ScenarioConfigFile, ScenarioReceipt, SensorVerdictStatus,
+    ToolInfo, TradeoffReceipt, VerdictStatus,
 };
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
@@ -3407,6 +3407,8 @@ fn evaluate_configured_scenarios(
         let compare: CompareReceipt = read_json_from_location(&compare_path)
             .with_context(|| format!("read scenario compare {}", compare_path.display()))?;
         let run_id = compare.current_ref.run_id.clone();
+        let (probe_compare_ref, probe_compare, probe_compare_warning) =
+            load_scenario_probe_compare(&scenario)?;
         inputs.push(ScenarioEvaluateInput {
             config: scenario,
             compare_ref: CompareRef {
@@ -3414,6 +3416,9 @@ fn evaluate_configured_scenarios(
                 run_id,
             },
             compare,
+            probe_compare_ref,
+            probe_compare,
+            probe_compare_warning,
         });
     }
 
@@ -3450,6 +3455,42 @@ fn scenario_compare_path(scenario: &ScenarioConfigFile, out_dir: &Path) -> PathB
         .as_deref()
         .map(PathBuf::from)
         .unwrap_or_else(|| out_dir.join(&scenario.bench).join(COMPARE_RECEIPT_FILE))
+}
+
+fn load_scenario_probe_compare(
+    scenario: &ScenarioConfigFile,
+) -> anyhow::Result<(
+    Option<CompareRef>,
+    Option<ProbeCompareReceipt>,
+    Option<String>,
+)> {
+    let Some(path) = scenario.probe_compare.as_deref().map(PathBuf::from) else {
+        return Ok((None, None, None));
+    };
+
+    let compare_ref = CompareRef {
+        path: Some(path.display().to_string()),
+        run_id: None,
+    };
+    if !location_exists(&path)? {
+        return Ok((
+            Some(compare_ref),
+            None,
+            Some(format!(
+                "probe evidence missing for scenario '{}' at {}",
+                scenario.name,
+                path.display()
+            )),
+        ));
+    }
+
+    let receipt: ProbeCompareReceipt = read_json_from_location(&path)
+        .with_context(|| format!("read scenario probe compare {}", path.display()))?;
+    let compare_ref = CompareRef {
+        path: Some(path.display().to_string()),
+        run_id: Some(receipt.run.id.clone()),
+    };
+    Ok((Some(compare_ref), Some(receipt), None))
 }
 
 fn execute_tradeoff_action(action: TradeoffAction) -> anyhow::Result<()> {
