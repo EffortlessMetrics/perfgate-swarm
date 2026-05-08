@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `perfgate doctor` to diagnose local setup, config loading, benchmark
   command availability, baseline presence, artifact directory writability, CI
   detection, and baseline-server health.
+- Added schema-first structured performance evidence contracts for
+  `perfgate.probe.v1`, `perfgate.scenario.v1`, and `perfgate.tradeoff.v1`.
 - Extended `xtask schema-compat` with baseline-service record, health-response,
   and fleet fixtures so the 0.16 server API contract is checked alongside
   receipt compatibility.

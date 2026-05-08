@@ -1,0 +1,39 @@
+{
+  "schema": "perfgate.probe.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.16.0"
+  },
+  "run": {
+    "id": "run-probe-1",
+    "started_at": "2026-05-08T00:00:00Z",
+    "ended_at": "2026-05-08T00:00:01Z",
+    "host": {
+      "os": "linux",
+      "arch": "x86_64"
+    }
+  },
+  "scenario": "large_file_parse",
+  "probes": [
+    {
+      "name": "parser.tokenize",
+      "parent": "request.total",
+      "scope": "local",
+      "items": 10000,
+      "metrics": {
+        "wall_ms": {
+          "value": 12.4,
+          "unit": "ms",
+          "statistic": "median"
+        },
+        "alloc_bytes": {
+          "value": 184320,
+          "unit": "bytes"
+        }
+      },
+      "attributes": {
+        "phase": "tokenize"
+      }
+    }
+  ]
+}

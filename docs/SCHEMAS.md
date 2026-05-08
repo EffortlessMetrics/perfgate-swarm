@@ -8,6 +8,9 @@ perfgate uses versioned JSON receipts at every stage of the pipeline.
 |--------|-------------|-------------|
 | `perfgate.run.v1` | `run`, `check` | Raw measurement data from a benchmark execution |
 | `perfgate.compare.v1` | `compare`, `check`, `paired` | Comparison of current run against baseline |
+| `perfgate.probe.v1` | schema-first contract | Named probe observations from internal phases or external instrumentation |
+| `perfgate.scenario.v1` | schema-first contract | Weighted workload-scenario evidence across benchmarks, phases, or probe groups |
+| `perfgate.tradeoff.v1` | schema-first contract | Structured decision evidence for accepted or rejected performance tradeoffs |
 | `perfgate.report.v1` | `report`, `check` | Cockpit-compatible report envelope with findings, summary, and optional `profile_path` diagnostic |
 | `sensor.report.v1` | `check --mode cockpit` | Sensor integration envelope for dashboards |
 | `perfgate.baseline.v1` | baseline service | Stored baseline record returned by the server |
@@ -24,6 +27,9 @@ perfgate also commits generated schemas for tooling and editor integration:
 | File | Purpose |
 |------|---------|
 | `schemas/perfgate.config.v1.schema.json` | Validates `perfgate.toml` / JSON config shape, including optional per-benchmark scaling configuration |
+| `schemas/perfgate.probe.v1.schema.json` | Validates probe receipts for named phase/span metrics from external instrumentation |
+| `schemas/perfgate.scenario.v1.schema.json` | Validates weighted scenario receipts used to explain workload-level outcomes |
+| `schemas/perfgate.tradeoff.v1.schema.json` | Validates tradeoff receipts that explain why local regressions were accepted or rejected |
 | `schemas/perfgate.report.v1.schema.json` | Validates report receipts, including additive diagnostics such as `profile_path` |
 
 ## JSON Schema Generation
@@ -67,7 +73,8 @@ and `perfgate.health.v1`.
 It also checks v0.16 baseline-service and fleet contract fixtures for
 `perfgate.baseline.v1`, `perfgate.verdict.v1`, `perfgate.audit.v1`,
 `perfgate.health.v1`, `perfgate.dependency_event.v1`, and
-`perfgate.fleet_alert.v1`.
+`perfgate.fleet_alert.v1`, plus structured-evidence fixtures for
+`perfgate.probe.v1`, `perfgate.scenario.v1`, and `perfgate.tradeoff.v1`.
 
 ## Versioning Policy
 
