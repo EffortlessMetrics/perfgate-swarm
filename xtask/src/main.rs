@@ -430,6 +430,17 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
                 .to_string(),
         );
     }
+    if action
+        .inputs
+        .get("decision")
+        .and_then(|input| input.default.as_deref())
+        != Some("false")
+    {
+        errors.push(
+            "action.yml decision input must exist and default to false for opt-in structured decisions"
+                .to_string(),
+        );
+    }
 
     let Some(binary_install_run) = action.step_run("Install perfgate (pre-built binary)") else {
         errors.push("action.yml must include the pre-built binary install step".to_string());
@@ -540,6 +551,80 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
     {
         errors.push("action.yml must not unconditionally pass the out_dir input".to_string());
     }
+    if !run_check_lines
+        .iter()
+        .any(|line| line == "echo \"policy_failure_deferred=true\" >> \"${GITHUB_OUTPUT}\"")
+        || !run_check_lines.iter().any(|line| {
+            line == "if [[ \"${{ inputs.decision }}\" == \"true\" && \"${status}\" == \"2\" ]]; then"
+        })
+    {
+        errors.push(
+            "action.yml must defer check policy failures to decision evaluate when decision=true"
+                .to_string(),
+        );
+    }
+
+    let Some(run_decision_run) = action.step_run("Run perfgate decision") else {
+        errors.push("action.yml must include the perfgate decision evaluation step".to_string());
+        return errors;
+    };
+    let run_decision_lines = active_shell_lines(run_decision_run);
+    if !raw_action.contains(
+        "if: always() && inputs.decision == 'true' && (steps.run_check.outputs.exit_code == '0' || steps.run_check.outputs.exit_code == '2')",
+    ) {
+        errors.push(
+            "action.yml decision step must run only after pass or policy-fail check results"
+                .to_string(),
+        );
+    }
+    if !run_decision_lines
+        .iter()
+        .any(|line| line == "args=(decision evaluate --config \"${{ inputs.config }}\")")
+    {
+        errors.push(
+            "action.yml decision step must run `perfgate decision evaluate` with the configured file"
+                .to_string(),
+        );
+    }
+    if !run_decision_lines
+        .iter()
+        .any(|line| line == "if [[ -n \"${{ inputs.out_dir }}\" ]]; then")
+        || !run_decision_lines
+            .iter()
+            .any(|line| line == "args+=(--out-dir \"${{ inputs.out_dir }}\")")
+    {
+        errors.push(
+            "action.yml decision step must pass --out-dir only when the input explicitly overrides config"
+                .to_string(),
+        );
+    }
+    if !run_decision_lines
+        .iter()
+        .any(|line| line == "echo \"exit_code=${status}\" >> \"${GITHUB_OUTPUT}\"")
+    {
+        errors.push("action.yml decision step must expose its exit code".to_string());
+    }
+
+    let Some(decision_summary_run) = action.step_run("Append perfgate decision summary") else {
+        errors.push("action.yml must append decision.md to GITHUB_STEP_SUMMARY".to_string());
+        return errors;
+    };
+    let decision_summary_lines = active_shell_lines(decision_summary_run);
+    if !raw_action.contains("if: always() && inputs.decision == 'true'")
+        || !decision_summary_lines
+            .iter()
+            .any(|line| line == "out=\"${{ steps.resolve_out_dir.outputs.out_dir }}\"")
+        || !decision_summary_lines.iter().any(|line| {
+            line == "if [[ -f \"${out}/decision.md\" && -n \"${GITHUB_STEP_SUMMARY:-}\" ]]; then"
+        })
+        || !decision_summary_lines
+            .iter()
+            .any(|line| line == "cat \"${out}/decision.md\"")
+    {
+        errors.push(
+            "action.yml must publish generated decision.md to the GitHub step summary".to_string(),
+        );
+    }
 
     let Some(failure_summary_run) = action.step_run("Print perfgate failure summary") else {
         errors.push(
@@ -548,8 +633,12 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
         return errors;
     };
     let failure_summary_lines = active_shell_lines(failure_summary_run);
-    if !raw_action.contains("if: always() && steps.run_check.outputs.exit_code != '0'") {
-        errors.push("action.yml failure summary must run after failed perfgate checks".to_string());
+    if !raw_action.contains("steps.run_check.outputs.policy_failure_deferred != 'true'")
+        || !raw_action.contains("steps.run_decision.outputs.exit_code != '0'")
+    {
+        errors.push(
+            "action.yml failure summary must respect decision-mode final verdicts".to_string(),
+        );
     }
     if !failure_summary_lines
         .iter()
@@ -590,6 +679,9 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
         line.contains("-name run.json")
             && line.contains("-name compare.json")
             && line.contains("-name report.json")
+            && line.contains("-name scenario.json")
+            && line.contains("-name tradeoff.json")
+            && line.contains("-name decision.md")
             && line.contains("-name comment.md")
             && line.contains("-name 'perfgate.*.json'")
     }) {
@@ -3987,6 +4079,9 @@ inputs:
   out_dir:
     description: "Artifact output directory"
     default: ""
+  decision:
+    description: "Run structured decision evaluation"
+    default: "false"
 runs:
   using: "composite"
   steps:
@@ -4014,8 +4109,26 @@ runs:
         if [[ -n "${{ inputs.out_dir }}" ]]; then
           args+=(--out-dir "${{ inputs.out_dir }}")
         fi
+        if [[ "${{ inputs.decision }}" == "true" && "${status}" == "2" ]]; then
+          echo "policy_failure_deferred=true" >> "${GITHUB_OUTPUT}"
+        fi
+    - name: Run perfgate decision
+      if: always() && inputs.decision == 'true' && (steps.run_check.outputs.exit_code == '0' || steps.run_check.outputs.exit_code == '2')
+      run: |
+        args=(decision evaluate --config "${{ inputs.config }}")
+        if [[ -n "${{ inputs.out_dir }}" ]]; then
+          args+=(--out-dir "${{ inputs.out_dir }}")
+        fi
+        echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
+    - name: Append perfgate decision summary
+      if: always() && inputs.decision == 'true'
+      run: |
+        out="${{ steps.resolve_out_dir.outputs.out_dir }}"
+        if [[ -f "${out}/decision.md" && -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+          cat "${out}/decision.md"
+        fi
     - name: Print perfgate failure summary
-      if: always() && steps.run_check.outputs.exit_code != '0'
+      if: always() && ((steps.run_check.outputs.exit_code != '0' && steps.run_check.outputs.policy_failure_deferred != 'true') || (inputs.decision == 'true' && steps.run_decision.outputs.exit_code != '' && steps.run_decision.outputs.exit_code != '0'))
       run: |
         out="${{ steps.resolve_out_dir.outputs.out_dir }}"
         exit_code="${{ steps.run_check.outputs.exit_code }}"
@@ -4023,7 +4136,7 @@ runs:
         {
           echo "Reproduce locally:"
           echo "### perfgate local reproduction"
-          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name comment.md -o -name 'perfgate.*.json' \) | sort
+          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name comment.md -o -name 'perfgate.*.json' \) | sort
         } >> "${GITHUB_STEP_SUMMARY}"
     - name: Post PR comment
       run: |
@@ -4055,6 +4168,53 @@ pkg-fmt = "zip"
         );
 
         assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn action_check_rejects_missing_decision_input() {
+        let action = valid_action_install_surface().replace(
+            "  decision:\n    description: \"Run structured decision evaluation\"\n    default: \"false\"\n",
+            "",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors.iter().any(|error| error.contains("decision input")),
+            "errors should mention missing decision input: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_missing_decision_step() {
+        let action = valid_action_install_surface().replace(
+            "    - name: Run perfgate decision",
+            "    - name: Run decision",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("decision evaluation step")),
+            "errors should mention missing decision step: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_missing_decision_summary_step() {
+        let action = valid_action_install_surface().replace(
+            "    - name: Append perfgate decision summary",
+            "    - name: Append generic summary",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors.iter().any(|error| error.contains("decision.md")),
+            "errors should mention missing decision summary: {:?}",
+            errors
+        );
     }
 
     #[test]

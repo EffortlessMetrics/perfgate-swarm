@@ -63,6 +63,10 @@ inputs:
     description: "Post or update a PR comment with perfgate results (requires GITHUB_TOKEN)"
     required: false
     default: "false"
+  decision:
+    description: "Run perfgate decision evaluate after check and publish scenario/tradeoff/decision artifacts"
+    required: false
+    default: "false"
   github_token:
     description: "GitHub token for posting PR comments (defaults to github.token)"
     required: false
@@ -87,6 +91,9 @@ outputs:
   exit_code:
     description: "perfgate process exit code (0=pass, 1=error, 2=fail, 3=warn-as-fail); always available"
     value: ${{ steps.run_check.outputs.exit_code }}
+  decision_exit_code:
+    description: "perfgate decision evaluate exit code when decision=true"
+    value: ${{ steps.run_decision.outputs.exit_code }}
 
 runs:
   using: "composite"
@@ -296,16 +303,66 @@ runs:
 
         echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
 
+        if [[ "${{ inputs.decision }}" == "true" && "${status}" == "2" ]]; then
+          echo "policy_failure_deferred=true" >> "${GITHUB_OUTPUT}"
+          echo "perfgate check reported a policy failure; deferring final verdict to decision evaluate."
+          exit 0
+        fi
+
+        echo "policy_failure_deferred=false" >> "${GITHUB_OUTPUT}"
         exit "${status}"
 
+    - id: run_decision
+      name: Run perfgate decision
+      if: always() && inputs.decision == 'true' && (steps.run_check.outputs.exit_code == '0' || steps.run_check.outputs.exit_code == '2')
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        args=(decision evaluate --config "${{ inputs.config }}")
+
+        if [[ -n "${{ inputs.out_dir }}" ]]; then
+          args+=(--out-dir "${{ inputs.out_dir }}")
+        fi
+
+        set +e
+        perfgate "${args[@]}"
+        status=$?
+        set -e
+
+        echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
+
+        exit "${status}"
+
+    - name: Append perfgate decision summary
+      if: always() && inputs.decision == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        out="${{ steps.resolve_out_dir.outputs.out_dir }}"
+        if [[ -f "${out}/decision.md" && -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+          {
+            echo "### perfgate decision"
+            echo
+            cat "${out}/decision.md"
+          } >> "${GITHUB_STEP_SUMMARY}"
+        fi
+
     - name: Print perfgate failure summary
-      if: always() && steps.run_check.outputs.exit_code != '0'
+      if: always() && ((steps.run_check.outputs.exit_code != '0' && steps.run_check.outputs.policy_failure_deferred != 'true') || (inputs.decision == 'true' && steps.run_decision.outputs.exit_code != '' && steps.run_decision.outputs.exit_code != '0'))
       shell: bash
       run: |
         set -euo pipefail
 
         out="${{ steps.resolve_out_dir.outputs.out_dir }}"
         exit_code="${{ steps.run_check.outputs.exit_code }}"
+        decision_exit_code="${{ steps.run_decision.outputs.exit_code }}"
+        exit_source="check"
+        if [[ "${{ inputs.decision }}" == "true" && -n "${decision_exit_code}" && "${decision_exit_code}" != "0" ]]; then
+          exit_code="${decision_exit_code}"
+          exit_source="decision"
+        fi
         if [[ -z "${exit_code}" ]]; then
           exit_code="unknown"
         fi
@@ -366,7 +423,7 @@ runs:
 
           local listing
           listing="$(mktemp)"
-          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name tradeoff.json -o -name comment.md -o -name 'perfgate.*.json' -o -name 'sensor.report.v1.json' \) | sort > "${listing}"
+          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name comment.md -o -name 'perfgate.*.json' -o -name 'sensor.report.v1.json' \) | sort > "${listing}"
 
           local count
           count="$(wc -l < "${listing}" | tr -d ' ')"
@@ -383,11 +440,22 @@ runs:
         }
 
         repro_line="$(format_command "${repro[@]}")"
+        decision_repro=()
+        if [[ "${{ inputs.decision }}" == "true" ]]; then
+          decision_repro=(perfgate decision evaluate --config "${{ inputs.config }}")
+          if [[ -n "${{ inputs.out_dir }}" ]]; then
+            decision_repro+=(--out-dir "${{ inputs.out_dir }}")
+          fi
+        fi
 
-        echo "perfgate exited with code ${exit_code}"
+        echo "perfgate ${exit_source} exited with code ${exit_code}"
         echo
         echo "Reproduce locally:"
         echo "  ${repro_line}"
+        if [[ "${{ inputs.decision }}" == "true" ]]; then
+          decision_repro_line="$(format_command "${decision_repro[@]}")"
+          echo "  ${decision_repro_line}"
+        fi
         echo
         echo "Artifacts:"
         print_artifacts
@@ -404,10 +472,13 @@ runs:
           {
             echo "### perfgate local reproduction"
             echo
-            echo "perfgate exited with code \`${exit_code}\`."
+            echo "perfgate ${exit_source} exited with code \`${exit_code}\`."
             echo
             echo "```bash"
             echo "${repro_line}"
+            if [[ "${{ inputs.decision }}" == "true" ]]; then
+              echo "${decision_repro_line}"
+            fi
             echo "```"
             echo
             echo "Artifacts:"
