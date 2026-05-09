@@ -186,6 +186,23 @@ available compensating evidence otherwise satisfies the rule. A regression above
 the cap rejects the tradeoff even when the compensating improvement requirement
 passes.
 
+Use `[decision_policy]` when accepted tradeoffs should require low-noise
+evidence:
+
+```toml
+[decision_policy]
+require_low_noise_for_acceptance = true
+max_cv = 0.10
+missing_noise = "needs_review"
+```
+
+When enabled, a tradeoff that otherwise satisfies its requirements is marked
+review required if any required compensating metric or local regression cap has
+`cv > max_cv`. If CV evidence is missing, `missing_noise = "needs_review"`
+keeps the machine verdict at `warn` and records review reasons; use
+`missing_noise = "accept"` only when the workflow intentionally accepts
+tradeoffs without CV evidence.
+
 For the normal local workflow, run scenario evaluation, tradeoff evaluation, and
 decision Markdown rendering together:
 

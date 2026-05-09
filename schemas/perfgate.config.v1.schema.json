@@ -18,6 +18,10 @@
         "$ref": "#/$defs/BenchConfigFile"
       }
     },
+    "decision_policy": {
+      "description": "Optional policy for deciding whether tradeoff evidence is stable enough\nfor automatic acceptance.",
+      "$ref": "#/$defs/DecisionPolicyConfig"
+    },
     "defaults": {
       "$ref": "#/$defs/DefaultsConfig",
       "default": {}
@@ -260,6 +264,30 @@
         }
       }
     },
+    "DecisionPolicyConfig": {
+      "description": "Policy for automated structured decisions.",
+      "type": "object",
+      "properties": {
+        "max_cv": {
+          "description": "Maximum accepted coefficient of variation for tradeoff evidence.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "missing_noise": {
+          "description": "Behavior when required noise evidence is missing.",
+          "$ref": "#/$defs/MissingNoisePolicy",
+          "default": "needs_review"
+        },
+        "require_low_noise_for_acceptance": {
+          "description": "Require low-noise evidence before automatically accepting a tradeoff.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
     "DefaultsConfig": {
       "type": "object",
       "properties": {
@@ -366,6 +394,21 @@
       "enum": [
         "median",
         "p95"
+      ]
+    },
+    "MissingNoisePolicy": {
+      "description": "How to handle missing noise evidence when low-noise tradeoff acceptance is\nrequired.",
+      "oneOf": [
+        {
+          "description": "Mark the decision as requiring review.",
+          "type": "string",
+          "const": "needs_review"
+        },
+        {
+          "description": "Accept the tradeoff if all non-noise requirements pass.",
+          "type": "string",
+          "const": "accept"
+        }
       ]
     },
     "NoisePolicy": {

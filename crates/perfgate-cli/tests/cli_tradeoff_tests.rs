@@ -234,6 +234,53 @@ fn test_tradeoff_evaluate_marks_missing_local_cap_evidence_needs_review() {
 }
 
 #[test]
+fn test_tradeoff_evaluate_marks_noisy_accepted_tradeoff_needs_review() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let config_path = temp_dir.path().join("perfgate.toml");
+    let scenario_path = temp_dir.path().join("scenario.json");
+    let probe_compare_path = temp_dir.path().join("probe-compare.json");
+    let output_path = temp_dir.path().join("tradeoff.json");
+
+    write_probe_tradeoff_config_with_decision_policy(&config_path, 1.10, "warn", 0.10);
+    write_probe_compare_receipt_many_with_cv(
+        &probe_compare_path,
+        &[("parser.batch_loop", 80.0, "dominant", Some(0.18))],
+    );
+    write_scenario_receipt_with_probe_ref(&scenario_path, 96.0, "fail", &probe_compare_path);
+
+    perfgate_cmd()
+        .arg("tradeoff")
+        .arg("evaluate")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--scenario")
+        .arg(&scenario_path)
+        .arg("--out")
+        .arg(&output_path)
+        .assert()
+        .success();
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read tradeoff receipt"),
+    )
+    .expect("tradeoff receipt should be JSON");
+
+    assert_eq!(receipt["decision"]["accepted_tradeoff"], false);
+    assert_eq!(receipt["decision"]["review_required"], true);
+    assert_eq!(receipt["rules"][0]["status"], "needs_review");
+    assert!(
+        receipt["decision"]["review_reasons"][0]
+            .as_str()
+            .expect("review reason")
+            .contains("exceeds max_cv")
+    );
+    assert_eq!(
+        receipt["weighted_deltas"]["max_rss_kb"]["status"].as_str(),
+        Some("warn")
+    );
+}
+
+#[test]
 fn test_tradeoff_evaluate_rejects_config_without_tradeoffs() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let config_path = temp_dir.path().join("perfgate.toml");
@@ -256,6 +303,34 @@ fn test_tradeoff_evaluate_rejects_config_without_tradeoffs() {
         .stderr(predicate::str::contains(
             "no [[tradeoff]] entries configured",
         ));
+}
+
+fn write_probe_tradeoff_config_with_decision_policy(
+    path: &Path,
+    min_improvement_ratio: f64,
+    downgrade_to: &str,
+    max_cv: f64,
+) {
+    fs::write(
+        path,
+        format!(
+            r#"[decision_policy]
+require_low_noise_for_acceptance = true
+max_cv = {max_cv}
+
+[[tradeoff]]
+name = "memory_for_probe_speed"
+if_failed = "max_rss_kb"
+downgrade_to = "{downgrade_to}"
+
+[[tradeoff.require]]
+metric = "wall_ms"
+probe = "parser.batch_loop"
+min_improvement_ratio = {min_improvement_ratio}
+"#
+        ),
+    )
+    .expect("failed to write config");
 }
 
 fn write_tradeoff_config(path: &Path, min_improvement_ratio: f64, downgrade_to: &str) {
@@ -434,6 +509,17 @@ fn write_probe_compare_receipt(path: &Path, probe: &str, wall_current: f64) {
 }
 
 fn write_probe_compare_receipt_many(path: &Path, probes: &[(&str, f64, &str)]) {
+    let probes: Vec<_> = probes
+        .iter()
+        .map(|(probe, wall_current, scope)| (*probe, *wall_current, *scope, None))
+        .collect();
+    write_probe_compare_receipt_many_with_cv(path, &probes);
+}
+
+fn write_probe_compare_receipt_many_with_cv(
+    path: &Path,
+    probes: &[(&str, f64, &str, Option<f64>)],
+) {
     let receipt = json!({
         "schema": "perfgate.probe_compare.v1",
         "tool": {"name": "perfgate", "version": "0.16.0"},
@@ -444,26 +530,30 @@ fn write_probe_compare_receipt_many(path: &Path, probes: &[(&str, f64, &str)]) {
             "host": {"os": "linux", "arch": "x86_64"}
         },
         "scenario": "release_workload",
-        "probes": probes.iter().map(|(probe, wall_current, scope)| {
+        "probes": probes.iter().map(|(probe, wall_current, scope, cv)| {
             let regression = if *wall_current > 100.0 {
                 (*wall_current - 100.0) / 100.0
             } else {
                 0.0
             };
+            let mut delta = json!({
+                "baseline": 100.0,
+                "current": wall_current,
+                "ratio": wall_current / 100.0,
+                "pct": (wall_current - 100.0) / 100.0,
+                "regression": regression,
+                "status": if regression > 0.0 { "warn" } else { "pass" }
+            });
+            if let Some(cv) = cv {
+                delta["cv"] = json!(cv);
+            }
             json!({
                 "name": probe,
                 "scope": scope,
                 "baseline_count": 1,
                 "current_count": 1,
                 "deltas": {
-                    "wall_ms": {
-                        "baseline": 100.0,
-                        "current": wall_current,
-                        "ratio": wall_current / 100.0,
-                        "pct": (wall_current - 100.0) / 100.0,
-                        "regression": regression,
-                        "status": if regression > 0.0 { "warn" } else { "pass" }
-                    }
+                    "wall_ms": delta
                 },
                 "status": if regression > 0.0 { "warn" } else { "pass" }
             })

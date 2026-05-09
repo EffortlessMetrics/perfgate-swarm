@@ -60,6 +60,7 @@ mod tests {
                 ..Default::default()
             },
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),

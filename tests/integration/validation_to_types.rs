@@ -36,6 +36,7 @@ fn config_file_validates_bench_names() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
         baseline_server: BaselineServerConfig::default(),
+        decision_policy: perfgate_types::DecisionPolicyConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
         scenarios: Vec::new(),
@@ -62,6 +63,7 @@ fn config_file_rejects_invalid_bench_names() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
         baseline_server: BaselineServerConfig::default(),
+        decision_policy: perfgate_types::DecisionPolicyConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
         scenarios: Vec::new(),
@@ -88,6 +90,7 @@ fn multiple_benches_all_validated() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
         baseline_server: BaselineServerConfig::default(),
+        decision_policy: perfgate_types::DecisionPolicyConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
         scenarios: Vec::new(),
@@ -129,6 +132,7 @@ fn validation_fails_on_first_invalid_bench() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
         baseline_server: BaselineServerConfig::default(),
+        decision_policy: perfgate_types::DecisionPolicyConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
         scenarios: Vec::new(),
@@ -252,6 +256,7 @@ fn config_empty_benches_is_valid() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
         baseline_server: BaselineServerConfig::default(),
+        decision_policy: perfgate_types::DecisionPolicyConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
         scenarios: Vec::new(),
@@ -270,6 +275,7 @@ fn config_duplicate_bench_names_passes_validation() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
         baseline_server: BaselineServerConfig::default(),
+        decision_policy: perfgate_types::DecisionPolicyConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
         scenarios: Vec::new(),
@@ -420,6 +426,7 @@ fn config_empty_bench_name_rejected() {
     let config = ConfigFile {
         defaults: DefaultsConfig::default(),
         baseline_server: BaselineServerConfig::default(),
+        decision_policy: perfgate_types::DecisionPolicyConfig::default(),
         tradeoffs: Vec::new(),
         ratchet: None,
         scenarios: Vec::new(),
@@ -448,6 +455,7 @@ fn config_path_traversal_variants_rejected() {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),

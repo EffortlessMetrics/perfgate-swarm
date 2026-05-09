@@ -1247,6 +1247,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -1380,6 +1381,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -1460,6 +1462,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -1517,6 +1520,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -1591,6 +1595,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -1651,6 +1656,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -1684,6 +1690,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -1739,6 +1746,7 @@ mod tests {
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -1809,6 +1817,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -1869,6 +1878,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: perfgate_types::DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
