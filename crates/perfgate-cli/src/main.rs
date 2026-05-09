@@ -3430,6 +3430,89 @@ fn evaluate_configured_scenarios(
     })
 }
 
+fn run_configured_probe_compares(
+    config: &ConfigFile,
+    scenario: Option<&str>,
+    pretty: bool,
+) -> anyhow::Result<()> {
+    for scenario in select_configured_scenarios(config, scenario)? {
+        let Some((baseline_path, current_path, out_path)) =
+            configured_probe_compare_paths(scenario)?
+        else {
+            continue;
+        };
+
+        let baseline: ProbeReceipt =
+            read_json_from_location(&baseline_path).with_context(|| {
+                format!(
+                    "read scenario '{}' baseline probe receipt {}",
+                    scenario.name,
+                    baseline_path.display()
+                )
+            })?;
+        let current: ProbeReceipt = read_json_from_location(&current_path).with_context(|| {
+            format!(
+                "read scenario '{}' current probe receipt {}",
+                scenario.name,
+                current_path.display()
+            )
+        })?;
+
+        let outcome = ProbeCompareUseCase::compare(ProbeCompareRequest {
+            baseline_ref: CompareRef {
+                path: Some(baseline_path.display().to_string()),
+                run_id: Some(baseline.run.id.clone()),
+            },
+            current_ref: CompareRef {
+                path: Some(current_path.display().to_string()),
+                run_id: Some(current.run.id.clone()),
+            },
+            baseline,
+            current,
+            tool: tool_info(),
+        })?;
+
+        write_json_to_location(&out_path, &outcome.receipt, pretty)?;
+        eprintln!("Probe compare receipt written to {}", out_path.display());
+    }
+
+    Ok(())
+}
+
+fn configured_probe_compare_paths(
+    scenario: &ScenarioConfigFile,
+) -> anyhow::Result<Option<(PathBuf, PathBuf, PathBuf)>> {
+    let has_probe_inputs = scenario.probe_baseline.is_some() || scenario.probe_current.is_some();
+    if !has_probe_inputs {
+        return Ok(None);
+    }
+
+    let Some(baseline) = scenario.probe_baseline.as_deref() else {
+        anyhow::bail!(
+            "scenario '{}' probe comparison requires probe_baseline, probe_current, and probe_compare",
+            scenario.name
+        );
+    };
+    let Some(current) = scenario.probe_current.as_deref() else {
+        anyhow::bail!(
+            "scenario '{}' probe comparison requires probe_baseline, probe_current, and probe_compare",
+            scenario.name
+        );
+    };
+    let Some(out) = scenario.probe_compare.as_deref() else {
+        anyhow::bail!(
+            "scenario '{}' probe comparison requires probe_baseline, probe_current, and probe_compare",
+            scenario.name
+        );
+    };
+
+    Ok(Some((
+        PathBuf::from(baseline),
+        PathBuf::from(current),
+        PathBuf::from(out),
+    )))
+}
+
 fn select_configured_scenarios<'a>(
     config: &'a ConfigFile,
     scenario: Option<&str>,
@@ -3596,6 +3679,8 @@ fn execute_decision_evaluate(args: DecisionEvaluateArgs) -> anyhow::Result<()> {
         .decision_out
         .clone()
         .unwrap_or_else(|| out_dir.join("decision.md"));
+
+    run_configured_probe_compares(&config, args.scenario.as_deref(), args.pretty)?;
 
     let scenario_outcome = evaluate_configured_scenarios(
         config.clone(),

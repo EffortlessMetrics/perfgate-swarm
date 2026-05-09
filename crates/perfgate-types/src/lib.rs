@@ -1436,6 +1436,27 @@ impl ConfigFile {
                     scenario.name, scenario.bench
                 ));
             }
+            let has_probe_inputs =
+                scenario.probe_baseline.is_some() || scenario.probe_current.is_some();
+            if has_probe_inputs
+                && (scenario
+                    .probe_baseline
+                    .as_ref()
+                    .is_none_or(|path| path.trim().is_empty())
+                    || scenario
+                        .probe_current
+                        .as_ref()
+                        .is_none_or(|path| path.trim().is_empty())
+                    || scenario
+                        .probe_compare
+                        .as_ref()
+                        .is_none_or(|path| path.trim().is_empty()))
+            {
+                return Err(format!(
+                    "scenario '{}' probe comparison requires probe_baseline, probe_current, and probe_compare",
+                    scenario.name
+                ));
+            }
         }
         for rule in &self.tradeoffs {
             if rule.name.trim().is_empty() {
@@ -1606,6 +1627,18 @@ pub struct ScenarioConfigFile {
     /// probes part of the scenario verdict.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub probe_compare: Option<String>,
+
+    /// Optional baseline probe receipt path. When paired with `probe_current`
+    /// and `probe_compare`, `perfgate decision evaluate` creates the probe
+    /// comparison receipt before scenario evaluation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub probe_baseline: Option<String>,
+
+    /// Optional current probe receipt path. When paired with `probe_baseline`
+    /// and `probe_compare`, `perfgate decision evaluate` creates the probe
+    /// comparison receipt before scenario evaluation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub probe_current: Option<String>,
 }
 
 /// How ratcheting should update budgets.
@@ -2193,6 +2226,8 @@ weight = 0.35
 bench = "large-file"
 description = "Parse a large file"
 probe_compare = "artifacts/perfgate/large-file/probe-compare.json"
+probe_baseline = "baselines/large-file-probes.json"
+probe_current = "artifacts/perfgate/large-file/probes.json"
 "#,
         )
         .expect("parse config");
@@ -2204,6 +2239,14 @@ probe_compare = "artifacts/perfgate/large-file/probe-compare.json"
         assert_eq!(
             config.scenarios[0].probe_compare.as_deref(),
             Some("artifacts/perfgate/large-file/probe-compare.json")
+        );
+        assert_eq!(
+            config.scenarios[0].probe_baseline.as_deref(),
+            Some("baselines/large-file-probes.json")
+        );
+        assert_eq!(
+            config.scenarios[0].probe_current.as_deref(),
+            Some("artifacts/perfgate/large-file/probes.json")
         );
         assert!(config.validate().is_ok());
     }
@@ -2226,6 +2269,8 @@ command = ["echo", "large"]
             description: None,
             compare: None,
             probe_compare: None,
+            probe_baseline: None,
+            probe_current: None,
         }];
         assert!(config.validate().unwrap_err().contains("unknown benchmark"));
 
@@ -2236,6 +2281,20 @@ command = ["echo", "large"]
         config.scenarios[0].weight = 1.0;
         config.scenarios[0].name = " ".to_string();
         assert!(config.validate().unwrap_err().contains("must not be empty"));
+
+        config.scenarios[0].name = "large-file-workload".to_string();
+        config.scenarios[0].probe_baseline = Some("baselines/probes.json".to_string());
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("probe comparison requires")
+        );
+
+        config.scenarios[0].probe_current = Some("artifacts/perfgate/probes.json".to_string());
+        config.scenarios[0].probe_compare =
+            Some("artifacts/perfgate/probe-compare.json".to_string());
+        assert!(config.validate().is_ok());
     }
 
     // ---- Serde round-trip unit tests ----

@@ -132,6 +132,10 @@ Use decision mode when `perfgate.toml` contains `[[scenario]]` weights,
 available for custom pipelines, but the action path should usually be the
 single `decision: "true"` input.
 
+If scenarios configure `probe_baseline`, `probe_current`, and `probe_compare`,
+decision mode also creates the probe comparison receipt before evaluating the
+scenario and tradeoff receipts.
+
 ## 4) Manual PR performance gate workflow
 
 Create `.github/workflows/perfgate.yml`:

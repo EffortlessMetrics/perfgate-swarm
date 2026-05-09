@@ -65,7 +65,12 @@ min_improvement_ratio = 1.10
     .expect("write config");
 }
 
-fn write_probe_config(path: &Path, probe_compare_path: &Path) {
+fn write_probe_config(
+    path: &Path,
+    probe_baseline_path: &Path,
+    probe_current_path: &Path,
+    probe_compare_path: &Path,
+) {
     fs::write(
         path,
         format!(
@@ -87,6 +92,8 @@ command = [{}]
 name = "release_workload"
 weight = 1.0
 bench = "parser"
+probe_baseline = "{}"
+probe_current = "{}"
 probe_compare = "{}"
 
 [[tradeoff]]
@@ -100,6 +107,8 @@ probe = "parser.batch_loop"
 min_improvement_ratio = 1.10
 "#,
             command_toml_array(&success_command()),
+            toml_path(probe_baseline_path),
+            toml_path(probe_current_path),
             toml_path(probe_compare_path)
         ),
     )
@@ -242,8 +251,15 @@ fn decision_evaluate_runs_structured_decision_workflow() {
     let temp_dir = tempdir().expect("create temp dir");
     let root = temp_dir.path();
     let config_path = root.join("perfgate.toml");
+    let probe_baseline_path = root.join("artifacts/perfgate/parser/probes-baseline.json");
+    let probe_current_path = root.join("artifacts/perfgate/parser/probes-current.json");
     let probe_compare_path = root.join("artifacts/perfgate/parser/probe-compare.json");
-    write_probe_config(&config_path, &probe_compare_path);
+    write_probe_config(
+        &config_path,
+        &probe_baseline_path,
+        &probe_current_path,
+        &probe_compare_path,
+    );
 
     perfgate_cmd()
         .current_dir(root)
@@ -274,13 +290,15 @@ fn decision_evaluate_runs_structured_decision_workflow() {
     let compare_path = root.join("artifacts/perfgate/parser/compare.json");
     assert!(compare_path.exists(), "check should write compare receipt");
     write_controlled_compare_receipt_with_wall(&compare_path, 96.0);
-    write_probe_compare_receipt(&probe_compare_path, 80.0);
+    write_probe_receipt(&probe_baseline_path, 100.0);
+    write_probe_receipt(&probe_current_path, 80.0);
 
     perfgate_cmd()
         .current_dir(root)
         .args(["decision", "evaluate", "--config", "perfgate.toml"])
         .assert()
         .success()
+        .stderr(predicate::str::contains("Probe compare receipt written"))
         .stderr(predicate::str::contains("Scenario receipt written"))
         .stderr(predicate::str::contains("Tradeoff receipt written"))
         .stderr(predicate::str::contains("Decision markdown written"));
@@ -288,6 +306,32 @@ fn decision_evaluate_runs_structured_decision_workflow() {
     let scenario_path = root.join("artifacts/perfgate/scenario.json");
     let tradeoff_path = root.join("artifacts/perfgate/tradeoff.json");
     let decision_path = root.join("artifacts/perfgate/decision.md");
+    assert!(
+        probe_compare_path.exists(),
+        "decision evaluate should write configured probe compare receipt"
+    );
+
+    let probe_compare: perfgate_types::ProbeCompareReceipt = serde_json::from_str(
+        &fs::read_to_string(&probe_compare_path).expect("read probe compare receipt"),
+    )
+    .expect("probe compare receipt should deserialize");
+    assert_eq!(probe_compare.schema, "perfgate.probe_compare.v1");
+    let expected_probe_baseline = toml_path(&probe_baseline_path);
+    let expected_probe_current = toml_path(&probe_current_path);
+    assert_eq!(
+        probe_compare
+            .baseline_ref
+            .as_ref()
+            .and_then(|r| r.path.as_deref()),
+        Some(expected_probe_baseline.as_str())
+    );
+    assert_eq!(
+        probe_compare
+            .current_ref
+            .as_ref()
+            .and_then(|r| r.path.as_deref()),
+        Some(expected_probe_current.as_str())
+    );
 
     let scenario: perfgate_types::ScenarioReceipt =
         serde_json::from_str(&fs::read_to_string(scenario_path).expect("read scenario receipt"))
@@ -372,12 +416,12 @@ fn write_controlled_compare_receipt_with_wall(path: &Path, wall_current: f64) {
     .expect("write controlled compare receipt");
 }
 
-fn write_probe_compare_receipt(path: &Path, wall_current: f64) {
+fn write_probe_receipt(path: &Path, wall_ms: f64) {
     let receipt = json!({
-        "schema": "perfgate.probe_compare.v1",
+        "schema": "perfgate.probe.v1",
         "tool": {"name": "perfgate", "version": "0.16.0"},
         "run": {
-            "id": "probe-compare-run",
+            "id": format!("probe-run-{wall_ms}"),
             "started_at": "2026-05-08T00:00:00Z",
             "ended_at": "2026-05-08T00:00:01Z",
             "host": {"os": "linux", "arch": "x86_64"}
@@ -386,32 +430,20 @@ fn write_probe_compare_receipt(path: &Path, wall_current: f64) {
         "probes": [{
             "name": "parser.batch_loop",
             "scope": "dominant",
-            "baseline_count": 1,
-            "current_count": 1,
-            "deltas": {
+            "metrics": {
                 "wall_ms": {
-                    "baseline": 100.0,
-                    "current": wall_current,
-                    "ratio": wall_current / 100.0,
-                    "pct": (wall_current - 100.0) / 100.0,
-                    "regression": 0.0,
-                    "status": "pass"
+                    "value": wall_ms,
+                    "unit": "ms"
                 }
-            },
-            "status": "pass"
-        }],
-        "verdict": {
-            "status": "pass",
-            "counts": {"pass": 1, "warn": 0, "fail": 0, "skip": 0},
-            "reasons": []
-        }
+            }
+        }]
     });
 
     fs::write(
         path,
-        serde_json::to_string_pretty(&receipt).expect("serialize probe compare receipt"),
+        serde_json::to_string_pretty(&receipt).expect("serialize probe receipt"),
     )
-    .expect("write probe compare receipt");
+    .expect("write probe receipt");
 }
 
 fn toml_path(path: &Path) -> String {

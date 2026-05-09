@@ -49,18 +49,17 @@ fn performance_decision_example_runs_end_to_end() {
     perfgate_cmd()
         .current_dir(root)
         .args([
-            "probe",
-            "compare",
-            "--baseline",
-            "artifacts/perfgate/large-file/probes-baseline.json",
-            "--current",
-            "artifacts/perfgate/large-file/probes-current.json",
-            "--out",
-            "artifacts/perfgate/large-file/probe-compare.json",
+            "decision",
+            "evaluate",
+            "--config",
+            "examples/performance-decision/perfgate.toml",
         ])
         .assert()
         .success()
-        .stderr(predicate::str::contains("Probe compare receipt written"));
+        .stderr(predicate::str::contains("Probe compare receipt written"))
+        .stderr(predicate::str::contains("Scenario receipt written"))
+        .stderr(predicate::str::contains("Tradeoff receipt written"))
+        .stderr(predicate::str::contains("Decision markdown written"));
 
     let probe_compare: perfgate_types::ProbeCompareReceipt = serde_json::from_str(
         &fs::read_to_string(root.join("artifacts/perfgate/large-file/probe-compare.json"))
@@ -79,20 +78,6 @@ fn performance_decision_example_runs_end_to_end() {
             .iter()
             .any(|probe| probe.name == "parser.batch_loop")
     );
-
-    perfgate_cmd()
-        .current_dir(root)
-        .args([
-            "decision",
-            "evaluate",
-            "--config",
-            "examples/performance-decision/perfgate.toml",
-        ])
-        .assert()
-        .success()
-        .stderr(predicate::str::contains("Scenario receipt written"))
-        .stderr(predicate::str::contains("Tradeoff receipt written"))
-        .stderr(predicate::str::contains("Decision markdown written"));
 
     let scenario: perfgate_types::ScenarioReceipt = serde_json::from_str(
         &fs::read_to_string(root.join("artifacts/perfgate/scenario.json"))

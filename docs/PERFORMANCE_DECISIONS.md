@@ -91,6 +91,19 @@ weight = 0.75
 probe_compare = "artifacts/perfgate/probe-compare.json"
 ```
 
+Or let `decision evaluate` create it when baseline and current probe receipts
+are configured:
+
+```toml
+[[scenario]]
+name = "large_file_parse"
+bench = "large-file"
+weight = 0.75
+probe_baseline = "baselines/large-file-probes.json"
+probe_current = "artifacts/perfgate/large-file-probes.json"
+probe_compare = "artifacts/perfgate/large-file-probe-compare.json"
+```
+
 Probe evidence is advisory until a tradeoff rule explicitly requires it.
 
 ## Config Shape

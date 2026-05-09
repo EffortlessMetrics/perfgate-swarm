@@ -105,6 +105,12 @@ else. Use `probe_compare = "path/to/probe-compare.json"` to attach advisory
 probe-level evidence from `perfgate probe compare`; scenario verdicts still come
 from benchmark compare receipts and weighted deltas.
 
+When a scenario has `probe_baseline`, `probe_current`, and `probe_compare`,
+`perfgate decision evaluate` runs the probe comparison first and writes the
+configured `probe_compare` receipt before scenario evaluation. Existing
+`probe_compare`-only configs still work when another tool or command already
+wrote the receipt.
+
 ```toml
 [[bench]]
 name = "large-file"
@@ -118,6 +124,8 @@ command = ["cargo", "bench", "--bench", "small_edit"]
 name = "large_file_parse"
 weight = 0.35
 bench = "large-file"
+probe_baseline = "baselines/large-file-probes.json"
+probe_current = "artifacts/perfgate/large-file/probes.json"
 probe_compare = "artifacts/perfgate/large-file/probe-compare.json"
 
 [[scenario]]

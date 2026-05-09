@@ -502,8 +502,22 @@
         "name": {
           "type": "string"
         },
+        "probe_baseline": {
+          "description": "Optional baseline probe receipt path. When paired with `probe_current`\nand `probe_compare`, `perfgate decision evaluate` creates the probe\ncomparison receipt before scenario evaluation.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "probe_compare": {
           "description": "Optional probe comparison receipt path. When present, scenario\nevaluation attaches probe names and a receipt reference without making\nprobes part of the scenario verdict.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "probe_current": {
+          "description": "Optional current probe receipt path. When paired with `probe_baseline`\nand `probe_compare`, `perfgate decision evaluate` creates the probe\ncomparison receipt before scenario evaluation.",
           "type": [
             "string",
             "null"

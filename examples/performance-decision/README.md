@@ -9,13 +9,12 @@ Run from the repository root:
 ```bash
 perfgate ingest probes --file examples/performance-decision/probes-baseline.jsonl --out artifacts/perfgate/large-file/probes-baseline.json
 perfgate ingest probes --file examples/performance-decision/probes-current.jsonl --out artifacts/perfgate/large-file/probes-current.json
-perfgate probe compare --baseline artifacts/perfgate/large-file/probes-baseline.json --current artifacts/perfgate/large-file/probes-current.json --out artifacts/perfgate/large-file/probe-compare.json
 perfgate decision evaluate --config examples/performance-decision/perfgate.toml
 ```
 
 `decision evaluate` is the command to teach users. It consumes the configured
-compare and probe-compare receipts, evaluates scenario weights and tradeoff
-policy, then writes the review-ready Markdown.
+compare receipts, runs the configured probe comparison, evaluates scenario
+weights and tradeoff policy, then writes the review-ready Markdown.
 
 Expected shape:
 
@@ -35,6 +34,6 @@ The fixture models a memory-for-speed decision:
 - the final decision is `warn` with an accepted tradeoff.
 
 `parser.tokenize` is also present in the probe comparison and regresses
-slightly. That evidence remains visible in `probe-compare.json`; the tradeoff
-rule accepts the memory regression only because the dominant batch-loop probe
-improves.
+slightly. That evidence remains visible in the generated `probe-compare.json`;
+the tradeoff rule accepts the memory regression only because the dominant
+batch-loop probe improves.

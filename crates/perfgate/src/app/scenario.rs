@@ -428,6 +428,8 @@ mod tests {
                 description: None,
                 compare: None,
                 probe_compare: None,
+                probe_baseline: None,
+                probe_current: None,
             },
             compare_ref: CompareRef {
                 path: Some(format!("artifacts/{bench}/compare.json")),
