@@ -3615,6 +3615,7 @@ fn evaluate_configured_tradeoffs(
         scenario,
         probe_compares,
         rules: config.tradeoffs.clone(),
+        decision_policy: config.decision_policy.clone(),
         tool: tool_info(),
     })
 }

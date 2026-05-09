@@ -1,10 +1,11 @@
 use crate::domain::budget::{aggregate_verdict, reason_token};
 use perfgate_types::{
-    Delta, HostInfo, Metric, MetricStatus, PROBE_COMPARE_SCHEMA_V1, ProbeCompareObservation,
-    ProbeCompareReceipt, RunMeta, ScenarioReceipt, TRADEOFF_SCHEMA_V1, ToolInfo, TradeoffAllowance,
-    TradeoffAllowanceOutcome, TradeoffDecision, TradeoffDecisionStatus, TradeoffDowngrade,
-    TradeoffProbeOutcome, TradeoffReceipt, TradeoffRequirement, TradeoffRequirementOutcome,
-    TradeoffRule, TradeoffRuleOutcome, VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC,
+    DecisionPolicyConfig, Delta, HostInfo, Metric, MetricStatus, MissingNoisePolicy,
+    PROBE_COMPARE_SCHEMA_V1, ProbeCompareObservation, ProbeCompareReceipt, RunMeta,
+    ScenarioReceipt, TRADEOFF_SCHEMA_V1, ToolInfo, TradeoffAllowance, TradeoffAllowanceOutcome,
+    TradeoffDecision, TradeoffDecisionStatus, TradeoffDowngrade, TradeoffProbeOutcome,
+    TradeoffReceipt, TradeoffRequirement, TradeoffRequirementOutcome, TradeoffRule,
+    TradeoffRuleOutcome, VERDICT_REASON_TRADEOFF_MISSING_REQUIRED_METRIC,
     VERDICT_REASON_TRADEOFF_REVIEW_REQUIRED, VERDICT_REASON_TRADEOFF_RULE_NOT_SATISFIED, Verdict,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,6 +17,7 @@ pub struct TradeoffEvaluateRequest {
     pub scenario: ScenarioReceipt,
     pub probe_compares: Vec<ProbeCompareReceipt>,
     pub rules: Vec<TradeoffRule>,
+    pub decision_policy: DecisionPolicyConfig,
     pub tool: ToolInfo,
 }
 
@@ -51,7 +53,7 @@ impl TradeoffUseCase {
         let mut review_reasons = Vec::new();
 
         for rule in &req.rules {
-            let outcome = evaluate_rule(rule, &weighted_deltas, &probe_index);
+            let outcome = evaluate_rule(rule, &weighted_deltas, &probe_index, &req.decision_policy);
             if outcome.accepted {
                 if let Some(delta) = weighted_deltas.get_mut(rule.if_failed.as_str()) {
                     delta.status = downgrade_status(rule.downgrade_to);
@@ -153,6 +155,7 @@ fn evaluate_rule(
     rule: &TradeoffRule,
     weighted_deltas: &BTreeMap<String, Delta>,
     probe_index: &BTreeMap<String, ProbeCompareObservation>,
+    decision_policy: &DecisionPolicyConfig,
 ) -> TradeoffRuleOutcome {
     let Some(target) = weighted_deltas.get(rule.if_failed.as_str()) else {
         return TradeoffRuleOutcome {
@@ -186,10 +189,15 @@ fn evaluate_rule(
 
     let requirements = evaluate_requirements(&rule.require, weighted_deltas, probe_index);
     let allowances = evaluate_allowances(&rule.allow, probe_index);
-    let accepted = !requirements.is_empty()
+    let accepted_by_tradeoff_evidence = !requirements.is_empty()
         && requirements.iter().all(|requirement| requirement.satisfied)
         && allowances.iter().all(|allowance| allowance.satisfied);
-    let needs_review = !accepted && evidence_incomplete_but_satisfied(&requirements, &allowances);
+    let noise_review_reason = accepted_by_tradeoff_evidence
+        .then(|| noise_review_reason(rule, weighted_deltas, probe_index, decision_policy))
+        .flatten();
+    let accepted = accepted_by_tradeoff_evidence && noise_review_reason.is_none();
+    let needs_review = noise_review_reason.is_some()
+        || (!accepted && evidence_incomplete_but_satisfied(&requirements, &allowances));
 
     TradeoffRuleOutcome {
         name: rule.name.clone(),
@@ -210,12 +218,98 @@ fn evaluate_rule(
                     .to_string()
             }
         } else if needs_review {
-            "required tradeoff evidence is incomplete; review required".to_string()
+            noise_review_reason.unwrap_or_else(|| {
+                "required tradeoff evidence is incomplete; review required".to_string()
+            })
         } else {
             "one or more required compensating improvements or local regression caps were not satisfied".to_string()
         }),
         requirements,
         allowances,
+    }
+}
+
+fn noise_review_reason(
+    rule: &TradeoffRule,
+    weighted_deltas: &BTreeMap<String, Delta>,
+    probe_index: &BTreeMap<String, ProbeCompareObservation>,
+    decision_policy: &DecisionPolicyConfig,
+) -> Option<String> {
+    if !decision_policy.require_low_noise_for_acceptance {
+        return None;
+    }
+    let max_cv = decision_policy.max_cv?;
+    let mut missing = Vec::new();
+    let mut noisy = Vec::new();
+
+    for requirement in &rule.require {
+        let label = evidence_label(requirement.probe.as_deref(), requirement.metric.as_str());
+        let delta = if let Some(probe) = requirement.probe.as_deref() {
+            probe_index
+                .get(probe)
+                .and_then(|probe| probe.deltas.get(requirement.metric.as_str()))
+        } else {
+            weighted_deltas.get(requirement.metric.as_str())
+        };
+        collect_noise_evidence(&label, delta, max_cv, &mut missing, &mut noisy);
+    }
+
+    for allowance in &rule.allow {
+        let label = evidence_label(Some(&allowance.probe), allowance.metric.as_str());
+        let delta = probe_index
+            .get(&allowance.probe)
+            .and_then(|probe| probe.deltas.get(allowance.metric.as_str()));
+        collect_noise_evidence(&label, delta, max_cv, &mut missing, &mut noisy);
+    }
+
+    if !noisy.is_empty() {
+        return Some(format!(
+            "tradeoff evidence exceeds max_cv {:.3}: {}",
+            max_cv,
+            noisy.join(", ")
+        ));
+    }
+
+    if !missing.is_empty()
+        && matches!(
+            decision_policy.missing_noise,
+            MissingNoisePolicy::NeedsReview
+        )
+    {
+        return Some(format!(
+            "tradeoff noise evidence missing for {}",
+            missing.join(", ")
+        ));
+    }
+
+    None
+}
+
+fn evidence_label(probe: Option<&str>, metric: &str) -> String {
+    if let Some(probe) = probe {
+        format!("probe '{probe}' metric '{metric}'")
+    } else {
+        format!("metric '{metric}'")
+    }
+}
+
+fn collect_noise_evidence(
+    label: &str,
+    delta: Option<&Delta>,
+    max_cv: f64,
+    missing: &mut Vec<String>,
+    noisy: &mut Vec<String>,
+) {
+    let Some(delta) = delta else {
+        missing.push(label.to_string());
+        return;
+    };
+    let Some(cv) = delta.cv else {
+        missing.push(label.to_string());
+        return;
+    };
+    if cv > max_cv + f64::EPSILON {
+        noisy.push(format!("{label} cv {:.3}", cv));
     }
 }
 
@@ -626,6 +720,21 @@ mod tests {
         }
     }
 
+    fn delta_with_cv(baseline: f64, current: f64, status: MetricStatus, cv: Option<f64>) -> Delta {
+        Delta {
+            cv,
+            ..delta(baseline, current, status)
+        }
+    }
+
+    fn low_noise_policy(max_cv: f64) -> DecisionPolicyConfig {
+        DecisionPolicyConfig {
+            require_low_noise_for_acceptance: true,
+            max_cv: Some(max_cv),
+            missing_noise: MissingNoisePolicy::NeedsReview,
+        }
+    }
+
     fn memory_for_speed_rule(downgrade_to: TradeoffDowngrade) -> TradeoffRule {
         TradeoffRule {
             name: "memory_for_speed".to_string(),
@@ -676,10 +785,25 @@ mod tests {
     }
 
     fn probe_compare_receipt(probe_name: &str, wall_current: f64) -> ProbeCompareReceipt {
-        probe_compare_receipt_many(&[(probe_name, wall_current, ProbeScope::Dominant)])
+        probe_compare_receipt_many_with_cv(&[(
+            probe_name,
+            wall_current,
+            ProbeScope::Dominant,
+            None,
+        )])
     }
 
     fn probe_compare_receipt_many(probes: &[(&str, f64, ProbeScope)]) -> ProbeCompareReceipt {
+        let probes: Vec<_> = probes
+            .iter()
+            .map(|(name, current, scope)| (*name, *current, *scope, None))
+            .collect();
+        probe_compare_receipt_many_with_cv(&probes)
+    }
+
+    fn probe_compare_receipt_many_with_cv(
+        probes: &[(&str, f64, ProbeScope, Option<f64>)],
+    ) -> ProbeCompareReceipt {
         ProbeCompareReceipt {
             schema: PROBE_COMPARE_SCHEMA_V1.to_string(),
             tool: ToolInfo {
@@ -694,7 +818,7 @@ mod tests {
             probes: probes
                 .iter()
                 .map(
-                    |(probe_name, wall_current, scope)| ProbeCompareObservation {
+                    |(probe_name, wall_current, scope, cv)| ProbeCompareObservation {
                         name: (*probe_name).to_string(),
                         parent: None,
                         scope: Some(*scope),
@@ -702,7 +826,7 @@ mod tests {
                         current_count: 1,
                         deltas: BTreeMap::from([(
                             "wall_ms".to_string(),
-                            delta(100.0, *wall_current, MetricStatus::Pass),
+                            delta_with_cv(100.0, *wall_current, MetricStatus::Pass, *cv),
                         )]),
                         status: MetricStatus::Pass,
                         reasons: Vec::new(),
@@ -729,6 +853,7 @@ mod tests {
             scenario: scenario_receipt(80.0, MetricStatus::Fail),
             probe_compares: Vec::new(),
             rules: vec![memory_for_speed_rule(TradeoffDowngrade::Warn)],
+            decision_policy: DecisionPolicyConfig::default(),
             tool: ToolInfo {
                 name: "perfgate".to_string(),
                 version: "0.16.0".to_string(),
@@ -757,6 +882,7 @@ mod tests {
             scenario: scenario_receipt(96.0, MetricStatus::Fail),
             probe_compares: Vec::new(),
             rules: vec![memory_for_speed_rule(TradeoffDowngrade::Pass)],
+            decision_policy: DecisionPolicyConfig::default(),
             tool: ToolInfo {
                 name: "perfgate".to_string(),
                 version: "0.16.0".to_string(),
@@ -786,6 +912,7 @@ mod tests {
             scenario: scenario_receipt(96.0, MetricStatus::Fail),
             probe_compares: vec![probe_compare_receipt("parser.batch_loop", 80.0)],
             rules: vec![memory_for_probe_speed_rule(TradeoffDowngrade::Warn)],
+            decision_policy: DecisionPolicyConfig::default(),
             tool: ToolInfo {
                 name: "perfgate".to_string(),
                 version: "0.16.0".to_string(),
@@ -810,6 +937,109 @@ mod tests {
     }
 
     #[test]
+    fn tradeoff_evaluate_accepts_satisfied_probe_requirement_with_low_noise() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: vec![probe_compare_receipt_many_with_cv(&[(
+                "parser.batch_loop",
+                80.0,
+                ProbeScope::Dominant,
+                Some(0.05),
+            )])],
+            rules: vec![memory_for_probe_speed_rule(TradeoffDowngrade::Warn)],
+            decision_policy: low_noise_policy(0.10),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(receipt.decision.accepted_tradeoff);
+        assert!(!receipt.decision.review_required);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Accepted);
+        assert_eq!(receipt.verdict.status, VerdictStatus::Warn);
+    }
+
+    #[test]
+    fn tradeoff_evaluate_marks_noisy_accepted_tradeoff_needs_review() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: vec![probe_compare_receipt_many_with_cv(&[(
+                "parser.batch_loop",
+                80.0,
+                ProbeScope::Dominant,
+                Some(0.18),
+            )])],
+            rules: vec![memory_for_probe_speed_rule(TradeoffDowngrade::Warn)],
+            decision_policy: low_noise_policy(0.10),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(!receipt.decision.accepted_tradeoff);
+        assert!(receipt.decision.review_required);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::NeedsReview);
+        assert!(receipt.decision.review_reasons[0].contains("tradeoff evidence exceeds max_cv"));
+        assert_eq!(
+            receipt.weighted_deltas["max_rss_kb"].status,
+            MetricStatus::Warn
+        );
+        assert_eq!(receipt.verdict.status, VerdictStatus::Warn);
+    }
+
+    #[test]
+    fn tradeoff_evaluate_marks_missing_noise_evidence_needs_review() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: vec![probe_compare_receipt("parser.batch_loop", 80.0)],
+            rules: vec![memory_for_probe_speed_rule(TradeoffDowngrade::Warn)],
+            decision_policy: low_noise_policy(0.10),
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(!receipt.decision.accepted_tradeoff);
+        assert!(receipt.decision.review_required);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::NeedsReview);
+        assert!(receipt.decision.review_reasons[0].contains("noise evidence missing"));
+        assert_eq!(receipt.verdict.status, VerdictStatus::Warn);
+    }
+
+    #[test]
+    fn tradeoff_evaluate_accepts_missing_noise_when_policy_allows_it() {
+        let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
+            scenario: scenario_receipt(96.0, MetricStatus::Fail),
+            probe_compares: vec![probe_compare_receipt("parser.batch_loop", 80.0)],
+            rules: vec![memory_for_probe_speed_rule(TradeoffDowngrade::Warn)],
+            decision_policy: DecisionPolicyConfig {
+                require_low_noise_for_acceptance: true,
+                max_cv: Some(0.10),
+                missing_noise: MissingNoisePolicy::Accept,
+            },
+            tool: ToolInfo {
+                name: "perfgate".to_string(),
+                version: "0.16.0".to_string(),
+            },
+        })
+        .expect("evaluate tradeoff");
+
+        let receipt = outcome.receipt;
+        assert!(receipt.decision.accepted_tradeoff);
+        assert!(!receipt.decision.review_required);
+        assert_eq!(receipt.rules[0].status, TradeoffDecisionStatus::Accepted);
+    }
+
+    #[test]
     fn tradeoff_evaluate_accepts_allowed_local_regression_cap() {
         let outcome = TradeoffUseCase::evaluate(TradeoffEvaluateRequest {
             scenario: scenario_receipt(96.0, MetricStatus::Fail),
@@ -821,6 +1051,7 @@ mod tests {
                 TradeoffDowngrade::Warn,
                 0.03,
             )],
+            decision_policy: DecisionPolicyConfig::default(),
             tool: ToolInfo {
                 name: "perfgate".to_string(),
                 version: "0.16.0".to_string(),
@@ -852,6 +1083,7 @@ mod tests {
                 TradeoffDowngrade::Warn,
                 0.03,
             )],
+            decision_policy: DecisionPolicyConfig::default(),
             tool: ToolInfo {
                 name: "perfgate".to_string(),
                 version: "0.16.0".to_string(),
@@ -885,6 +1117,7 @@ mod tests {
                 TradeoffDowngrade::Warn,
                 0.03,
             )],
+            decision_policy: DecisionPolicyConfig::default(),
             tool: ToolInfo {
                 name: "perfgate".to_string(),
                 version: "0.16.0".to_string(),
@@ -922,6 +1155,7 @@ mod tests {
             scenario: scenario_receipt(96.0, MetricStatus::Fail),
             probe_compares: vec![probe_compare_receipt("parser.tokenize", 80.0)],
             rules: vec![memory_for_probe_speed_rule(TradeoffDowngrade::Pass)],
+            decision_policy: DecisionPolicyConfig::default(),
             tool: ToolInfo {
                 name: "perfgate".to_string(),
                 version: "0.16.0".to_string(),
@@ -951,6 +1185,7 @@ mod tests {
             scenario: scenario_receipt(96.0, MetricStatus::Fail),
             probe_compares: vec![probe_compare_receipt("parser.batch_loop", 96.0)],
             rules: vec![memory_for_probe_speed_rule(TradeoffDowngrade::Pass)],
+            decision_policy: DecisionPolicyConfig::default(),
             tool: ToolInfo {
                 name: "perfgate".to_string(),
                 version: "0.16.0".to_string(),

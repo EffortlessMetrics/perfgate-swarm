@@ -139,12 +139,19 @@ min_improvement_ratio = 1.10
 metric = "wall_ms"
 probe = "parser.tokenize"
 max_regression = 0.03
+
+[decision_policy]
+require_low_noise_for_acceptance = true
+max_cv = 0.10
+missing_noise = "needs_review"
 ```
 
 When `probe` is present, the requirement is satisfied only by that named probe's
 delta from scenario-attached probe comparison evidence. `[[tradeoff.allow]]`
 keeps the local regression bounded; if `parser.tokenize` regresses by more than
 3%, the tradeoff is rejected even if `parser.batch_loop` improves enough.
+`[decision_policy]` can require the accepted evidence to stay below a CV cap
+before perfgate automatically accepts the tradeoff.
 
 ## GitHub Actions
 
@@ -169,8 +176,8 @@ policy outcome.
 
 Some evidence gaps should not silently pass or hard-fail the workflow. When a
 tradeoff's compensating evidence is otherwise satisfied but a configured named
-probe or local regression cap is missing, perfgate marks the decision as review
-required:
+probe, local regression cap, or required low-noise signal is missing or too
+noisy, perfgate marks the decision as review required:
 
 ```text
 Decision: warn, review required
@@ -181,6 +188,12 @@ The machine verdict remains `warn`, and the `perfgate.tradeoff.v1` receipt sets
 `decision.review_required = true` with `review_reasons`. Present evidence that
 disproves the tradeoff, such as a local probe exceeding `max_regression`, still
 rejects the tradeoff and preserves the failing verdict.
+
+Noise-aware review is opt-in through `[decision_policy]`. With
+`require_low_noise_for_acceptance = true`, any otherwise accepted tradeoff is
+review-required when a required metric or local cap has `cv > max_cv`. Missing
+CV evidence follows `missing_noise`; the conservative default is
+`"needs_review"`.
 
 ## Primitive Commands
 

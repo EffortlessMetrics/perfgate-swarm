@@ -136,6 +136,9 @@ regression cap outcomes so reviewers can see whether a probe stayed within the
 accepted bound. If named probe evidence is missing but the available evidence
 otherwise supports the tradeoff, the receipt keeps the machine status at `warn`
 and sets `decision.review_required = true` with review reasons.
+When `[decision_policy]` requires low-noise evidence, otherwise accepted rules
+also become review-required if required deltas exceed `max_cv` or CV evidence is
+missing under `missing_noise = "needs_review"`.
 
 Render the decision evidence for review:
 

@@ -1368,6 +1368,11 @@ pub struct ConfigFile {
     #[serde(default)]
     pub baseline_server: BaselineServerConfig,
 
+    /// Optional policy for deciding whether tradeoff evidence is stable enough
+    /// for automatic acceptance.
+    #[serde(default, skip_serializing_if = "DecisionPolicyConfig::is_default")]
+    pub decision_policy: DecisionPolicyConfig,
+
     /// Optional automated budget ratcheting policy.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ratchet: Option<RatchetConfig>,
@@ -1410,6 +1415,19 @@ impl ConfigFile {
     pub fn validate(&self) -> Result<(), String> {
         for bench in &self.benches {
             validate_bench_name(&bench.name).map_err(|e| e.to_string())?;
+        }
+        if self.decision_policy.require_low_noise_for_acceptance
+            && self.decision_policy.max_cv.is_none()
+        {
+            return Err(
+                "decision_policy.max_cv is required when require_low_noise_for_acceptance is true"
+                    .to_string(),
+            );
+        }
+        if let Some(max_cv) = self.decision_policy.max_cv
+            && (!max_cv.is_finite() || max_cv < 0.0)
+        {
+            return Err("decision_policy.max_cv must be a non-negative finite number".to_string());
         }
         for scenario in &self.scenarios {
             if scenario.name.trim().is_empty() {
@@ -1507,6 +1525,42 @@ impl ConfigFile {
             }
         }
         Ok(())
+    }
+}
+
+/// How to handle missing noise evidence when low-noise tradeoff acceptance is
+/// required.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(rename_all = "snake_case")]
+pub enum MissingNoisePolicy {
+    /// Mark the decision as requiring review.
+    #[default]
+    NeedsReview,
+    /// Accept the tradeoff if all non-noise requirements pass.
+    Accept,
+}
+
+/// Policy for automated structured decisions.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct DecisionPolicyConfig {
+    /// Require low-noise evidence before automatically accepting a tradeoff.
+    #[serde(default)]
+    pub require_low_noise_for_acceptance: bool,
+
+    /// Maximum accepted coefficient of variation for tradeoff evidence.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub max_cv: Option<f64>,
+
+    /// Behavior when required noise evidence is missing.
+    #[serde(default)]
+    pub missing_noise: MissingNoisePolicy,
+}
+
+impl DecisionPolicyConfig {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
     }
 }
 
@@ -2053,6 +2107,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -2145,6 +2200,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -2170,6 +2226,7 @@ mod tests {
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: DecisionPolicyConfig::default(),
             tradeoffs: vec![TradeoffRule {
                 name: "empty".to_string(),
                 if_failed: Metric::WallMs,
@@ -2201,6 +2258,7 @@ mod tests {
         let mut config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: DecisionPolicyConfig::default(),
             tradeoffs: vec![TradeoffRule {
                 name: "memory_for_speed".to_string(),
                 if_failed: Metric::MaxRssKb,
@@ -2269,6 +2327,56 @@ mod tests {
                 .unwrap_err()
                 .contains("non-negative finite")
         );
+    }
+
+    #[test]
+    fn config_file_validate_rejects_invalid_decision_policy() {
+        let mut config: ConfigFile = toml::from_str(
+            r#"
+[decision_policy]
+require_low_noise_for_acceptance = true
+"#,
+        )
+        .expect("parse config");
+
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("decision_policy.max_cv is required")
+        );
+
+        config.decision_policy.max_cv = Some(-0.01);
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("non-negative finite")
+        );
+
+        config.decision_policy.max_cv = Some(0.10);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn config_file_parses_decision_policy() {
+        let config: ConfigFile = toml::from_str(
+            r#"
+[decision_policy]
+require_low_noise_for_acceptance = true
+max_cv = 0.10
+missing_noise = "accept"
+"#,
+        )
+        .expect("parse config");
+
+        assert!(config.decision_policy.require_low_noise_for_acceptance);
+        assert_eq!(config.decision_policy.max_cv, Some(0.10));
+        assert_eq!(
+            config.decision_policy.missing_noise,
+            MissingNoisePolicy::Accept
+        );
+        assert!(config.validate().is_ok());
     }
 
     #[test]
@@ -2742,6 +2850,7 @@ command = ["echo", "large"]
                 markdown_template: None,
             },
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -2782,6 +2891,7 @@ command = ["echo", "large"]
         let config = ConfigFile {
             defaults: DefaultsConfig::default(),
             baseline_server: BaselineServerConfig::default(),
+            decision_policy: DecisionPolicyConfig::default(),
             tradeoffs: Vec::new(),
             ratchet: None,
             scenarios: Vec::new(),
@@ -3871,6 +3981,7 @@ mod property_tests {
             .prop_map(|(defaults, baseline_server, benches)| ConfigFile {
                 defaults,
                 baseline_server,
+                decision_policy: DecisionPolicyConfig::default(),
                 tradeoffs: Vec::new(),
                 ratchet: None,
                 scenarios: Vec::new(),
