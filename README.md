@@ -102,6 +102,8 @@ It writes `scenario.json`, `tradeoff.json`, and `decision.md` under the
 configured artifact directory. `decision.md` is the review surface: it explains
 the weighted workload result, probe movement, accepted or rejected tradeoff
 rules, policy reasons, evidence files, and the local reproduction command.
+When scenarios configure probe baseline/current paths, `decision evaluate` also
+writes the configured `probe-compare.json` before evaluating the decision.
 
 In GitHub Actions, opt in with:
 

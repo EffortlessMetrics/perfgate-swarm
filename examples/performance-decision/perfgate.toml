@@ -17,6 +17,8 @@ name = "large_file_parse"
 weight = 0.75
 bench = "large-file"
 compare = "examples/performance-decision/receipts/large-file.compare.json"
+probe_baseline = "artifacts/perfgate/large-file/probes-baseline.json"
+probe_current = "artifacts/perfgate/large-file/probes-current.json"
 probe_compare = "artifacts/perfgate/large-file/probe-compare.json"
 
 [[scenario]]

@@ -109,6 +109,10 @@ delta evidence. Scenario receipts record the probe names and a
 `probe_compare_ref`; consumers follow that reference for full probe deltas, and
 probe evidence does not change the scenario verdict yet.
 
+When `probe_baseline`, `probe_current`, and `probe_compare` are configured on a
+scenario, `perfgate decision evaluate` writes the `perfgate.probe_compare.v1`
+receipt before it invokes this primitive scenario evaluation step.
+
 ## Tradeoff Evaluation
 
 `perfgate tradeoff evaluate` is the primitive command behind
