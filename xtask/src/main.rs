@@ -667,6 +667,20 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
                 .to_string(),
         );
     }
+    if !failure_summary_lines.iter().any(|line| {
+        line == "decision_repro=(perfgate decision evaluate --config \"${{ inputs.config }}\")"
+    }) || !failure_summary_lines
+        .iter()
+        .any(|line| line == "echo \"  ${decision_repro_line}\"")
+        || !failure_summary_lines
+            .iter()
+            .any(|line| line == "echo \"${decision_repro_line}\"")
+    {
+        errors.push(
+            "action.yml failure summary must print a local perfgate decision reproduction command"
+                .to_string(),
+        );
+    }
     if !failure_summary_lines
         .iter()
         .any(|line| line == "echo \"### perfgate local reproduction\"")
@@ -680,13 +694,17 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
         line.contains("-name run.json")
             && line.contains("-name compare.json")
             && line.contains("-name report.json")
+            && line.contains("-name probe-compare.json")
             && line.contains("-name scenario.json")
             && line.contains("-name tradeoff.json")
             && line.contains("-name decision.md")
             && line.contains("-name comment.md")
             && line.contains("-name 'perfgate.*.json'")
     }) {
-        errors.push("action.yml failure summary must list perfgate receipt files".to_string());
+        errors.push(
+            "action.yml failure summary must list perfgate receipt and probe evidence files"
+                .to_string(),
+        );
     }
 
     if !raw_action.contains("out=\"${{ steps.resolve_out_dir.outputs.out_dir }}\"")
@@ -4148,10 +4166,14 @@ runs:
         out="${{ steps.resolve_out_dir.outputs.out_dir }}"
         exit_code="${{ steps.run_check.outputs.exit_code }}"
         repro=(perfgate check --config "${{ inputs.config }}")
+        decision_repro=(perfgate decision evaluate --config "${{ inputs.config }}")
+        decision_repro_line="$(format_command "${decision_repro[@]}")"
         {
           echo "Reproduce locally:"
+          echo "  ${decision_repro_line}"
           echo "### perfgate local reproduction"
-          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name comment.md -o -name 'perfgate.*.json' \) | sort
+          echo "${decision_repro_line}"
+          find "${out}" -type f \( -name run.json -o -name compare.json -o -name report.json -o -name probe-compare.json -o -name scenario.json -o -name tradeoff.json -o -name decision.md -o -name comment.md -o -name 'perfgate.*.json' \) | sort
         } >> "${GITHUB_STEP_SUMMARY}"
     - name: Post PR comment
       run: |
@@ -4324,6 +4346,35 @@ pkg-fmt = "zip"
                 .iter()
                 .any(|error| error.contains("GITHUB_STEP_SUMMARY")),
             "errors should mention GitHub step summary: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_failure_summary_without_decision_repro() {
+        let action = valid_action_install_surface().replace(
+            "        decision_repro=(perfgate decision evaluate --config \"${{ inputs.config }}\")\n        decision_repro_line=\"$(format_command \"${decision_repro[@]}\")\"\n",
+            "",
+        );
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("decision reproduction command")),
+            "errors should mention decision reproduction output: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn action_check_rejects_failure_summary_without_probe_compare_artifacts() {
+        let action = valid_action_install_surface().replace(" -o -name probe-compare.json", "");
+        let errors = collect_action_check_errors(&action, valid_cli_binstall_metadata());
+
+        assert!(
+            errors.iter().any(|error| error.contains("probe evidence")),
+            "errors should mention probe evidence artifacts: {:?}",
             errors
         );
     }
