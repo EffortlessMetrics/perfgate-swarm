@@ -73,7 +73,7 @@ jobs:
 
       - name: Run perfgate
         id: perfgate
-        uses: EffortlessMetrics/perfgate@v0.15.1
+        uses: EffortlessMetrics/perfgate@v0.16.0
         with:
           config: perfgate.toml
           all: "true"
@@ -85,7 +85,7 @@ Omit `out_dir` to let the action use `[defaults].out_dir` from
 `perfgate.toml`. Set `out_dir` only when the workflow should override the
 config.
 
-Use `@v0.15.1` when you want an exact patch pin. If you prefer a moving tag,
+Use `@v0.16.0` when you want an exact patch pin. If you prefer a moving tag,
 the published action aliases `@v0.15` and `@v0` now track the current
 compatible release.
 
@@ -109,7 +109,7 @@ comment, opt in to decision mode:
 ```yaml
       - name: Run perfgate
         id: perfgate
-        uses: EffortlessMetrics/perfgate@v0.15.1
+        uses: EffortlessMetrics/perfgate@v0.16.0
         with:
           config: perfgate.toml
           all: "true"

@@ -1002,7 +1002,7 @@ fn publish_check_patch_crates(package: &str) -> &'static [&'static str] {
     match package {
         "perfgate" => &["perfgate-types"],
         "perfgate-client" => &["perfgate-types"],
-        "perfgate-server" => &["perfgate-types", "perfgate"],
+        "perfgate-server" => &["perfgate-types", "perfgate", "perfgate-client"],
         "perfgate-cli" => &[
             "perfgate-types",
             "perfgate",

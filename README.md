@@ -85,7 +85,7 @@ The generated GitHub workflow uses the repository action:
     upload_artifact: "true"
 ```
 
-Use `@v0.15.1` for an exact patch pin, or `@v0.15` / `@v0` to follow the
+Use `@v0.16.0` for an exact patch pin, or `@v0.16` / `@v0` to follow the
 current compatible action tag.
 
 ## Performance Decisions
