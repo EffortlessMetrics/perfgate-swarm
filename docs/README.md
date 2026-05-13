@@ -38,7 +38,12 @@ Codex execution state stay reviewable.
   [`policy/absorbed_crates.txt`](../policy/absorbed_crates.txt)
 - Release proof: [`RELEASE_READINESS.md`](RELEASE_READINESS.md) and
   [`audits/release-0.17.0-publish-readiness.md`](audits/release-0.17.0-publish-readiness.md)
+- Verification badges and PR evidence:
+  [`VERIFICATION.md`](VERIFICATION.md)
 - Performance decisions: [`PERFORMANCE_DECISIONS.md`](PERFORMANCE_DECISIONS.md)
+- Workspace inventory: [`WORKSPACE.md`](WORKSPACE.md)
+- GitHub Actions setup:
+  [`GETTING_STARTED_GITHUB_ACTIONS.md`](GETTING_STARTED_GITHUB_ACTIONS.md)
 - Architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and the existing
   [`adrs/`](adrs/) archive
 - Policy allowlists: [`POLICY_ALLOWLISTS.md`](POLICY_ALLOWLISTS.md)
