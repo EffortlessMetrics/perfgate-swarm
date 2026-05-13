@@ -8,6 +8,10 @@ Purpose: validate that the v0.17.0 release candidate is ready for the separate
 tag and publish step. This proof does not publish crates, create tags, or create
 GitHub releases.
 
+Publication follow-up: the later public release state is recorded in
+[`release-0.17.0-publication-closeout.md`](release-0.17.0-publication-closeout.md).
+This readiness proof remains the pre-publish record.
+
 ## Environment
 
 | Item | Value |
