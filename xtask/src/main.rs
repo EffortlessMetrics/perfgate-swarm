@@ -266,6 +266,20 @@ enum Command {
         #[arg(long)]
         files: Vec<PathBuf>,
     },
+
+    /// Validate source-of-truth docs metadata, IDs, links, and active goal TOML.
+    DocsSourceCheck {
+        /// Repository root to validate.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+    },
+
+    /// Validate product claim proof-map structure.
+    ProductClaimsCheck {
+        /// Product claims markdown file.
+        #[arg(long, default_value = "docs/status/PRODUCT_CLAIMS.md")]
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -368,6 +382,8 @@ fn main() -> anyhow::Result<()> {
         Command::CheckFilePolicy => cmd_check_file_policy(),
         Command::Pr => cmd_pr(),
         Command::DocTest { files } => cmd_doc_test(files),
+        Command::DocsSourceCheck { root } => cmd_docs_source_check(&root),
+        Command::ProductClaimsCheck { path } => cmd_product_claims_check(&path),
     }
 }
 
@@ -4425,6 +4441,574 @@ fn cmd_docs_check() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn cmd_docs_source_check(root: &Path) -> anyhow::Result<()> {
+    let errors = collect_docs_source_errors(root)?;
+
+    if !errors.is_empty() {
+        println!(
+            "Found {} source-of-truth documentation error(s):",
+            errors.len()
+        );
+        for error in &errors {
+            println!("  - {}", error);
+        }
+
+        anyhow::bail!(
+            "{} source-of-truth documentation issue(s) found. Fix metadata, links, or .codex/goals/active.toml.",
+            errors.len()
+        );
+    }
+
+    println!("  OK  source-of-truth docs metadata, IDs, links, and active goal are valid");
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+enum SourceDocKind {
+    Proposal,
+    Spec,
+    Adr,
+    Plan,
+}
+
+impl SourceDocKind {
+    const fn label(self) -> &'static str {
+        match self {
+            SourceDocKind::Proposal => "proposal",
+            SourceDocKind::Spec => "spec",
+            SourceDocKind::Adr => "ADR",
+            SourceDocKind::Plan => "plan",
+        }
+    }
+
+    const fn required_headers(self) -> &'static [&'static str] {
+        match self {
+            SourceDocKind::Proposal => &[
+                "Status",
+                "Owner",
+                "Created",
+                "Target milestone",
+                "Linked specs",
+                "Linked ADRs",
+                "Linked plan",
+                "Support/status impact",
+                "Policy impact",
+            ],
+            SourceDocKind::Spec => &[
+                "Status",
+                "Owner",
+                "Created",
+                "Milestone",
+                "Behavior version",
+                "Product surface",
+                "CI surface",
+                "Schema impact",
+                "Action impact",
+                "Server impact",
+                "Linked proposal",
+                "Linked ADRs",
+                "Linked plan",
+                "Linked policy",
+                "Support/status impact",
+                "Proof commands",
+            ],
+            SourceDocKind::Adr => &["Status", "Date", "Owner", "Linked proposal", "Linked specs"],
+            SourceDocKind::Plan => &[
+                "Status",
+                "Owner",
+                "Created",
+                "Milestone",
+                "Current PR",
+                "Linked proposal",
+                "Linked specs",
+                "Proof commands",
+                "Rollback",
+            ],
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SourceDoc {
+    kind: SourceDocKind,
+    path: PathBuf,
+    metadata: BTreeMap<String, String>,
+}
+
+fn collect_docs_source_errors(root: &Path) -> anyhow::Result<Vec<String>> {
+    let mut errors = Vec::new();
+    let docs = collect_source_docs(root)?;
+    let id_re = Regex::new(r"^(PERFGATE-(?:PROP|SPEC|ADR)-\d{4})")
+        .expect("source doc id regex should compile");
+    let mut ids = BTreeMap::<String, PathBuf>::new();
+
+    for doc in &docs {
+        let display = relative_display(root, &doc.path);
+        for header in doc.kind.required_headers() {
+            if !doc.metadata.contains_key(*header) {
+                errors.push(format!(
+                    "{} {} is missing required `{}` metadata",
+                    doc.kind.label(),
+                    display,
+                    header
+                ));
+            }
+        }
+
+        if matches!(doc.kind, SourceDocKind::Spec) {
+            let status = doc.metadata.get("Status").map(String::as_str).unwrap_or("");
+            if !matches!(
+                status,
+                "proposed" | "accepted" | "implemented" | "superseded"
+            ) {
+                errors.push(format!("spec {} uses unknown Status `{}`", display, status));
+            }
+        }
+
+        if matches!(
+            doc.kind,
+            SourceDocKind::Proposal | SourceDocKind::Spec | SourceDocKind::Adr
+        ) {
+            let stem = doc
+                .path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or("");
+            if let Some(captures) = id_re.captures(stem) {
+                let id = captures[1].to_string();
+                if let Some(previous) = ids.insert(id.clone(), doc.path.clone()) {
+                    errors.push(format!(
+                        "duplicate source-of-truth ID {} in {} and {}",
+                        id,
+                        relative_display(root, &previous),
+                        display
+                    ));
+                }
+            } else {
+                errors.push(format!(
+                    "{} {} filename must start with a PERFGATE ID",
+                    doc.kind.label(),
+                    display
+                ));
+            }
+        }
+
+        if matches!(doc.kind, SourceDocKind::Plan) {
+            let linked_proposal = doc
+                .metadata
+                .get("Linked proposal")
+                .map(|value| !is_blank_metadata_value(value))
+                .unwrap_or(false);
+            let linked_specs = doc
+                .metadata
+                .get("Linked specs")
+                .map(|value| !is_blank_metadata_value(value))
+                .unwrap_or(false);
+            if !linked_proposal && !linked_specs {
+                errors.push(format!(
+                    "plan {} must link to at least one proposal or spec",
+                    display
+                ));
+            }
+        }
+
+        for raw_path in extract_path_references_from_metadata(&doc.metadata) {
+            validate_linked_path(root, &doc.path, &raw_path, &mut errors)?;
+        }
+    }
+
+    validate_active_goal_toml(root, &mut errors)?;
+
+    Ok(errors)
+}
+
+fn collect_source_docs(root: &Path) -> anyhow::Result<Vec<SourceDoc>> {
+    let mut docs = Vec::new();
+    for (kind, dir) in [
+        (SourceDocKind::Proposal, "docs/proposals"),
+        (SourceDocKind::Spec, "docs/specs"),
+        (SourceDocKind::Adr, "docs/adr"),
+    ] {
+        for path in markdown_files_in(root.join(dir), false)? {
+            docs.push(read_source_doc(kind, path)?);
+        }
+    }
+
+    for path in markdown_files_in(root.join("plans"), true)? {
+        docs.push(read_source_doc(SourceDocKind::Plan, path)?);
+    }
+
+    Ok(docs)
+}
+
+fn read_source_doc(kind: SourceDocKind, path: PathBuf) -> anyhow::Result<SourceDoc> {
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let metadata = parse_source_doc_metadata(&content);
+    Ok(SourceDoc {
+        kind,
+        path,
+        metadata,
+    })
+}
+
+fn markdown_files_in(dir: PathBuf, recursive: bool) -> anyhow::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    if !dir.exists() {
+        return Ok(files);
+    }
+
+    let mut pending = vec![dir];
+    while let Some(current) = pending.pop() {
+        for entry in fs::read_dir(&current)
+            .with_context(|| format!("reading directory {}", current.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                if recursive {
+                    pending.push(path);
+                }
+                continue;
+            }
+            if path.file_name().and_then(|name| name.to_str()) == Some("README.md") {
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+                files.push(path);
+            }
+        }
+    }
+
+    files.sort();
+    Ok(files)
+}
+
+fn parse_source_doc_metadata(content: &str) -> BTreeMap<String, String> {
+    let mut metadata = BTreeMap::new();
+    let mut seen_title = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("# ") {
+            seen_title = true;
+            continue;
+        }
+        if !seen_title {
+            continue;
+        }
+        if trimmed.starts_with("## ") {
+            break;
+        }
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some((key, value)) = trimmed.split_once(':')
+            && key
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '/' || ch == ' ')
+        {
+            metadata.insert(key.trim().to_string(), value.trim().to_string());
+        }
+    }
+
+    metadata
+}
+
+fn extract_path_references_from_metadata(metadata: &BTreeMap<String, String>) -> Vec<String> {
+    let path_re = source_doc_path_regex();
+    let mut paths = BTreeSet::new();
+
+    for (key, value) in metadata {
+        if !key.starts_with("Linked ") && key != "Support/status impact" {
+            continue;
+        }
+        for captures in path_re.captures_iter(value) {
+            paths.insert(clean_source_doc_path(&captures[0]));
+        }
+    }
+
+    paths.into_iter().collect()
+}
+
+fn validate_active_goal_toml(root: &Path, errors: &mut Vec<String>) -> anyhow::Result<()> {
+    let path = root.join(".codex/goals/active.toml");
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let raw = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let value = match toml::from_str::<toml::Value>(&raw) {
+        Ok(value) => value,
+        Err(err) => {
+            errors.push(format!(
+                "{} must parse as TOML: {err}",
+                relative_display(root, &path)
+            ));
+            return Ok(());
+        }
+    };
+
+    let mut linked_paths = BTreeSet::new();
+    collect_active_goal_link_references(&value, &mut linked_paths);
+    for raw_path in linked_paths {
+        validate_linked_path(root, &path, &raw_path, errors)?;
+    }
+
+    Ok(())
+}
+
+fn collect_active_goal_link_references(value: &toml::Value, paths: &mut BTreeSet<String>) {
+    let Some(table) = value.as_table() else {
+        return;
+    };
+
+    for key in [
+        "linked_proposal",
+        "linked_plan",
+        "linked_specs",
+        "linked_adrs",
+        "linked_status",
+        "linked_policy",
+    ] {
+        if let Some(value) = table.get(key) {
+            collect_path_references_from_toml_leaf(value, paths);
+        }
+    }
+
+    if let Some(work_items) = table.get("work_item").and_then(toml::Value::as_array) {
+        for item in work_items {
+            let Some(item) = item.as_table() else {
+                continue;
+            };
+            for key in ["proposal", "spec", "adr", "plan"] {
+                if let Some(value) = item.get(key) {
+                    collect_path_references_from_toml_leaf(value, paths);
+                }
+            }
+        }
+    }
+}
+
+fn collect_path_references_from_toml_leaf(value: &toml::Value, paths: &mut BTreeSet<String>) {
+    match value {
+        toml::Value::String(value) => {
+            for captures in source_doc_path_regex().captures_iter(value) {
+                paths.insert(clean_source_doc_path(&captures[0]));
+            }
+        }
+        toml::Value::Array(values) => {
+            for value in values {
+                collect_path_references_from_toml_leaf(value, paths);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn validate_linked_path(
+    root: &Path,
+    source: &Path,
+    raw_path: &str,
+    errors: &mut Vec<String>,
+) -> anyhow::Result<()> {
+    if raw_path.contains('*') {
+        let pattern = root.join(raw_path).to_string_lossy().replace('\\', "/");
+        let mut matched = false;
+        for entry in glob(&pattern).with_context(|| format!("glob pattern {pattern}"))? {
+            if entry?.exists() {
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            errors.push(format!(
+                "{} links to glob `{}` but it matches no files",
+                relative_display(root, source),
+                raw_path
+            ));
+        }
+    } else if !root.join(raw_path).exists() {
+        errors.push(format!(
+            "{} links to missing file `{}`",
+            relative_display(root, source),
+            raw_path
+        ));
+    }
+
+    Ok(())
+}
+
+fn source_doc_path_regex() -> Regex {
+    Regex::new(
+        r"(?:\.codex|\.github|docs|plans|policy|schemas|fixtures|examples|crates|xtask)/[A-Za-z0-9_./*{}-]+",
+    )
+    .expect("source doc path regex should compile")
+}
+
+fn clean_source_doc_path(path: &str) -> String {
+    path.trim_end_matches(['.', ',', ';', ')', ']', '"', '\''])
+        .to_string()
+}
+
+fn is_blank_metadata_value(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none")
+}
+
+fn relative_display(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn cmd_product_claims_check(path: &Path) -> anyhow::Result<()> {
+    let content =
+        fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let errors = collect_product_claim_errors(&content);
+
+    if !errors.is_empty() {
+        println!("Found {} product claim proof-map error(s):", errors.len());
+        for error in &errors {
+            println!("  - {}", error);
+        }
+
+        anyhow::bail!(
+            "{} product claim proof-map issue(s) found. Fix {}.",
+            errors.len(),
+            path.display()
+        );
+    }
+
+    println!("  OK  product claim proof map is valid");
+    Ok(())
+}
+
+#[derive(Debug)]
+struct ProductClaimSection {
+    id: String,
+    line: usize,
+    body: String,
+}
+
+fn collect_product_claim_errors(content: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+    let claims = extract_product_claim_sections(content);
+    let mut ids = BTreeSet::new();
+
+    if claims.is_empty() {
+        errors
+            .push("PRODUCT_CLAIMS.md must contain at least one `## PG-CLAIM-NNNN` section".into());
+        return errors;
+    }
+
+    for claim in claims {
+        if !ids.insert(claim.id.clone()) {
+            errors.push(format!("duplicate claim id `{}`", claim.id));
+        }
+
+        let tier = claim_field(&claim.body, "Tier");
+        match tier.as_deref() {
+            Some("stable" | "supported" | "advisory" | "experimental" | "deprecated") => {}
+            Some(value) => errors.push(format!(
+                "{} line {} uses unknown tier `{}`",
+                claim.id, claim.line, value
+            )),
+            None => errors.push(format!(
+                "{} line {} is missing `Tier:`",
+                claim.id, claim.line
+            )),
+        }
+
+        if claim_field(&claim.body, "Surface").is_none() {
+            errors.push(format!(
+                "{} line {} is missing `Surface:`",
+                claim.id, claim.line
+            ));
+        }
+
+        if claim_field(&claim.body, "Review after").is_none() {
+            errors.push(format!(
+                "{} line {} is missing `Review after:`",
+                claim.id, claim.line
+            ));
+        }
+
+        if !claim.body.contains("Proof commands:") {
+            errors.push(format!(
+                "{} line {} is missing `Proof commands:`",
+                claim.id, claim.line
+            ));
+        } else if !claim
+            .body
+            .lines()
+            .any(|line| line.trim_start().starts_with("cargo +1.95.0 "))
+        {
+            errors.push(format!(
+                "{} line {} must list at least one cargo +1.95.0 proof command",
+                claim.id, claim.line
+            ));
+        }
+
+        if !claim.body.contains("Linked tests:")
+            && !claim.body.contains("Linked policy:")
+            && !claim.body.contains("Linked gates:")
+        {
+            errors.push(format!(
+                "{} line {} must include linked tests, policy, or gates",
+                claim.id, claim.line
+            ));
+        }
+    }
+
+    errors
+}
+
+fn extract_product_claim_sections(content: &str) -> Vec<ProductClaimSection> {
+    let heading_re =
+        Regex::new(r"^## (PG-CLAIM-\d{4})\b").expect("product claim heading regex should compile");
+    let mut claims = Vec::new();
+    let mut active: Option<(String, usize, String)> = None;
+
+    for (idx, line) in content.lines().enumerate() {
+        let line_num = idx + 1;
+        if line.starts_with("## ") {
+            if let Some((id, line, body)) = active.take() {
+                claims.push(ProductClaimSection { id, line, body });
+            }
+            if let Some(captures) = heading_re.captures(line) {
+                active = Some((captures[1].to_string(), line_num, String::new()));
+            }
+            continue;
+        }
+
+        if let Some((_, _, body)) = active.as_mut() {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+
+    if let Some((id, line, body)) = active.take() {
+        claims.push(ProductClaimSection { id, line, body });
+    }
+
+    claims
+}
+
+fn claim_field(body: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key}:");
+    body.lines().find_map(|line| {
+        let line = line.trim();
+        let value = line.strip_prefix(&prefix)?.trim();
+        if value.is_empty() {
+            None
+        } else {
+            Some(value.to_string())
+        }
+    })
+}
+
 // ---------------------------------------------------------------------------
 // doc-test: validate CLI examples in documentation
 // ---------------------------------------------------------------------------
@@ -5176,6 +5760,259 @@ mod tests {
             assert!(run("sh", ["-c", "exit 1"]).is_err());
             assert!(run("sh", ["-c", "exit 0"]).is_ok());
         }
+    }
+
+    fn write_test_file(root: &Path, relative: &str, content: &str) {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dir");
+        }
+        fs::write(path, content).expect("write test file");
+    }
+
+    #[test]
+    fn docs_source_check_accepts_minimal_linked_stack() {
+        let root = unique_temp_dir("perfgate_docs_source_ok");
+        write_test_file(&root, "policy/public_crates.txt", "perfgate\n");
+        write_test_file(&root, "docs/status/PRODUCT_CLAIMS.md", "# Claims\n");
+        write_test_file(
+            &root,
+            "docs/proposals/PERFGATE-PROP-0001-test.md",
+            r#"# PERFGATE-PROP-0001: Test
+
+Status: proposed
+Owner: test
+Created: 2026-05-13
+Target milestone: 0.18.0
+Linked specs: docs/specs/PERFGATE-SPEC-0001-test.md
+Linked ADRs: docs/adr/PERFGATE-ADR-0001-test.md
+Linked plan: plans/0.18.0/implementation-plan.md
+Support/status impact: docs/status/PRODUCT_CLAIMS.md
+Policy impact: policy/public_crates.txt
+
+## Problem
+"#,
+        );
+        write_test_file(
+            &root,
+            "docs/specs/PERFGATE-SPEC-0001-test.md",
+            r#"# PERFGATE-SPEC-0001: Test
+
+Status: accepted
+Owner: test
+Created: 2026-05-13
+Milestone: 0.18.0
+Behavior version: test.v1
+Product surface: docs
+CI surface: docs-source-check
+Schema impact: none
+Action impact: none
+Server impact: none
+Linked proposal: docs/proposals/PERFGATE-PROP-0001-test.md
+Linked ADRs: docs/adr/PERFGATE-ADR-0001-test.md
+Linked plan: plans/0.18.0/implementation-plan.md
+Linked policy: policy/public_crates.txt
+Support/status impact: docs/status/PRODUCT_CLAIMS.md
+Proof commands: cargo +1.95.0 run -p xtask -- docs-source-check
+
+## Problem
+"#,
+        );
+        write_test_file(
+            &root,
+            "docs/adr/PERFGATE-ADR-0001-test.md",
+            r#"# PERFGATE-ADR-0001: Test
+
+Status: accepted
+Date: 2026-05-13
+Owner: test
+Linked proposal: docs/proposals/PERFGATE-PROP-0001-test.md
+Linked specs: docs/specs/PERFGATE-SPEC-0001-test.md
+
+## Decision
+"#,
+        );
+        write_test_file(
+            &root,
+            "plans/0.18.0/implementation-plan.md",
+            r#"# Plan
+
+Status: active
+Owner: test
+Created: 2026-05-13
+Milestone: 0.18.0
+Current PR: test
+Linked proposal: docs/proposals/PERFGATE-PROP-0001-test.md
+Linked specs: docs/specs/PERFGATE-SPEC-0001-test.md
+Proof commands: cargo +1.95.0 run -p xtask -- docs-source-check
+Rollback: revert
+
+## Goal
+"#,
+        );
+        write_test_file(
+            &root,
+            ".codex/goals/active.toml",
+            r#"
+id = "test"
+linked_proposal = "docs/proposals/PERFGATE-PROP-0001-test.md"
+linked_specs = ["docs/specs/PERFGATE-SPEC-0001-test.md"]
+linked_adrs = ["docs/adr/PERFGATE-ADR-0001-test.md"]
+linked_policy = ["policy/public_crates.txt"]
+"#,
+        );
+
+        let errors = collect_docs_source_errors(&root).expect("collect source errors");
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn docs_source_check_reports_bad_status_duplicate_id_and_missing_link() {
+        let root = unique_temp_dir("perfgate_docs_source_errors");
+        let spec = |title: &str| {
+            format!(
+                r#"# {title}
+
+Status: invented
+Owner: test
+Created: 2026-05-13
+Milestone: 0.18.0
+Behavior version: test.v1
+Product surface: docs
+CI surface: docs-source-check
+Schema impact: none
+Action impact: none
+Server impact: none
+Linked proposal: docs/proposals/PERFGATE-PROP-9999-missing.md
+Linked ADRs: none
+Linked plan: none
+Linked policy: none
+Support/status impact: none
+Proof commands: cargo +1.95.0 run -p xtask -- docs-source-check
+
+## Problem
+"#
+            )
+        };
+        write_test_file(
+            &root,
+            "docs/specs/PERFGATE-SPEC-0001-a.md",
+            &spec("PERFGATE-SPEC-0001: A"),
+        );
+        write_test_file(
+            &root,
+            "docs/specs/PERFGATE-SPEC-0001-b.md",
+            &spec("PERFGATE-SPEC-0001: B"),
+        );
+
+        let errors = collect_docs_source_errors(&root).expect("collect source errors");
+        assert!(
+            errors.iter().any(|error| error.contains("unknown Status")),
+            "expected status error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("duplicate source-of-truth ID")),
+            "expected duplicate ID error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("links to missing file")),
+            "expected missing link error, got {errors:?}"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn product_claims_check_accepts_claim_with_linked_tests() {
+        let content = r###"# Product Claims
+
+## PG-CLAIM-0001: Reviewable decisions
+
+Tier: supported
+Surface: CLI, receipts
+Linked tests:
+- crates/perfgate-cli/tests/decision.rs
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- docs-check
+```
+
+Review after: before-release
+"###;
+
+        let errors = collect_product_claim_errors(content);
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    }
+
+    #[test]
+    fn product_claims_check_reports_missing_required_fields() {
+        let content = r###"# Product Claims
+
+## PG-CLAIM-0001: Broken claim
+
+Tier: invented
+Proof commands:
+
+```bash
+cargo test
+```
+
+## PG-CLAIM-0001: Duplicate claim
+
+Tier: supported
+Surface: CLI
+Linked gates: docs-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- docs-check
+```
+
+Review after: before-release
+"###;
+
+        let errors = collect_product_claim_errors(content);
+        assert!(
+            errors.iter().any(|error| error.contains("unknown tier")),
+            "expected tier error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("duplicate claim id")),
+            "expected duplicate ID error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("missing `Surface:`")),
+            "expected surface error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("missing `Review after:`")),
+            "expected review-after error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("must list at least one cargo +1.95.0")),
+            "expected proof command error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("linked tests, policy, or gates")),
+            "expected linked evidence error, got {errors:?}"
+        );
     }
 
     fn no_panic_identity(

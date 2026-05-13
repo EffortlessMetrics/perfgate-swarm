@@ -1,0 +1,193 @@
+id = "perfgate-0-18-spec-driven-governance"
+title = "perfgate 0.18.0 spec-driven governance"
+status = "completed"
+owner = "codex"
+created = "2026-05-13"
+completed = "2026-05-13"
+milestone = "0.18.0"
+current_work_item = "none"
+current_pr = "complete"
+archive_reason = "The source-of-truth stack, status proof map, implementation plan, active-goal campaign, source docs checker, product claims checker, and closeout handoff all landed."
+
+objective = """
+Make perfgate's product claims, architecture decisions, policy ledgers,
+release proof, and Codex execution state traceable through proposals, specs,
+ADRs, implementation plans, status docs, policy ledgers, handoffs, and
+machine-readable active goals.
+"""
+
+end_state = [
+  "Every active product lane has a proposal or links to an existing one.",
+  "Every behavior contract has a spec with proof commands.",
+  "Every durable architecture decision has an ADR.",
+  "Every implementation campaign has a PR-sized plan.",
+  "Codex has a machine-readable goal manifest archived with completion evidence.",
+  "README and product claims link to support/status proof instead of free-floating prose.",
+  "Policy ledgers remain the concrete source of truth for exceptions and governed surfaces.",
+  "Release claims link to release-readiness and audit proof records.",
+]
+
+linked_proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+linked_plan = "plans/0.18.0/implementation-plan.md"
+linked_handoff = "docs/handoffs/2026-05-13-spec-driven-governance-closeout.md"
+
+linked_specs = [
+  "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md",
+  "docs/specs/PERFGATE-SPEC-0002-package-surface-boundary.md",
+  "docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md",
+  "docs/specs/PERFGATE-SPEC-0004-user-devex-paved-road.md",
+  "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md",
+]
+
+linked_adrs = [
+  "docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md",
+  "docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md",
+]
+
+linked_status = [
+  "docs/status/SUPPORT_TIERS.md",
+  "docs/status/PRODUCT_CLAIMS.md",
+]
+
+linked_policy = [
+  "policy/public_crates.txt",
+  "policy/absorbed_crates.txt",
+  "policy/clippy-lints.toml",
+  "policy/clippy-debt.toml",
+  "policy/clippy-exceptions.toml",
+  "policy/no-panic-allowlist.toml",
+  "policy/no-panic-baseline.toml",
+  "policy/non-rust-allowlist.toml",
+  "policy/generated-allowlist.toml",
+  "policy/executable-allowlist.toml",
+  "policy/workflow-allowlist.toml",
+  "policy/dependency-surface-allowlist.toml",
+]
+
+proof = [
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 clippy -p xtask --all-targets --all-features -- -D warnings",
+  "cargo +1.95.0 test -p xtask --all-features",
+  "git diff --check",
+]
+
+completion_criteria = [
+  "Proposal, specs, ADRs, status docs, implementation plan, and handoff are merged.",
+  "Source-of-truth checker validates metadata, IDs, links, and active-goal TOML when present.",
+  "Product-claims checker validates claim IDs, tiers, surfaces, proof commands, linked evidence, and review cadence.",
+  "Active campaign state is archived under .codex/goals/archive/.",
+  "No open spec-governance PR remains for this campaign.",
+]
+
+[[work_item]]
+id = "source-of-truth-scaffold"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md"
+plan = "plans/0.18.0/implementation-plan.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "package-surface-boundary"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0002-package-surface-boundary.md"
+adr = "docs/adr/PERFGATE-ADR-0001-public-crates-are-contracts.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- public-surface --strict",
+  "cargo +1.95.0 run -p xtask -- arch",
+]
+
+[[work_item]]
+id = "performance-decision-contract"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0003-performance-decision-contract.md"
+adr = "docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md"
+commands = [
+  "cargo +1.95.0 test -p perfgate-cli --all-features decision",
+  "cargo +1.95.0 run -p xtask -- action-check",
+  "cargo +1.95.0 run -p xtask -- schema-compat",
+]
+
+[[work_item]]
+id = "user-devex-paved-road"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0004-user-devex-paved-road.md"
+commands = [
+  "cargo +1.95.0 test -p perfgate-cli --all-features first_run",
+  "cargo +1.95.0 test -p perfgate-cli --all-features baseline",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- action-check",
+]
+
+[[work_item]]
+id = "release-proof-contract"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0005-release-proof-contract.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- action-check",
+  "cargo +1.95.0 run -p xtask -- public-surface --strict",
+  "cargo +1.95.0 run -p xtask -- arch",
+  "cargo +1.95.0 run -p xtask -- schema-compat",
+  "cargo +1.95.0 run -p xtask -- publish-check --package-list",
+]
+
+[[work_item]]
+id = "implementation-plan-and-active-goal"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md"
+plan = "plans/0.18.0/implementation-plan.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "docs-source-check"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+]
+
+[[work_item]]
+id = "product-claims-check"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+]
+
+[[work_item]]
+id = "final-closeout"
+status = "merged"
+proposal = "docs/proposals/PERFGATE-PROP-0001-spec-driven-governance.md"
+spec = "docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md"
+plan = "plans/0.18.0/implementation-plan.md"
+handoff = "docs/handoffs/2026-05-13-spec-driven-governance-closeout.md"
+commands = [
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+]
