@@ -2,6 +2,20 @@
 import json
 from pathlib import Path
 
+
+def escape_command_value(value):
+    return (
+        str(value)
+        .replace("%", "%25")
+        .replace("\r", "%0D")
+        .replace("\n", "%0A")
+    )
+
+
+def escape_command_property(value):
+    return escape_command_value(value).replace(":", "%3A").replace(",", "%2C")
+
+
 path = Path("target/ripr/review/comments.json")
 if not path.exists():
     raise SystemExit(0)
@@ -17,5 +31,8 @@ for item in data.get("comments", []):
     if not file or not line:
         continue
 
-    body = str(body).replace("\n", "%0A")
+    file = escape_command_property(file)
+    line = escape_command_property(line)
+    title = escape_command_property(title)
+    body = escape_command_value(body)
     print(f"::warning file={file},line={line},title={title}::{body}")
