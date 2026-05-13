@@ -1,17 +1,31 @@
 # Release Readiness
 
-Last verified: 2026-05-12 for v0.17.0 publish readiness. See
-[v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md).
+Last verified: 2026-05-13 for v0.17.0 publication reconciliation. See
+[v0.17.0 Publication Closeout](audits/release-0.17.0-publication-closeout.md)
+and [v0.17.0 Publish Readiness Proof](audits/release-0.17.0-publish-readiness.md).
 
-Latest published release: v0.16.0. Do not call v0.17.0 published until the
-release-proof PR validates the publish matrix, creates the tag, and publishes
-the five allowed crates.
+Latest published release: v0.17.0. The five allowed crates are published on
+crates.io at `0.17.0`, the GitHub release `v0.17.0` is published with platform
+archives and `sha256sums.txt`, and action alias tags `v0.17` and `v0` point to
+the same release commit as `v0.17.0`.
 
-## Current Release Candidate Snapshot
+## Current Published Release Snapshot
 
-The release candidate is versioned as `v0.17.0`. It keeps the five-crate public
+The current published release is `v0.17.0`. It keeps the five-crate public
 surface from v0.16.0, raises the Rust floor to 1.95, and adds the governance
-rails that make the release conveyor explicit:
+rails that make the release conveyor explicit.
+
+## Current Publication State
+
+| Surface | Status | Evidence |
+|---------|--------|----------|
+| crates.io packages | Published | The crates.io sparse index contains `0.17.0` entries for `perfgate-types`, `perfgate`, `perfgate-client`, `perfgate-server`, and `perfgate-cli`. |
+| Exact release tag | Published | GitHub tag `v0.17.0` points to commit `71bdc33117d515d95885deb2d9350d9d67905265`. |
+| Action alias tags | Published | GitHub tags `v0.17` and `v0` also point to commit `71bdc33117d515d95885deb2d9350d9d67905265`. |
+| GitHub release | Published | GitHub release `v0.17.0` was published on 2026-05-12 with platform archives and `sha256sums.txt`. |
+| Public install smoke | Passing | `cargo +1.95.0 install perfgate-cli --version 0.17.0 --locked --root C:/perfgate-smoke/release-reconcile-0170 --force`; installed binary reported `perfgate 0.17.0` and `perfgate doctor --help` printed help. |
+
+## Release Proof Matrix
 
 | Gate | Status | Evidence |
 |------|--------|----------|
@@ -28,7 +42,7 @@ rails that make the release conveyor explicit:
 | Publish dry-run proof | Passing | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
 | Publish dry-run matrix | Passing | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types`, `cargo run -p xtask -- publish-check --dry-run --package perfgate`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-client`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-server`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-cli` |
 | GitHub Action install wiring | Passing | `cargo run -p xtask -- action-check` |
-| Install smoke proof | Release gate | Before publish: `cargo install --path crates/perfgate-cli --root C:\\perfgate-smoke\\from --force`; after publish: `cargo-binstall perfgate-cli --version 0.17.0 --force` |
+| Install smoke proof | Passing | Public registry install smoke passed with `cargo +1.95.0 install perfgate-cli --version 0.17.0 --locked --root C:/perfgate-smoke/release-reconcile-0170 --force`; installed binary reported `perfgate 0.17.0` and `perfgate doctor --help` printed help |
 | Schema compatibility | Passing | `cargo run -p xtask -- schema-compat`, including `/health` response fixtures |
 | Documentation examples | Passing | `cargo run -p xtask -- docs-check` and `cargo run -p xtask -- doc-test` |
 | Structured decision end-to-end | Verified | `perfgate ingest probes`, `perfgate decision evaluate`, `perfgate decision bundle` on `examples/performance-decision`, plus `perfgate serve --no-open` and `decision upload/history/debt/prune --dry-run` |
@@ -38,7 +52,7 @@ rails that make the release conveyor explicit:
 | Decision ledger and debt | Covered | `decision upload|history|latest|export|prune|debt`, `perfgate.decision_record.v1`, decision upload/prune audit events, and dashboard decision-ledger tests |
 | Signal-trust features | Covered | flakiness history, `baseline flaky`, inverse-variance aggregation, adaptive paired retries, local-regression caps, and noise-aware tradeoff review |
 | Server operations visibility | Covered | `perfgate serve --doctor`, `/health`, `/metrics`, `audit list`, dashboard audit view tests, and dashboard decision-ledger tests |
-| Full repo CI | Release gate | Hosted `ci` on the release PR, with coverage, fuzz, and self-dogfood evidence routed by policy before tagging |
+| Full repo CI | Passing | Hosted `ci` passed on the release proof PR before publish; coverage, fuzz, and self-dogfood evidence remain routed by policy |
 
 The only publishable packages allowed by policy are:
 
