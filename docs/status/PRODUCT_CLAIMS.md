@@ -24,7 +24,7 @@ Support tier definitions live in [`SUPPORT_TIERS.md`](SUPPORT_TIERS.md).
 Tier: supported
 Surface: CLI, GitHub Action, local receipts
 Linked docs: [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md)
-Linked specs: `PERFGATE-SPEC-0003-performance-decision-contract` planned
+Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Proof commands:
 
 ```bash
@@ -54,7 +54,7 @@ Review after: before-0.18.0-release
 Tier: supported
 Surface: CLI, receipts, release/audit handoff
 Linked docs: [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md)
-Linked specs: `PERFGATE-SPEC-0003-performance-decision-contract` planned
+Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Proof commands:
 
 ```bash
@@ -79,7 +79,7 @@ Review after: next-decision-contract-change
 Tier: supported
 Surface: baseline server, CLI, dashboard, receipts
 Linked docs: [`BASELINE_SERVICE_DESIGN.md`](../BASELINE_SERVICE_DESIGN.md), [`GETTING_STARTED_BASELINE_SERVER.md`](../GETTING_STARTED_BASELINE_SERVER.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md)
-Linked specs: `PERFGATE-SPEC-0003-performance-decision-contract` planned
+Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Proof commands:
 
 ```bash
@@ -105,7 +105,7 @@ Review after: before-0.18.0-release
 Tier: stable
 Surface: crates, public API, release policy
 Linked docs: [`CRATE_SEAMS.md`](../CRATE_SEAMS.md), [`ARCHITECTURE.md`](../ARCHITECTURE.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md)
-Linked specs: `PERFGATE-SPEC-0002-package-surface-boundary` planned
+Linked specs: [`PERFGATE-SPEC-0002-package-surface-boundary`](../specs/PERFGATE-SPEC-0002-package-surface-boundary.md)
 Linked policy:
 
 - [`policy/public_crates.txt`](../../policy/public_crates.txt)
@@ -133,7 +133,7 @@ Review after: next-public-surface-change
 Tier: stable
 Surface: toolchain, CI, release
 Linked docs: [`development/RUST_1_95_ROLLOUT.md`](../development/RUST_1_95_ROLLOUT.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`audits/rust-1.95-compatibility.md`](../audits/rust-1.95-compatibility.md)
-Linked specs: `PERFGATE-SPEC-0005-release-proof-contract` planned
+Linked specs: [`PERFGATE-SPEC-0005-release-proof-contract`](../specs/PERFGATE-SPEC-0005-release-proof-contract.md)
 Linked gates: docs-check, doc-test, public-surface --strict
 Proof commands:
 
@@ -184,7 +184,7 @@ Review after: before-0.18.0-release
 Tier: supported
 Surface: GitHub Action, CLI, artifacts
 Linked docs: [`GETTING_STARTED_GITHUB_ACTIONS.md`](../GETTING_STARTED_GITHUB_ACTIONS.md), [`PERFORMANCE_DECISIONS.md`](../PERFORMANCE_DECISIONS.md), [`RELEASE_READINESS.md`](../RELEASE_READINESS.md)
-Linked specs: `PERFGATE-SPEC-0003-performance-decision-contract` planned
+Linked specs: [`PERFGATE-SPEC-0003-performance-decision-contract`](../specs/PERFGATE-SPEC-0003-performance-decision-contract.md)
 Linked gates: action-check, doc-test
 Proof commands:
 
@@ -205,8 +205,8 @@ Review after: next-decision-contract-change
 
 Tier: supported
 Surface: release, crates, CI
-Linked docs: [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`audits/release-0.17.0-publish-readiness.md`](../audits/release-0.17.0-publish-readiness.md)
-Linked specs: `PERFGATE-SPEC-0005-release-proof-contract` planned
+Linked docs: [`RELEASE_READINESS.md`](../RELEASE_READINESS.md), [`audits/release-0.17.0-publish-readiness.md`](../audits/release-0.17.0-publish-readiness.md), [`audits/release-0.17.0-publication-closeout.md`](../audits/release-0.17.0-publication-closeout.md)
+Linked specs: [`PERFGATE-SPEC-0005-release-proof-contract`](../specs/PERFGATE-SPEC-0005-release-proof-contract.md)
 Linked gates: publish-check --package-list and per-package publish dry-runs
 Proof commands:
 
