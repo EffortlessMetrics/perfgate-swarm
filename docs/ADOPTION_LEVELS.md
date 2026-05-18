@@ -16,6 +16,11 @@ You do not need to configure every level on day one. The normal path is level 1
 first, level 2 when the repo wants branch protection, level 3 when simple pass
 or fail is not enough, and level 4 when a team needs retained history.
 
+When a benchmark has enough maturity to consider CI policy, use the
+[policy rollout profile guide](POLICY_ROLLOUT.md). It explains how to keep a
+signal advisory, promote it one benchmark at a time, quarantine untrustworthy
+evidence, and avoid making server ledger mode part of local correctness.
+
 ## Level 1: Local Benchmark Gate
 
 Use this when a repository has one or more repeatable benchmark commands and
