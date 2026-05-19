@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-18"
 milestone = "0.20.0"
-current_work_item = "policy-patch-output"
-current_pr = "policy-patch-output"
+current_work_item = "review-packet"
+current_pr = "review-packet"
 
 objective = """
 Make perfgate safe for teams to promote mature performance evidence into
@@ -122,11 +122,11 @@ status = "merged"
 
 [[work_item]]
 id = "policy-patch-output"
-status = "current"
+status = "merged"
 
 [[work_item]]
 id = "review-packet"
-status = "pending"
+status = "current"
 
 [[work_item]]
 id = "action-posture-summary"

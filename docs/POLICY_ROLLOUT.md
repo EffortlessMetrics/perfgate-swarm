@@ -125,6 +125,20 @@ requirements, review notes, and demotion guidance. It does not write
 `perfgate.toml`; a reviewer must apply any policy change deliberately. Use
 `--to required_gate` only when the team is ready to review blocking behavior.
 
+Render a compact review packet for a reviewer:
+
+```bash
+perfgate policy review-packet --config perfgate.toml --bench parser
+perfgate policy review-packet --config perfgate.toml --bench parser --out artifacts/perfgate/parser/policy-review.md
+```
+
+`policy review-packet` gathers verdict, current and recommended posture,
+baseline maturity, signal confidence, calibration status, host compatibility,
+decision suggestion, proof freshness, artifact paths, local reproduction,
+policy patch command, and do-not guidance into Markdown. It summarizes existing
+receipts; it does not replace them, approve `required_gate`, edit config,
+promote baselines, loosen thresholds, or require server ledger mode.
+
 Emit a reviewable calibration patch when enough samples exist:
 
 ```bash

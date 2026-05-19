@@ -449,7 +449,8 @@ fn cli_help_policy() {
         ))
         .stdout(predicate::str::contains("profiles"))
         .stdout(predicate::str::contains("doctor"))
-        .stdout(predicate::str::contains("emit-patch"));
+        .stdout(predicate::str::contains("emit-patch"))
+        .stdout(predicate::str::contains("review-packet"));
 }
 
 #[test]
@@ -491,6 +492,21 @@ fn cli_help_policy_emit_patch() {
         .stdout(predicate::str::contains("--out-dir"))
         .stdout(predicate::str::contains("--bench"))
         .stdout(predicate::str::contains("--to"));
+}
+
+#[test]
+fn cli_help_policy_review_packet() {
+    perfgate_cmd()
+        .args(["policy", "review-packet", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Render a compact performance review packet",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--out"));
 }
 
 #[test]
@@ -743,6 +759,14 @@ fn snapshot_help_policy_emit_patch() {
     insta::assert_snapshot!(
         "help_policy_emit_patch",
         help_output(&["policy", "emit-patch", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_policy_review_packet() {
+    insta::assert_snapshot!(
+        "help_policy_review_packet",
+        help_output(&["policy", "review-packet", "--help"])
     );
 }
 
