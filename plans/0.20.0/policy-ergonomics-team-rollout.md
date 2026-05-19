@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-18
 Milestone: 0.20.0
-Current PR: promotion-readiness-doctor
+Current PR: policy-patch-output
 Linked proposal: [`PERFGATE-PROP-0007-policy-ergonomics-team-rollout`](../../docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md)
 Linked specs: [`PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract`](../../docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md), `PERFGATE-SPEC-0012-agent-policy-change-guardrails` (planned)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -78,8 +78,8 @@ accepted spec and explicit proof.
 | 538 | Policy ergonomics implementation plan | merged | `plans/0.20.0/policy-ergonomics-team-rollout.md`, `.codex/goals/active.toml` |
 | 540 | Policy profile catalog | merged | policy profile metadata and focused CLI tests |
 | 544 | Rollout profile guidance | merged | user-facing profile and promotion-path docs |
-| TBD | Promotion readiness doctor | current | `perfgate policy doctor --config perfgate.toml` |
-| TBD | Policy patch output | pending | `perfgate policy emit-patch --config perfgate.toml --bench <bench> --to <state>` |
+| 546 | Promotion readiness doctor | merged | `perfgate policy doctor --config perfgate.toml` |
+| TBD | Policy patch output | current | `perfgate policy emit-patch --config perfgate.toml --bench <bench> --to <state>` |
 | TBD | Performance review packet | pending | report/comment artifact summary of policy posture and maturity |
 | TBD | GitHub Action posture summary | pending | Action summary posture and `action-check` fixtures |
 | TBD | Agent policy guardrail spec | pending | `PERFGATE-SPEC-0012-agent-policy-change-guardrails` |
@@ -237,7 +237,7 @@ git diff --check
 
 ## Work item: promotion-readiness-doctor
 
-Status: current
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked spec: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md
 Blocks: policy-patch-output, review-packet, product-claims
@@ -288,7 +288,7 @@ git diff --check
 
 ## Work item: policy-patch-output
 
-Status: pending
+Status: current
 Linked proposal: docs/proposals/PERFGATE-PROP-0007-policy-ergonomics-team-rollout.md
 Linked spec: docs/specs/PERFGATE-SPEC-0011-advisory-to-blocking-promotion-contract.md
 Blocks: review-packet, action-posture-summary

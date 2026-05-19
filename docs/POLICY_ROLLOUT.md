@@ -114,6 +114,17 @@ freshness, decision readiness, missing requirements, artifacts, and next
 commands. It is advisory: it does not edit config, promote baselines, loosen
 thresholds, make a gate blocking, or require server ledger mode.
 
+Emit a reviewable policy patch:
+
+```bash
+perfgate policy emit-patch --config perfgate.toml --bench parser --to gate_candidate
+```
+
+`policy emit-patch` prints a TOML fragment, evidence reasons, missing
+requirements, review notes, and demotion guidance. It does not write
+`perfgate.toml`; a reviewer must apply any policy change deliberately. Use
+`--to required_gate` only when the team is ready to review blocking behavior.
+
 Emit a reviewable calibration patch when enough samples exist:
 
 ```bash

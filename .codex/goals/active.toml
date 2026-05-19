@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-18"
 milestone = "0.20.0"
-current_work_item = "promotion-readiness-doctor"
-current_pr = "promotion-readiness-doctor"
+current_work_item = "policy-patch-output"
+current_pr = "policy-patch-output"
 
 objective = """
 Make perfgate safe for teams to promote mature performance evidence into
@@ -118,11 +118,11 @@ status = "merged"
 
 [[work_item]]
 id = "promotion-readiness-doctor"
-status = "current"
+status = "merged"
 
 [[work_item]]
 id = "policy-patch-output"
-status = "pending"
+status = "current"
 
 [[work_item]]
 id = "review-packet"

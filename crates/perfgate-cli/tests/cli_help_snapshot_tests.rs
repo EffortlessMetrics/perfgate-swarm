@@ -448,7 +448,8 @@ fn cli_help_policy() {
             "Inspect advisory policy rollout profiles",
         ))
         .stdout(predicate::str::contains("profiles"))
-        .stdout(predicate::str::contains("doctor"));
+        .stdout(predicate::str::contains("doctor"))
+        .stdout(predicate::str::contains("emit-patch"));
 }
 
 #[test]
@@ -475,6 +476,21 @@ fn cli_help_policy_doctor() {
         .stdout(predicate::str::contains("--config"))
         .stdout(predicate::str::contains("--out-dir"))
         .stdout(predicate::str::contains("--bench"));
+}
+
+#[test]
+fn cli_help_policy_emit_patch() {
+    perfgate_cmd()
+        .args(["policy", "emit-patch", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Emit a reviewable, non-mutating policy promotion patch",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--to"));
 }
 
 #[test]
@@ -719,6 +735,14 @@ fn snapshot_help_policy_doctor() {
     insta::assert_snapshot!(
         "help_policy_doctor",
         help_output(&["policy", "doctor", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_policy_emit_patch() {
+    insta::assert_snapshot!(
+        "help_policy_emit_patch",
+        help_output(&["policy", "emit-patch", "--help"])
     );
 }
 
