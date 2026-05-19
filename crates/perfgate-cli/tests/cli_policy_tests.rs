@@ -376,3 +376,110 @@ fn policy_emit_patch_marks_required_gate_as_review_required() {
             "resolve missing evidence before promoting beyond advisory",
         ));
 }
+
+#[test]
+fn policy_review_packet_renders_mature_gate_candidate_without_writing_config() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_run_receipt(
+        &dir.path().join("baselines/policy-bench.json"),
+        "policy-bench",
+        7,
+        0.03,
+    );
+    write_run_receipt(
+        &dir.path().join("artifacts/perfgate/policy-bench/run.json"),
+        "policy-bench",
+        7,
+        0.03,
+    );
+    write_compare_receipt(
+        &dir.path()
+            .join("artifacts/perfgate/policy-bench/compare.json"),
+        "policy-bench",
+        0.03,
+    );
+    fs::write(
+        dir.path()
+            .join("artifacts/perfgate/policy-bench/report.json"),
+        "{}",
+    )
+    .expect("write report artifact");
+    fs::write(
+        dir.path()
+            .join("artifacts/perfgate/policy-bench/comment.md"),
+        "comment",
+    )
+    .expect("write comment artifact");
+    let before = fs::read_to_string(dir.path().join("perfgate.toml")).expect("read config");
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args([
+            "policy",
+            "review-packet",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "policy-bench",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "# perfgate performance review packet",
+        ))
+        .stdout(predicate::str::contains("- Gate verdict: `pass`"))
+        .stdout(predicate::str::contains(
+            "- Recommended posture: `gate_candidate`",
+        ))
+        .stdout(predicate::str::contains(
+            "- Baseline maturity: `mature`",
+        ))
+        .stdout(predicate::str::contains(
+            "- Signal confidence: `safe_to_gate`",
+        ))
+        .stdout(predicate::str::contains(
+            "- Reproduce locally: `perfgate check --config perfgate.toml --bench policy-bench --require-baseline`",
+        ))
+        .stdout(predicate::str::contains(
+            "- Review policy patch: `perfgate policy emit-patch --config perfgate.toml --bench policy-bench --to gate_candidate`",
+        ))
+        .stdout(predicate::str::contains(
+            "This packet does not change config, baselines, thresholds, policy, or server settings.",
+        ));
+
+    let after = fs::read_to_string(dir.path().join("perfgate.toml")).expect("read config");
+    assert_eq!(before, after, "policy review-packet must not write config");
+}
+
+#[test]
+fn policy_review_packet_can_write_markdown_artifact_for_setup_state() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    let out = dir
+        .path()
+        .join("artifacts/perfgate/policy-bench/policy-review.md");
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args([
+            "policy",
+            "review-packet",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "policy-bench",
+            "--out",
+            out.to_str().expect("utf8 temp path"),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Wrote policy review packet"));
+
+    let packet = fs::read_to_string(out).expect("read review packet");
+    assert!(packet.contains("- Gate verdict: `setup_incomplete_missing_baseline`"));
+    assert!(packet.contains("- Current posture: `smoke`"));
+    assert!(packet.contains("- Recommended posture: `advisory`"));
+    assert!(packet.contains("baseline promotion after workload review"));
+    assert!(packet.contains("do not loosen thresholds or promote baselines"));
+}

@@ -3,14 +3,15 @@
 use clap::{Args, Subcommand, ValueEnum};
 use perfgate_types::config::load_config_file;
 use perfgate_types::error::ConfigValidationError;
-use perfgate_types::{ConfigFile, Metric, NoisePolicy};
+use perfgate_types::{CompareReceipt, ConfigFile, Metric, NoisePolicy};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::baseline_doctor::{
     BaselineDoctorRow, BaselineMaturity, configured_benches, inspect_baseline,
 };
 use crate::doctor::{SignalDoctorRow, SignalRecommendation, inspect_signal, plural};
-use crate::{check_command, paired_command, resolve_configured_out_dir};
+use crate::{atomic_write, check_command, paired_command, read_json, resolve_configured_out_dir};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum PolicyProfileName {
@@ -61,6 +62,9 @@ pub enum PolicyAction {
 
     /// Emit a reviewable, non-mutating policy promotion patch.
     EmitPatch(PolicyEmitPatchArgs),
+
+    /// Render a compact performance review packet without changing policy.
+    ReviewPacket(PolicyReviewPacketArgs),
 }
 
 #[derive(Debug, Args)]
@@ -95,6 +99,25 @@ pub struct PolicyEmitPatchArgs {
     /// Proposed rollout state for reviewer approval.
     #[arg(long, value_enum)]
     pub to: PolicyRolloutState,
+}
+
+#[derive(Debug, Args)]
+pub struct PolicyReviewPacketArgs {
+    /// Path to the config file (TOML or JSON).
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Output directory containing recent artifacts. Defaults to [defaults].out_dir or artifacts/perfgate.
+    #[arg(long, value_name = "DIR")]
+    pub out_dir: Option<PathBuf>,
+
+    /// Benchmark to render the policy review packet for.
+    #[arg(long)]
+    pub bench: String,
+
+    /// Write the Markdown packet to a file instead of stdout.
+    #[arg(long)]
+    pub out: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -542,6 +565,21 @@ pub fn execute_policy_emit_patch(args: PolicyEmitPatchArgs) -> anyhow::Result<()
     Ok(())
 }
 
+pub fn execute_policy_review_packet(args: PolicyReviewPacketArgs) -> anyhow::Result<()> {
+    let evidence = load_policy_evidence(&args.config, args.out_dir.as_ref(), &args.bench)?;
+    let out_dir = resolve_configured_out_dir(args.out_dir.as_ref(), Some(&evidence.config));
+    let packet = render_policy_review_packet(&args.config, &out_dir, &evidence)?;
+
+    if let Some(out) = args.out {
+        write_policy_review_packet(&out, &packet)?;
+        println!("Wrote policy review packet: {}", out.display());
+    } else {
+        print!("{packet}");
+    }
+
+    Ok(())
+}
+
 struct PolicyEvidence {
     config: ConfigFile,
     baseline: BaselineDoctorRow,
@@ -603,6 +641,186 @@ fn patch_budget_suggestion(config: &ConfigFile, bench_name: &str) -> PolicyBudge
             .or(config.defaults.noise_policy)
             .unwrap_or(NoisePolicy::Warn),
     }
+}
+
+fn render_policy_review_packet(
+    config_path: &Path,
+    out_dir: &Path,
+    evidence: &PolicyEvidence,
+) -> anyhow::Result<String> {
+    let baseline = &evidence.baseline;
+    let signal = &evidence.signal;
+    let current = current_posture(baseline);
+    let recommended = recommended_posture(baseline, signal);
+    let compare = read_compare_if_present(signal)?;
+    let gate_verdict = gate_verdict(signal, compare.as_ref());
+    let local_reproduction = check_command(
+        config_path,
+        Some(&baseline.bench),
+        baseline.maturity != BaselineMaturity::Missing,
+    );
+    let policy_patch = format!(
+        "perfgate policy emit-patch --config {} --bench {} --to {}",
+        config_path.display(),
+        baseline.bench,
+        rollout_state_for_posture(recommended).as_str()
+    );
+    let report_path = artifact_path(out_dir, &baseline.bench, "report.json");
+    let comment_path = artifact_path(out_dir, &baseline.bench, "comment.md");
+    let repair_context_path = artifact_path(out_dir, &baseline.bench, "repair_context.json");
+
+    let mut out = String::new();
+    out.push_str("# perfgate performance review packet\n\n");
+    out.push_str("This packet summarizes existing receipts for review. Receipts remain the source of truth.\n\n");
+    out.push_str("## Status\n\n");
+    out.push_str(&format!("- Config: `{}`\n", config_path.display()));
+    out.push_str(&format!("- Bench: `{}`\n", baseline.bench));
+    out.push_str(&format!("- Gate verdict: `{gate_verdict}`\n"));
+    out.push_str(&format!("- Current posture: `{}`\n", current.as_str()));
+    out.push_str(&format!(
+        "- Recommended posture: `{}`\n",
+        recommended.as_str()
+    ));
+    out.push_str(&format!(
+        "- Baseline maturity: `{}`\n",
+        baseline.maturity.as_str()
+    ));
+    out.push_str(&format!(
+        "- Signal confidence: `{}` - {}\n",
+        signal.recommendation.as_str(),
+        signal.recommendation.meaning()
+    ));
+    out.push_str(&format!(
+        "- Calibration status: {}\n",
+        calibration_status(signal)
+    ));
+    out.push_str(&format!(
+        "- Host compatibility: {}\n",
+        host_compatibility(signal)
+    ));
+    out.push_str(&format!(
+        "- Decision suggestion: {}\n",
+        decision_readiness(&evidence.config, &baseline.bench)
+    ));
+    out.push_str(&format!(
+        "- Proof freshness: {}\n",
+        proof_freshness(baseline, signal)
+    ));
+
+    out.push_str("\n## Artifacts\n\n");
+    push_artifact_line(&mut out, "run", &signal.run_path, signal.run_found);
+    if signal.baseline_remote {
+        out.push_str(&format!(
+            "- baseline: `{}` (remote, not probed)\n",
+            signal.baseline_path.display()
+        ));
+    } else {
+        push_artifact_line(
+            &mut out,
+            "baseline",
+            &signal.baseline_path,
+            signal.baseline_found,
+        );
+    }
+    push_artifact_line(
+        &mut out,
+        "compare",
+        &signal.compare_path,
+        signal.compare_found,
+    );
+    push_artifact_line(&mut out, "report", &report_path, report_path.exists());
+    push_artifact_line(&mut out, "comment", &comment_path, comment_path.exists());
+    push_artifact_line(
+        &mut out,
+        "repair context",
+        &repair_context_path,
+        repair_context_path.exists(),
+    );
+
+    out.push_str("\n## Why\n\n");
+    for reason in policy_reasons(baseline, signal, recommended) {
+        out.push_str(&format!("- {reason}\n"));
+    }
+
+    out.push_str("\n## Missing Or Review-Required\n\n");
+    for missing in policy_missing_requirements(baseline, signal, recommended) {
+        out.push_str(&format!("- {missing}\n"));
+    }
+
+    out.push_str("\n## Reviewer Commands\n\n");
+    out.push_str(&format!("- Reproduce locally: `{local_reproduction}`\n"));
+    out.push_str(&format!("- Review policy patch: `{policy_patch}`\n"));
+    for command in policy_next_commands(config_path, baseline, signal, recommended) {
+        out.push_str(&format!("- Next: `{command}`\n"));
+    }
+
+    out.push_str("\n## Do Not\n\n");
+    for item in policy_do_not(recommended) {
+        out.push_str(&format!("- {item}\n"));
+    }
+    out.push_str("- do not loosen thresholds or promote baselines from this packet alone\n");
+    out.push_str("- do not require server ledger mode for local correctness\n");
+
+    out.push_str("\n## Non-Inferences\n\n");
+    out.push_str("- This packet does not change config, baselines, thresholds, policy, or server settings.\n");
+    out.push_str("- It does not approve `required_gate`; reviewer approval is still required.\n");
+    out.push_str("- It does not replace run, compare, report, comment, repair context, or decision receipts.\n");
+
+    Ok(out)
+}
+
+fn write_policy_review_packet(path: &Path, packet: &str) -> anyhow::Result<()> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    atomic_write(path, packet.as_bytes())
+}
+
+fn read_compare_if_present(signal: &SignalDoctorRow) -> anyhow::Result<Option<CompareReceipt>> {
+    if signal.compare_found {
+        Ok(Some(read_json(&signal.compare_path)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn gate_verdict(signal: &SignalDoctorRow, compare: Option<&CompareReceipt>) -> String {
+    if let Some(compare) = compare {
+        return compare.verdict.status.as_str().to_string();
+    }
+    if !signal.baseline_found && !signal.baseline_remote {
+        return "setup_incomplete_missing_baseline".to_string();
+    }
+    "no_compare_receipt_yet".to_string()
+}
+
+fn rollout_state_for_posture(posture: PolicyPosture) -> PolicyRolloutState {
+    match posture {
+        PolicyPosture::Smoke => PolicyRolloutState::Smoke,
+        PolicyPosture::Advisory => PolicyRolloutState::Advisory,
+        PolicyPosture::GateCandidate => PolicyRolloutState::GateCandidate,
+        PolicyPosture::Quarantined => PolicyRolloutState::Quarantined,
+    }
+}
+
+fn artifact_path(out_dir: &Path, bench_name: &str, filename: &str) -> PathBuf {
+    let per_bench = out_dir.join(bench_name).join(filename);
+    if per_bench.exists() {
+        per_bench
+    } else {
+        out_dir.join(filename)
+    }
+}
+
+fn push_artifact_line(out: &mut String, label: &str, path: &Path, exists: bool) {
+    out.push_str(&format!(
+        "- {label}: `{}`{}\n",
+        path.display(),
+        if exists { "" } else { " (missing)" }
+    ));
 }
 
 fn target_review_notes(
@@ -1001,6 +1219,7 @@ pub fn execute_policy_action(action: PolicyAction) -> anyhow::Result<()> {
         }
         PolicyAction::Doctor(args) => execute_policy_doctor(args),
         PolicyAction::EmitPatch(args) => execute_policy_emit_patch(args),
+        PolicyAction::ReviewPacket(args) => execute_policy_review_packet(args),
     }
 }
 
