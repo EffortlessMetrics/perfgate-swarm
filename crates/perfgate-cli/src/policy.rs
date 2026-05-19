@@ -1,9 +1,9 @@
 //! Policy rollout metadata and advisory policy surfaces.
 
 use clap::{Args, Subcommand, ValueEnum};
-use perfgate_types::ConfigFile;
 use perfgate_types::config::load_config_file;
 use perfgate_types::error::ConfigValidationError;
+use perfgate_types::{ConfigFile, Metric, NoisePolicy};
 use std::path::{Path, PathBuf};
 
 use crate::baseline_doctor::{
@@ -58,6 +58,9 @@ pub enum PolicyAction {
 
     /// Report advisory policy promotion readiness without changing config.
     Doctor(PolicyDoctorArgs),
+
+    /// Emit a reviewable, non-mutating policy promotion patch.
+    EmitPatch(PolicyEmitPatchArgs),
 }
 
 #[derive(Debug, Args)]
@@ -73,6 +76,54 @@ pub struct PolicyDoctorArgs {
     /// Limit promotion readiness output to one configured benchmark.
     #[arg(long)]
     pub bench: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct PolicyEmitPatchArgs {
+    /// Path to the config file (TOML or JSON).
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Output directory containing recent artifacts. Defaults to [defaults].out_dir or artifacts/perfgate.
+    #[arg(long, value_name = "DIR")]
+    pub out_dir: Option<PathBuf>,
+
+    /// Benchmark to prepare a reviewable policy patch for.
+    #[arg(long)]
+    pub bench: String,
+
+    /// Proposed rollout state for reviewer approval.
+    #[arg(long, value_enum)]
+    pub to: PolicyRolloutState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum PolicyRolloutState {
+    #[value(name = "smoke")]
+    Smoke,
+    #[value(name = "advisory")]
+    Advisory,
+    #[value(name = "gate_candidate")]
+    GateCandidate,
+    #[value(name = "required_gate")]
+    RequiredGate,
+    #[value(name = "quarantined")]
+    Quarantined,
+    #[value(name = "retired")]
+    Retired,
+}
+
+impl PolicyRolloutState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Smoke => "smoke",
+            Self::Advisory => "advisory",
+            Self::GateCandidate => "gate_candidate",
+            Self::RequiredGate => "required_gate",
+            Self::Quarantined => "quarantined",
+            Self::Retired => "retired",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -408,6 +459,180 @@ pub fn execute_policy_doctor(args: PolicyDoctorArgs) -> anyhow::Result<()> {
     );
 
     Ok(())
+}
+
+pub fn execute_policy_emit_patch(args: PolicyEmitPatchArgs) -> anyhow::Result<()> {
+    let evidence = load_policy_evidence(&args.config, args.out_dir.as_ref(), &args.bench)?;
+    let current = current_posture(&evidence.baseline);
+    let recommended = recommended_posture(&evidence.baseline, &evidence.signal);
+    let suggestion = patch_budget_suggestion(&evidence.config, &args.bench);
+
+    println!("perfgate policy emit-patch");
+    println!("Config: {}", args.config.display());
+    println!("bench: {}", args.bench);
+    println!("current posture: {}", current.as_str());
+    println!("recommended posture: {}", recommended.as_str());
+    println!("proposed posture: {}", args.to.as_str());
+    println!();
+    println!("Evidence used:");
+    for reason in policy_reasons(&evidence.baseline, &evidence.signal, recommended) {
+        println!("  - {reason}");
+    }
+    println!();
+    println!("Missing or review-required:");
+    for missing in policy_missing_requirements(&evidence.baseline, &evidence.signal, recommended) {
+        println!("  - {missing}");
+    }
+    for note in target_review_notes(args.to, recommended) {
+        println!("  - {note}");
+    }
+    println!();
+    println!("Reviewable TOML fragment:");
+    println!(
+        "# Apply manually inside the existing [[bench]] named \"{}\".",
+        args.bench
+    );
+    println!(
+        "# Proposed policy posture: {}; current posture: {}; recommendation: {}.",
+        args.to.as_str(),
+        current.as_str(),
+        recommended.as_str()
+    );
+    println!(
+        "# This fragment reviews thresholds only; it does not make policy blocking by itself."
+    );
+    println!("[bench.budgets.wall_ms]");
+    println!("threshold = {:.2}", suggestion.threshold);
+    println!("warn_factor = {:.2}", suggestion.warn_factor);
+    println!("noise_threshold = {:.2}", suggestion.noise_threshold);
+    println!("noise_policy = \"{}\"", suggestion.noise_policy.as_str());
+    println!();
+    println!("What this patch does not prove:");
+    println!("  - reviewer approval for required_gate");
+    println!("  - workload suitability beyond the named benchmark");
+    println!("  - server ledger correctness or availability");
+    println!("  - that future CI failures are code regressions rather than setup, host, or noise");
+    println!();
+    println!("Rollback or demotion:");
+    println!(
+        "  - move posture back to advisory if noise, host mismatch, or benchmark intent drifts"
+    );
+    println!("  - quarantine the benchmark while collecting fresh evidence");
+    println!("  - retire benchmarks that no longer answer an active review question");
+    println!();
+    println!("Next:");
+    println!(
+        "  perfgate policy doctor --config {} --bench {}",
+        args.config.display(),
+        args.bench
+    );
+    if recommended == PolicyPosture::GateCandidate {
+        println!("  review this patch before making the benchmark a required gate");
+    } else {
+        println!("  resolve missing evidence before promoting beyond advisory");
+    }
+    println!("Do not:");
+    println!("  do not paste this as approval to loosen thresholds or bypass review");
+    println!("  do not make server ledger mode required for local correctness");
+    println!();
+    println!(
+        "Advisory only: no config, baseline, threshold, policy, or server setting was changed."
+    );
+
+    Ok(())
+}
+
+struct PolicyEvidence {
+    config: ConfigFile,
+    baseline: BaselineDoctorRow,
+    signal: SignalDoctorRow,
+}
+
+fn load_policy_evidence(
+    config_path: &Path,
+    out_dir: Option<&PathBuf>,
+    bench_name: &str,
+) -> anyhow::Result<PolicyEvidence> {
+    let config = load_config_file(config_path)?;
+    config
+        .validate()
+        .map_err(ConfigValidationError::ConfigFile)?;
+    let benches = configured_benches(&config, Some(bench_name))?;
+    let bench = benches
+        .first()
+        .expect("configured_benches returns one item for a valid bench");
+    let resolved_out_dir = resolve_configured_out_dir(out_dir, Some(&config));
+    let baseline = inspect_baseline(&config, bench)?;
+    let signal = inspect_signal(&config, &resolved_out_dir, bench)?;
+
+    Ok(PolicyEvidence {
+        config,
+        baseline,
+        signal,
+    })
+}
+
+struct PolicyBudgetSuggestion {
+    threshold: f64,
+    warn_factor: f64,
+    noise_threshold: f64,
+    noise_policy: NoisePolicy,
+}
+
+fn patch_budget_suggestion(config: &ConfigFile, bench_name: &str) -> PolicyBudgetSuggestion {
+    let bench = config.benches.iter().find(|bench| bench.name == bench_name);
+    let wall_budget = bench
+        .and_then(|bench| bench.budgets.as_ref())
+        .and_then(|budgets| budgets.get(&Metric::WallMs));
+
+    PolicyBudgetSuggestion {
+        threshold: wall_budget
+            .and_then(|budget| budget.threshold)
+            .or(config.defaults.threshold)
+            .unwrap_or(0.20),
+        warn_factor: wall_budget
+            .and_then(|budget| budget.warn_factor)
+            .or(config.defaults.warn_factor)
+            .unwrap_or(0.50),
+        noise_threshold: wall_budget
+            .and_then(|budget| budget.noise_threshold)
+            .or(config.defaults.noise_threshold)
+            .unwrap_or(0.08),
+        noise_policy: wall_budget
+            .and_then(|budget| budget.noise_policy)
+            .or(config.defaults.noise_policy)
+            .unwrap_or(NoisePolicy::Warn),
+    }
+}
+
+fn target_review_notes(
+    target: PolicyRolloutState,
+    recommended: PolicyPosture,
+) -> Vec<&'static str> {
+    let mut notes = Vec::new();
+    match target {
+        PolicyRolloutState::RequiredGate => {
+            notes.push("required_gate needs explicit reviewer approval");
+            notes.push("blocking CI must preserve local reproduction and artifact links");
+        }
+        PolicyRolloutState::GateCandidate => {
+            notes.push("gate_candidate is review-ready evidence, not blocking policy");
+        }
+        PolicyRolloutState::Quarantined => {
+            notes.push("quarantine should name the evidence that became untrustworthy");
+        }
+        PolicyRolloutState::Retired => {
+            notes
+                .push("retirement should preserve useful history without affecting current policy");
+        }
+        PolicyRolloutState::Smoke | PolicyRolloutState::Advisory => {
+            notes.push("advisory posture should continue surfacing evidence without blocking");
+        }
+    }
+    if target == PolicyRolloutState::RequiredGate && recommended != PolicyPosture::GateCandidate {
+        notes.push("requested target exceeds current evidence recommendation");
+    }
+    notes
 }
 
 fn print_policy_doctor_row(
@@ -775,6 +1000,7 @@ pub fn execute_policy_action(action: PolicyAction) -> anyhow::Result<()> {
             Ok(())
         }
         PolicyAction::Doctor(args) => execute_policy_doctor(args),
+        PolicyAction::EmitPatch(args) => execute_policy_emit_patch(args),
     }
 }
 

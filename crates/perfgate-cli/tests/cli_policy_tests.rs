@@ -287,3 +287,92 @@ fn policy_doctor_keeps_noisy_signal_advisory_with_paired_guidance() {
             "do not make advisory evidence blocking by default",
         ));
 }
+
+#[test]
+fn policy_emit_patch_prints_reviewable_fragment_without_writing_config() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_run_receipt(
+        &dir.path().join("baselines/policy-bench.json"),
+        "policy-bench",
+        7,
+        0.03,
+    );
+    write_run_receipt(
+        &dir.path().join("artifacts/perfgate/policy-bench/run.json"),
+        "policy-bench",
+        7,
+        0.03,
+    );
+    write_compare_receipt(
+        &dir.path()
+            .join("artifacts/perfgate/policy-bench/compare.json"),
+        "policy-bench",
+        0.03,
+    );
+    let before = fs::read_to_string(dir.path().join("perfgate.toml")).expect("read config");
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args([
+            "policy",
+            "emit-patch",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "policy-bench",
+            "--to",
+            "gate_candidate",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("perfgate policy emit-patch"))
+        .stdout(predicate::str::contains("proposed posture: gate_candidate"))
+        .stdout(predicate::str::contains("Reviewable TOML fragment"))
+        .stdout(predicate::str::contains("[bench.budgets.wall_ms]"))
+        .stdout(predicate::str::contains("threshold = 0.20"))
+        .stdout(predicate::str::contains("noise_policy = \"warn\""))
+        .stdout(predicate::str::contains(
+            "gate_candidate is review-ready evidence, not blocking policy",
+        ))
+        .stdout(predicate::str::contains(
+            "Advisory only: no config, baseline, threshold, policy, or server setting was changed.",
+        ));
+
+    let after = fs::read_to_string(dir.path().join("perfgate.toml")).expect("read config");
+    assert_eq!(before, after, "policy emit-patch must not write config");
+}
+
+#[test]
+fn policy_emit_patch_marks_required_gate_as_review_required() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args([
+            "policy",
+            "emit-patch",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "policy-bench",
+            "--to",
+            "required_gate",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("proposed posture: required_gate"))
+        .stdout(predicate::str::contains(
+            "required_gate needs explicit reviewer approval",
+        ))
+        .stdout(predicate::str::contains(
+            "requested target exceeds current evidence recommendation",
+        ))
+        .stdout(predicate::str::contains(
+            "baseline promotion after workload review",
+        ))
+        .stdout(predicate::str::contains(
+            "resolve missing evidence before promoting beyond advisory",
+        ));
+}
