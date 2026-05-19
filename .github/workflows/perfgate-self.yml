@@ -1,0 +1,121 @@
+name: perfgate-self
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  smoke:
+    name: Action Smoke Lane
+    runs-on: ubuntu-24.04
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
+      contains(github.event.pull_request.labels.*.name, 'self-smoke') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+      contains(github.event.pull_request.labels.*.name, 'release-proof')
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - name: Build dogfood workload
+        run: cargo build --release -p perfgate-selfbench
+      - uses: ./
+        with:
+          config: .ci/perfgate-pr.toml
+          all: "true"
+          mode: cockpit
+          out_dir: artifacts/perfgate-smoke
+          artifact_name: perfgate-artifacts-smoke
+      - name: Verify artifacts
+        run: cargo run -p xtask -- dogfood verify --dir artifacts/perfgate-smoke
+      - name: Check documentation drift
+        run: cargo run -p xtask -- docs-check
+
+  perf:
+    name: Core Perf Lane
+    runs-on: ubuntu-24.04
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
+      contains(github.event.pull_request.labels.*.name, 'perf') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+      contains(github.event.pull_request.labels.*.name, 'release-proof')
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - name: Build release binaries
+        run: |
+          cargo build --release -p perfgate-cli --bin perfgate
+          cargo build --release -p perfgate-selfbench
+          ./target/release/perfgate --version
+          ./target/release/perfgate-selfbench noop
+      - name: Run dogfooding
+        run: ./target/release/perfgate check --config .ci/perfgate-pr.toml --all --mode cockpit --output-github
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: perfgate-artifacts-core-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/perfgate
+          if-no-files-found: warn
+
+  paired:
+    name: Paired PR-vs-Main Lane
+    runs-on: ubuntu-24.04
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
+      contains(github.event.pull_request.labels.*.name, 'paired') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
+      contains(github.event.pull_request.labels.*.name, 'release-proof')
+    steps:
+      - name: Checkout Current
+        uses: actions/checkout@v6
+        with:
+          path: current
+
+      - name: Checkout Main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: main
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+
+      - name: Build current binary
+        run: cd current && cargo build --release -p perfgate-cli --bin perfgate && cargo build --release -p perfgate-selfbench
+
+      - name: Build main binary
+        run: cd main && cargo build --release -p perfgate-cli --bin perfgate && cargo build --release -p perfgate-selfbench
+
+      - name: Run paired comparison
+        run: |
+          mkdir -p artifacts/paired
+          ./current/target/release/perfgate paired \
+            --name cli/paired-main \
+            --baseline-cmd "./main/target/release/perfgate-selfbench cpu-fixed" \
+            --current-cmd "./current/target/release/perfgate-selfbench cpu-fixed" \
+            --repeat 10 \
+            --out artifacts/paired/compare.json
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: perfgate-artifacts-paired-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/paired
+          if-no-files-found: warn

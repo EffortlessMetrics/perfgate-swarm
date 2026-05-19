@@ -1,0 +1,65 @@
+{
+  "schema": "perfgate.scenario.v1",
+  "tool": {
+    "name": "perfgate",
+    "version": "0.16.0"
+  },
+  "run": {
+    "id": "run-scenario-1",
+    "started_at": "2026-05-08T00:00:00Z",
+    "ended_at": "2026-05-08T00:00:01Z",
+    "host": {
+      "os": "linux",
+      "arch": "x86_64"
+    }
+  },
+  "scenario": {
+    "name": "large_file_parse",
+    "weight": 0.4,
+    "description": "Parse a large markdown file",
+    "command": ["cargo", "bench", "--bench", "large_file"]
+  },
+  "components": [
+    {
+      "name": "parser.batch_loop",
+      "weight": 1.0,
+      "benchmark": "large-file",
+      "probe_compare_ref": {
+        "path": "artifacts/perfgate/large-file/probe-compare.json",
+        "run_id": "probe-compare-run"
+      },
+      "deltas": {
+        "wall_ms": {
+          "baseline": 100.0,
+          "current": 92.2,
+          "ratio": 0.922,
+          "pct": -0.078,
+          "regression": 0.0,
+          "status": "pass"
+        }
+      },
+      "probes": ["parser.tokenize", "parser.ast_build"],
+      "status": "pass"
+    }
+  ],
+  "weighted_deltas": {
+    "wall_ms": {
+      "baseline": 100.0,
+      "current": 92.2,
+      "ratio": 0.922,
+      "pct": -0.078,
+      "regression": 0.0,
+      "status": "pass"
+    }
+  },
+  "verdict": {
+    "status": "pass",
+    "counts": {
+      "pass": 1,
+      "warn": 0,
+      "fail": 0,
+      "skip": 0
+    },
+    "reasons": []
+  }
+}

@@ -1,0 +1,271 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+No unreleased changes beyond the prepared 0.18.0 release-candidate notes below.
+
+## [0.18.0] - Unreleased
+
+0.18.0 is prepared in source and release-candidate proof, but it is not yet
+published, tagged, or available through public install paths. The latest public
+release remains `v0.17.0` until the 0.18 publication closeout records crates.io,
+GitHub release, action alias, asset, and public install smoke proof.
+
+### Changed
+- Reconciled release-readiness docs with the published v0.17.0 state across
+  crates.io packages, GitHub release assets, action alias tags, and public
+  install smoke proof.
+- Added a first-hour adoption guide for install, init, check, baseline
+  promotion, CI, artifact boundaries, and failure reproduction.
+- Added an adoption-level guide that teaches perfgate as local gate, action
+  gate, structured decision, and server-ledger workflows.
+- Added a decision outcome gallery for pass, fail, accepted-tradeoff,
+  review-required, missing-evidence, and high-noise review shapes.
+- Extended first-hour adoption proof to cover baseline status,
+  require-baseline reruns, and compare artifact creation after promotion.
+- Added a probe instrumentation quickstart covering stable probe names, JSONL
+  emission, Rust helpers, ingest, comparison, and decision wiring.
+- Proved public Rust probe helper JSONL through ingest, probe compare,
+  scenario, tradeoff, and decision markdown evidence while keeping the CLI
+  decision example as the bundle proof.
+- Improved GitHub Action failure summaries with verdict counts, review-required
+  reasons, missing-baseline promotion hints, uploaded artifact names, and local
+  reproduction commands.
+- Added a decision ledger operations runbook covering storage modes, API key
+  rotation, upload semantics, history, debt, export, prune, backups, CI upload
+  behavior, health, metrics, and recovery paths.
+- Added guided adoption product claims for the first-hour path, staged adoption
+  levels, probe-backed tradeoff explanation, and optional team ledger
+  operations.
+- Tightened the product-claim proof-map checker so stale planned spec links fail
+  once the concrete spec file exists.
+- Added the policy-ledger contract spec and linked the policy-ledger product
+  claim to the concrete spec.
+- Refreshed the generated no-panic baseline for the adoption probe proof and
+  product-claim freshness checker callsites.
+- Absorbed remaining production compatibility wrappers while preserving the
+  five-crate public surface.
+- Added external adoption canary receipts for a small Rust CLI, a larger Rust
+  workspace, and a non-Rust command benchmark.
+- Added signal/noise calibration guidance, probe design patterns, platform
+  metric support boundaries, and action failure archaeology examples.
+- Extended server-ledger operations proof with API key create/list/rotate smoke
+  while keeping ledger mode optional.
+- Added the 0.18.0 release cutover proposal and plan so publication, tags,
+  action aliases, public install smoke, and closeout have explicit gates.
+- Closed the guided adoption lane with a handoff and archived active-goal
+  manifest.
+- Closed the external trust lane with a handoff and explicit non-inferences
+  for hosted external CI, 0.18 publication, server correctness, and
+  probe-backed external canaries.
+
+## [0.17.0] - 2026-05-12
+
+### Added
+- Planned the Rust 1.95 and 0.17.0 governance rollout for staged Clippy,
+  no-panic, non-Rust file-surface, CI evidence-lane, and release-proof policy.
+
+### Changed
+- Bumped the workspace and internal crate versions to `0.17.0`.
+- Raised the declared Rust MSRV, local toolchain, and hosted Rust workflow pins
+  to Rust 1.95.
+- Enabled the Rust 1.95 compiler lint floor while keeping `unsafe_code` at
+  `warn` for a later audit.
+- Added staged Clippy lint, debt, and exception policy ledgers for the Rust
+  1.95 governance rollout.
+- Activated the clean Rust 1.95 Clippy ratchets and recorded noisy or
+  unavailable candidates as policy debt or blocked work.
+- Added the exact no-panic family scanner and initial allowlist for the
+  governance rollout.
+- Added the generated no-panic baseline so policy checks reject new
+  unallowlisted panic-family debt.
+- Added non-Rust file-surface policy allowlists for workflows, generated
+  files, executable bits, dependency surfaces, and governed repository files.
+- Routed expensive fuzz and self-dogfood evidence lanes behind explicit labels,
+  `main`, schedules, or manual dispatch instead of ordinary unlabeled PRs.
+- Applied targeted Rust 1.95 API cleanup in summary row, decision artifact
+  index, and publishability builders.
+
+## [0.16.0] - 2026-05-11
+
+### Added
+- Added `perfgate doctor` to diagnose local setup, config loading, benchmark
+  command availability, baseline presence, artifact directory writability, CI
+  detection, and baseline-server health.
+- Added schema-first structured performance evidence contracts for
+  `perfgate.probe.v1`, `perfgate.probe_compare.v1`,
+  `perfgate.scenario.v1`, and `perfgate.tradeoff.v1`.
+- Added `perfgate ingest probes --file probes.jsonl` to convert
+  language-agnostic probe JSONL into `perfgate.probe.v1` receipts.
+- Added adoption documentation for a three-level structured decision path:
+  basic gate, decision mode, and server-ledger mode, plus a clear install ->
+  init -> check -> decision -> ledger sequence for early adopters.
+- Added `perfgate probe compare` and `perfgate.probe_compare.v1` receipts for
+  named probe deltas between baseline and current structured evidence.
+- Added `perfgate scenario evaluate` to turn configured weighted scenarios and
+  benchmark compare receipts into `perfgate.scenario.v1` workload receipts.
+- Added optional scenario `probe_compare` references so workload receipts can
+  carry advisory probe names and probe-compare receipt references.
+- Added `perfgate tradeoff evaluate` to turn configured tradeoff rules and
+  scenario receipts into `perfgate.tradeoff.v1` decision receipts.
+- Added probe-backed tradeoff requirements with `probe = "name"` so accepted
+  tradeoffs can depend on named probe improvements from attached probe-compare
+  evidence.
+- Added Markdown and PR-comment rendering for `perfgate.tradeoff.v1` decision
+  receipts via `perfgate md --tradeoff` and `perfgate comment --tradeoff`.
+- Extended `xtask schema-compat` with baseline-service record, health-response,
+  and fleet fixtures so the 0.16 server API contract is checked alongside
+  receipt compatibility.
+
+### Changed
+- Bumped Rust minimum supported version (MSRV) to 1.93.
+- Collapsed the 0.16 public crate surface to the five intended publishable
+  packages: `perfgate`, `perfgate-cli`, `perfgate-types`,
+  `perfgate-client`, and `perfgate-server`.
+- Moved former domain and application implementation crates under the public
+  facade as `perfgate::domain` and `perfgate::app`, leaving the old
+  `perfgate-domain` and `perfgate-app` packages as workspace-only
+  compatibility wrappers.
+- Extended `xtask arch` and `xtask public-surface --strict` so CI enforces the
+  collapsed module/package boundaries for the 0.16 release line.
+
+### Fixed
+- Fixed clippy warnings by replacing `sort_by` with `sort_by_key` and `std::cmp::Reverse` for descending sorts in storage backends.
+
+## [0.15.1] - 2026-03-28
+
+### Fixed
+- Restored local `perfgate serve` baseline workflows by injecting a synthetic auth context for local-mode API routes.
+- Tightened baseline-service docs so `README`, getting-started guides, and service notes match the current shipped surface instead of historical or aspirational behavior.
+
+### Changed
+- Bumped the workspace and internal crate versions to `0.15.1`.
+- Updated GitHub Action examples to pin `EffortlessMetrics/perfgate@v0.15.1`.
+
+## [0.15.0] - 2026-03-26
+
+### Added
+- **The Intelligent Gater (0.15.0)** — Implemented automated performance verdicts, regression blame analysis, and AI-ready explanation prompts.
+- **LLM Regression Explainer** — Integration with LLMs to analyze code diffs and performance deltas to provide diagnostic explanations in PRs.
+- **Regression Blame** — Automated identification of dependency updates in `Cargo.lock` that contribute to performance regressions.
+- **Automated Performance Bisection** — New `perfgate bisect` command that uses `git bisect` and `paired` benchmarking to pinpoint the exact commit introducing a regression.
+- **Distributed Gating (0.14.0)** — Introduced `perfgate aggregate` for merging multiple run receipts (e.g., from a fleet of runners) into a single weighted verdict.
+- **Deep Observability (0.11.0)** — Expanded metric collection to include `io_read_bytes`, `io_write_bytes`, `network_packets`, and `energy_uj`.
+- **Windows IO Metrics** — Implemented native IO counter collection on Windows via `GetProcessIoCounters`.
+- **Noise & Flakiness Detection (0.10.0)** — Introduced `NoisePolicy` (`ignore`, `warn`, `skip`) for CV-based escalation and automated skipping of unstable benchmarks.
+- **Significance-based Retries** — The `paired` command now supports automatic retries (up to `--max-retries`) if statistical significance is not reached.
+- **Verdict History (0.9.0)** — Implemented server-side execution history tracking with SQLite, Postgres, and Memory backends.
+- **History CLI** — New `perfgate baseline verdicts` command for viewing historical performance trends and status transitions.
+- **Confidence Intervals** — Welch's t-test now includes confidence interval (CI) calculation for paired differences.
+- **Web Dashboard (Alpha)** — `perfgate-server` now serves a minimal read-only dashboard at `/` for browsing projects, benchmarks, and viewing historical trends with interactive charts.
+- **Enhanced Summaries** — `U64Summary` and `F64Summary` now include optional `mean` and `stddev` fields, enabling more detailed variance analysis and noise detection.
+- **OIDC Integration** — `perfgate-server` now supports GitHub Actions OIDC tokens for authentication, mapping repository claims directly to project IDs and roles via `--github-oidc` flags.
+- **Security Scoping** — API keys can now be restricted to specific projects and benchmark name patterns (regex).
+- **Project Isolation** — The baseline server now enforces strict project-level isolation. Keys without global admin scope are restricted to their assigned project.
+- **Enhanced CLI** — `perfgate-server` now supports expanded API key definitions: `--api-keys role:key:project:regex`.
+
+### Changed
+- **perfgate-stats computation** — Statistical summarization now uses Welford's online one-pass algorithm for improved numerical stability when computing mean and variance.
+- **Schema Update** — `perfgate.run.v1` and related schemas updated to include new statistical fields.
+- **Edition 2024** — Migrated the entire workspace to Rust 2024 edition and Rust 1.92 toolchain.
+- **Micro-crate Architecture** — Completed the modularization into 25 specialized crates for improved compilation speed and encapsulation.
+
+### Fixed
+- **Unix rusage math** — Improved `timeval` delta calculation to correctly handle microsecond rollovers.
+- **Smoke Lane Contracts** — Aligned cockpit mode artifacts with dogfooding verification requirements.
+- **Baseline Handling** — Ensured non-positive baselines are handled gracefully by skipping instead of panicking.
+
+## [0.5.0] - 2026-03-16
+
+### Added
+- **Self-Dogfooding Infrastructure** — `perfgate` now uses itself to gate its own performance across three CI lanes (Smoke, Perf, and Nightly).
+- **Multi-Lane CI Workflows** — Implemented `perfgate-self.yml` and `perfgate-nightly.yml` with unique artifact naming and authoritative runner pinning (`ubuntu-24.04`).
+- **Hardened Workload Wrappers** — Introduced `.ci/perf/lib.sh` for shared binary resolution and strict exit code classification (allowing 0, 2, 3 while failing on crashes).
+- **Automated Baseline Lifecycle** — Nightly calibration now generates candidate baselines and automatically proposes refreshes via bot-driven Pull Requests.
+- **Learning Loop & Trends** — Added trend export to JSONL and Prometheus formats in the nightly lane for long-term drift analysis.
+- **Paired Observation Lane** — New "PR-vs-Main" lane dogfoods interleaved benchmarking by comparing the current binary directly against the last blessed `main` binary.
+- **Enhanced Repo Automation** — Added `xtask dogfood` subcommands for fixture regeneration and artifact verification, plus a framework for `docs-sync`.
+- **New Micro-crate** — Introduced `perfgate` facade crate as the high-level entrypoint for the ecosystem.
+
+## [0.4.1] - 2026-03-12
+
+### Changed
+- **Architectural Decoupling** — Successfully moved core business logic (baseline resolution, budget building, and verdict calculation) from the CLI into `perfgate-app` modules for better reusability.
+- **Dependency Standardization** — All internal crate dependencies now consistently use `workspace = true` for easier maintenance.
+- **Improved CLI Orchestration** — Refactored large CLI functions to use a clean `CheckConfig` struct, reducing complexity.
+
+### Fixed
+- **CI Stability** — Resolved schema drift issues caused by cross-platform line ending differences.
+- **Documentation** — Added missing `baseline` command details to the CLI crate README.
+
+## [0.4.0] - 2026-03-12
+
+### Added
+
+- **Standardized API Versioning** — Migrated the `perfgate-server` REST API to a versioned `/api/v1` namespace for long-term stability.
+- **REST API Endpoints** — Implemented comprehensive baseline management via REST:
+  - `POST /api/v1/projects/{project}/baselines` - Upload baseline
+  - `GET /api/v1/projects/{project}/baselines/{benchmark}/latest` - Get latest baseline
+  - `GET /api/v1/projects/{project}/baselines` - Filtered/paginated list of baselines
+  - `POST /api/v1/projects/{project}/baselines/{benchmark}/promote` - Promote baseline version
+  - `DELETE /api/v1/projects/{project}/baselines/{benchmark}/versions/{version}` - Soft delete baseline
+- **Operational Health** — Exposed `/health` at root and `/api/v1/health` for monitoring and load balancer integration.
+- **PostgreSQL Storage (Preview)** — Initial storage adapter skeleton for PostgreSQL persistence in `perfgate-server`.
+- **Windows Parity** — Added `page_faults` collection to Windows best-effort metrics via `GetProcessMemoryInfo`.
+- **E2E Integration Suite** — Added a real-world server integration test suite (`real_server_integration.rs`) that verifies full workflows against a live in-memory instance.
+- **Test Utilities Feature** — Introduced `test-utils` feature in `perfgate-server` to expose internal assembly helpers for integration tests without widening the default public API surface.
+- **CLI Mock Server Tests** — Added `cli_mock_server_tests.rs` utilizing `wiremock` to validate CLI client behavior in isolation.
+- **Full BDD Coverage** — New `baseline_command.feature` ensuring all new baseline management subcommands are verified via user-facing scenarios.
+- **Baseline Pattern Auto-discovery** — New `defaults.baseline_pattern` in config (supports `{bench}` placeholder) for `check` workflow.
+- **Markdown Templating** — Support for Handlebars templates in `md`, `report`, and `check` commands via `--template`.
+- **GitHub Actions Integration** — Added `--output-github` to `check` command for native GITHUB_OUTPUT support.
+- **Cloud Baseline Backends** — Support for `s3://` and `gs://` baseline locations in `check` and `promote`.
+- **Per-metric Statistic Selection** — Support for gating on specific statistics (e.g., `P95` wall time) via `--metric-stat` or config.
+- **Statistical Significance Analysis** — Optional Welch's t-test integration for detecting statistically relevant regressions.
+- **Ecosystem Documentation** — Aligned all READMEs, diagrams, and guides with the 19-crate micro-architecture; added ADRs 0001-0005.
+
+### Changed
+
+- **Improved Client Robustness** — `perfgate-client` now automatically normalizes server URLs to ensure trailing slashes, preventing path segment stripping.
+- **Store Parity** — Hardened `InMemoryStore` to maintain 100% feature parity with the SQLite backend, including all complex query filters.
+- **Enhanced CONTRIBUTING.md** — Added comprehensive PR checklist, code style guide, and testing requirements.
+- **Mutation Testing Targets** — Expanded `mutants.toml` to cover all 19 workspace crates for CI enforcement.
+
+### Fixed
+
+- **Server SQLite Pagination** — Resolved a critical bug where record counts were miscalculated when filters were active.
+- **Pagination Defaults** — Fixed `ListBaselinesQuery::default()` to correctly default `limit` to 50 instead of 0 in both client and server.
+- **Auth Middleware Reliability** — Fixed path matching to correctly handle nested and aliased health check routes.
+- **Test Stability** — Standardized API keys to be strictly alphanumeric and normalized CLI error output assertions across platforms.
+
+## [0.3.0] - 2026-02-16
+
+### Added
+
+- **Finding fingerprinting** — Deterministic SHA-256 digests for finding deduplication.
+- **Finding truncation** — Support for `max_findings` limit in `SensorReportBuilder`.
+- **Schema validation** — New `xtask conform` command for JSON fixture validation.
+- **Config presets** — Bundled configuration presets at `presets/` (standard, release, tier1-fast).
+
+### Changed
+
+- **ABI hardening for sensor.report.v1** — Cockpit output conforms to the fleet contract.
+- **Versioned Artifacts** — Extras files renamed to `perfgate.run.v1.json`, etc.
+
+## [0.2.0] - 2026-02-05
+
+### Added
+
+- **New CLI commands**: `check`, `report`, `promote`, `export`.
+- **Paired benchmarking mode** for interleaved A/B comparisons.
+- **CPU time tracking** on Unix platforms via `rusage`.
+- **Host mismatch detection** warning.
+
+## [0.1.0] - 2026-02-01
+
+Initial release of perfgate, a CLI tool for performance budgets and baseline diffs in CI.

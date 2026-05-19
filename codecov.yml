@@ -1,0 +1,34 @@
+# Codecov configuration for perfgate
+# https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  precision: 2
+  round: down
+  range: "50...85"
+
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 5%
+        informational: true
+        flags:
+          - rust-core
+
+    patch:
+      default:
+        target: 70%
+        threshold: 10%
+        informational: true
+        flags:
+          - rust-core
+
+comment: false
+
+github_checks:
+  annotations: false
+
+ignore:
+  - "target/**"
+  - "fuzz/**"
+  - "crates/perfgate-selfbench/**"

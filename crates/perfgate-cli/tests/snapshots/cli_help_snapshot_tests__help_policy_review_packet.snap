@@ -1,0 +1,20 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 767
+expression: "help_output(&[\"policy\", \"review-packet\", \"--help\"])"
+---
+Render a compact performance review packet without changing policy
+
+Usage: perfgate policy review-packet [OPTIONS] --bench <BENCH>
+
+Options:
+      --config <CONFIG> Path to the config file (TOML or JSON) [default: perfgate.toml]
+      --out-dir <DIR> Output directory containing recent artifacts. Defaults to [defaults].out_dir or artifacts/perfgate
+      --bench <BENCH> Benchmark to render the policy review packet for
+      --out <OUT> Write the Markdown packet to a file instead of stdout
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

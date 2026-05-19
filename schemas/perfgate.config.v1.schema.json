@@ -1,0 +1,679 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConfigFile",
+  "description": "Top-level configuration file (`perfgate.toml`).\n\n# Examples\n\n```\nuse perfgate_types::ConfigFile;\n\nlet toml_str = r#\"\n[defaults]\nrepeat = 5\nthreshold = 0.20\n\n[[bench]]\nname = \"my-bench\"\ncommand = [\"echo\", \"hello\"]\n\"#;\n\nlet config: ConfigFile = toml::from_str(toml_str).unwrap();\nassert_eq!(config.benches.len(), 1);\nassert_eq!(config.benches[0].name, \"my-bench\");\nassert_eq!(config.defaults.repeat, Some(5));\n```",
+  "type": "object",
+  "properties": {
+    "baseline_server": {
+      "description": "Optional baseline server configuration for centralized baseline management.",
+      "$ref": "#/$defs/BaselineServerConfig",
+      "default": {
+        "fallback_to_local": false
+      }
+    },
+    "bench": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/BenchConfigFile"
+      }
+    },
+    "decision_policy": {
+      "description": "Optional policy for deciding whether tradeoff evidence is stable enough\nfor automatic acceptance.",
+      "$ref": "#/$defs/DecisionPolicyConfig"
+    },
+    "defaults": {
+      "$ref": "#/$defs/DefaultsConfig",
+      "default": {}
+    },
+    "ratchet": {
+      "description": "Optional automated budget ratcheting policy.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RatchetConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "scenario": {
+      "description": "Optional weighted workload scenarios evaluated from compare receipts.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ScenarioConfigFile"
+      }
+    },
+    "tradeoff": {
+      "description": "Optional tradeoff rules that can downgrade a failed metric when explicit\ncompensating improvements are present.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/TradeoffRule"
+      }
+    }
+  },
+  "$defs": {
+    "BaselineServerConfig": {
+      "description": "Configuration for the baseline server connection.\n\nWhen configured, the CLI can use a centralized baseline server\nfor storing and retrieving baselines instead of local files.\n\n# Examples\n\n```toml\n[baseline_server]\nurl = \"http://localhost:3000/api/v1\"\napi_key = \"pg_live_xxx\"\nproject = \"my-project\"\nfallback_to_local = true\n```",
+      "type": "object",
+      "properties": {
+        "api_key": {
+          "description": "API key for authentication.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fallback_to_local": {
+          "description": "Fall back to local storage when server is unavailable.",
+          "type": "boolean",
+          "default": true
+        },
+        "project": {
+          "description": "Project name for multi-tenancy.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "URL of the baseline server (e.g., \"http://localhost:3000/api/v1\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "BenchConfigFile": {
+      "type": "object",
+      "properties": {
+        "budgets": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "binary_bytes": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "cpu_ms": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "ctx_switches": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "energy_uj": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "io_read_bytes": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "io_write_bytes": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "max_rss_kb": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "network_packets": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "page_faults": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "throughput_per_s": {
+              "$ref": "#/$defs/BudgetOverride"
+            },
+            "wall_ms": {
+              "$ref": "#/$defs/BudgetOverride"
+            }
+          },
+          "additionalProperties": false
+        },
+        "command": {
+          "description": "argv vector (no shell parsing).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metrics": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Metric"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "repeat": {
+          "description": "Number of measured samples (overrides defaults.repeat).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "scaling": {
+          "description": "Optional scaling validation configuration.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScalingConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeout": {
+          "description": "Duration string parseable by humantime, e.g. \"2s\".",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "warmup": {
+          "description": "Warmup samples excluded from stats (overrides defaults.warmup).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "work": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "name",
+        "command"
+      ]
+    },
+    "BudgetOverride": {
+      "type": "object",
+      "properties": {
+        "direction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Direction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "noise_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoisePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "noise_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "statistic": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MetricStatistic"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "warn_factor": {
+          "description": "Warn fraction (warn_threshold = threshold * warn_factor).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "DecisionPolicyConfig": {
+      "description": "Policy for automated structured decisions.",
+      "type": "object",
+      "properties": {
+        "max_cv": {
+          "description": "Maximum accepted coefficient of variation for tradeoff evidence.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "missing_noise": {
+          "description": "Behavior when required noise evidence is missing.",
+          "$ref": "#/$defs/MissingNoisePolicy",
+          "default": "needs_review"
+        },
+        "require_low_noise_for_acceptance": {
+          "description": "Require low-noise evidence before automatically accepting a tradeoff.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "DefaultsConfig": {
+      "type": "object",
+      "properties": {
+        "baseline_dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baseline_pattern": {
+          "description": "Optional baseline discovery pattern. Supports `{bench}` placeholder.\nExample: `baselines/{bench}.json`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "markdown_template": {
+          "description": "Optional Handlebars template path for markdown comments.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "noise_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoisePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "noise_threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "out_dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repeat": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "warmup": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "warn_factor": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "Direction": {
+      "type": "string",
+      "enum": [
+        "lower",
+        "higher"
+      ]
+    },
+    "Metric": {
+      "type": "string",
+      "enum": [
+        "binary_bytes",
+        "cpu_ms",
+        "ctx_switches",
+        "energy_uj",
+        "io_read_bytes",
+        "io_write_bytes",
+        "max_rss_kb",
+        "network_packets",
+        "page_faults",
+        "throughput_per_s",
+        "wall_ms"
+      ]
+    },
+    "MetricStatistic": {
+      "type": "string",
+      "enum": [
+        "median",
+        "p95"
+      ]
+    },
+    "MissingNoisePolicy": {
+      "description": "How to handle missing noise evidence when low-noise tradeoff acceptance is\nrequired.",
+      "oneOf": [
+        {
+          "description": "Mark the decision as requiring review.",
+          "type": "string",
+          "const": "needs_review"
+        },
+        {
+          "description": "Accept the tradeoff if all non-noise requirements pass.",
+          "type": "string",
+          "const": "accept"
+        }
+      ]
+    },
+    "NoisePolicy": {
+      "oneOf": [
+        {
+          "description": "No change to status based on noise.",
+          "type": "string",
+          "const": "ignore"
+        },
+        {
+          "description": "Escalate Pass to Warn, and demote Fail to Warn.",
+          "type": "string",
+          "const": "warn"
+        },
+        {
+          "description": "Demote Pass and Fail to Skip.",
+          "type": "string",
+          "const": "skip"
+        }
+      ]
+    },
+    "RatchetConfig": {
+      "description": "Configuration for conservative automated budget ratcheting.",
+      "type": "object",
+      "properties": {
+        "allow_metrics": {
+          "type": "array",
+          "default": [
+            "wall_ms",
+            "cpu_ms"
+          ],
+          "items": {
+            "$ref": "#/$defs/Metric"
+          }
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "max_tightening": {
+          "type": "number",
+          "format": "double",
+          "default": 0.1
+        },
+        "min_improvement": {
+          "type": "number",
+          "format": "double",
+          "default": 0.05
+        },
+        "mode": {
+          "$ref": "#/$defs/RatchetMode",
+          "default": "threshold"
+        },
+        "require_significance": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "RatchetMode": {
+      "description": "How ratcheting should update budgets.",
+      "oneOf": [
+        {
+          "description": "Tighten the configured threshold value.",
+          "type": "string",
+          "const": "threshold"
+        }
+      ]
+    },
+    "ScalingConfig": {
+      "description": "Configuration for computational complexity validation.",
+      "type": "object",
+      "properties": {
+        "expected": {
+          "description": "Expected complexity class (e.g., \"O(n)\", \"O(n^2)\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "r_squared_threshold": {
+          "description": "Minimum R-squared for a valid fit (default: 0.90).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "repeat": {
+          "description": "Number of repetitions per input size (default: 5).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "sizes": {
+          "description": "Input sizes to test.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [
+        "sizes"
+      ]
+    },
+    "ScenarioConfigFile": {
+      "description": "Weighted scenario definition for workload-level evaluation.\n\nA scenario references an existing `[[bench]]` entry and, by default,\n`perfgate scenario evaluate` reads that benchmark's `compare.json` from the\nconfigured artifact directory.",
+      "type": "object",
+      "properties": {
+        "bench": {
+          "description": "Configured benchmark that produces this scenario's compare receipt.",
+          "type": "string"
+        },
+        "compare": {
+          "description": "Optional explicit compare receipt path. When omitted, the CLI reads the\nstandard `out_dir/<bench>/compare.json` artifact.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "description": "Optional human-readable description.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "probe_baseline": {
+          "description": "Optional baseline probe receipt path. When paired with `probe_current`\nand `probe_compare`, `perfgate decision evaluate` creates the probe\ncomparison receipt before scenario evaluation.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "probe_compare": {
+          "description": "Optional probe comparison receipt path. When present, scenario\nevaluation attaches probe names and a receipt reference without making\nprobes part of the scenario verdict.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "probe_current": {
+          "description": "Optional current probe receipt path. When paired with `probe_baseline`\nand `probe_compare`, `perfgate decision evaluate` creates the probe\ncomparison receipt before scenario evaluation.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "weight": {
+          "description": "Relative importance in the workload model.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "name",
+        "weight",
+        "bench"
+      ]
+    },
+    "TradeoffAllowance": {
+      "description": "A local regression allowance used by a tradeoff rule.",
+      "type": "object",
+      "properties": {
+        "max_regression": {
+          "description": "Maximum accepted regression as a ratio.\n\nFor example, `0.03` allows up to a 3% local regression.",
+          "type": "number",
+          "format": "double"
+        },
+        "metric": {
+          "description": "Metric whose local regression is capped.",
+          "$ref": "#/$defs/Metric"
+        },
+        "probe": {
+          "description": "Probe name that is allowed to regress within the configured cap.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "probe",
+        "max_regression"
+      ]
+    },
+    "TradeoffDowngrade": {
+      "description": "Target status when a tradeoff rule is satisfied.",
+      "type": "string",
+      "enum": [
+        "warn",
+        "pass"
+      ]
+    },
+    "TradeoffRequirement": {
+      "description": "A required improvement used by a tradeoff rule.",
+      "type": "object",
+      "properties": {
+        "metric": {
+          "description": "Metric that must improve sufficiently for the tradeoff to apply.",
+          "$ref": "#/$defs/Metric"
+        },
+        "min_improvement_ratio": {
+          "description": "Minimum required improvement ratio.\n\nFor higher-is-better metrics, this is `current / baseline`.\nFor lower-is-better metrics, this is `baseline / current`.",
+          "type": "number",
+          "format": "double"
+        },
+        "probe": {
+          "description": "Optional probe name. When set, the requirement is evaluated against\nattached probe comparison evidence instead of weighted scenario deltas.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "metric",
+        "min_improvement_ratio"
+      ]
+    },
+    "TradeoffRule": {
+      "description": "A structured tradeoff rule for explicit, auditable budget downgrades.",
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "Optional local regression caps that must remain satisfied.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffAllowance"
+          }
+        },
+        "downgrade_to": {
+          "description": "Downgrade target when all requirements are satisfied.",
+          "$ref": "#/$defs/TradeoffDowngrade",
+          "default": "warn"
+        },
+        "if_failed": {
+          "description": "The failed metric that this rule can downgrade.",
+          "$ref": "#/$defs/Metric"
+        },
+        "name": {
+          "description": "Unique rule name used in reason tokens.",
+          "type": "string"
+        },
+        "require": {
+          "description": "Required compensating improvements.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TradeoffRequirement"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "name",
+        "if_failed",
+        "require"
+      ]
+    }
+  }
+}

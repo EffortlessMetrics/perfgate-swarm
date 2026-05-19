@@ -1,0 +1,58 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 593
+expression: "help_output(&[\"--help\"])"
+---
+Perf budgets and baseline diffs for CI / PR bots
+
+Usage: perfgate [OPTIONS] <COMMAND>
+
+Commands:
+  run Run a command repeatedly and emit a run receipt (JSON)
+  compare Compare a current receipt against a baseline and emit a compare receipt (JSON)
+  md Render a Markdown summary from a compare receipt
+  github-annotations Emit GitHub Actions annotations from a compare receipt
+  export Export a run or compare receipt to CSV, JSONL, HTML, Prometheus, or JUnit format
+  promote Promote a run receipt to become the new baseline
+  ratchet Preview or apply conservative budget ratcheting from compare evidence
+  report Generate a cockpit-compatible report from a compare receipt
+  check Config-driven one-command workflow
+  calibrate Suggest advisory thresholds and noise policy from existing receipts
+  doctor Diagnose local setup, config, baselines, artifacts, CI, and server reachability
+  paired Run paired benchmark: interleave baseline and current commands for reduced noise
+  baseline Inspect local baselines and manage baselines on the baseline server
+  admin Administer baseline service operations
+  audit List and export baseline service audit events
+  summary Summarize one or more compare receipts in a terminal table
+  aggregate Aggregate multiple run receipts (e.g. from a fleet) into a formal aggregate receipt
+  decision Evaluate scenario and tradeoff evidence into a review-ready decision summary
+  probe Compare named probe receipts and emit probe-level deltas
+  scenario Evaluate configured workload scenarios from compare receipts
+  tradeoff Evaluate configured tradeoff rules against scenario evidence
+  bisect Automatically find the commit that introduced a performance regression
+  cargo-bench Wrap `cargo bench` and produce perfgate run receipts
+  blame Analyze changes in Cargo.lock to identify dependency updates causing binary size regressions
+  fleet Fleet-wide dependency regression analysis across projects
+  explain Provide AI-ready prompts, artifact explanations, and automated playbooks
+  ingest Import benchmark results from external frameworks into perfgate format
+  badge Generate an embeddable SVG status badge from a report or compare receipt
+  discover Auto-detect benchmarks in a repository without manual configuration
+  diff Quick "did I make it slower?" comparison against baselines
+  init Scan a repository and generate a perfgate.toml config file
+  watch Watch for file changes and re-run benchmarks with live terminal output
+  serve Start a local dashboard server backed by SQLite
+  ledger Inspect optional decision-ledger readiness without making it required
+  policy Inspect advisory policy rollout profiles and promotion metadata
+  scale Validate computational complexity (scaling behavior) of a benchmark
+  comment Post or update a performance report comment on a GitHub pull request
+  trend Analyze metric trends and predict budget threshold breaches
+  help Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help Print help
+  -V, --version Print version
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

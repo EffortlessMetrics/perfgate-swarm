@@ -1,0 +1,12 @@
+# Tier-1 fast preset: quick validation with wide threshold.
+# Suitable for draft PRs and fast feedback loops.
+
+[defaults]
+repeat = 3
+warmup = 1
+threshold = 0.30
+warn_factor = 0.50
+noise_threshold = 0.15
+noise_policy = "warn"
+out_dir = "artifacts/perfgate"
+baseline_dir = "baselines"

@@ -1,0 +1,45 @@
+# Mutation Testing Configuration for perfgate
+# Run with: cargo run -p xtask -- mutants
+# Or directly: cargo mutants
+#
+# Expected Kill Rates by Crate Category:
+# ┌─────────────────────────────────────────────────────────┬──────────────────┐
+# │ Crate Category                                          │ Target Kill Rate │
+# ├─────────────────────────────────────────────────────────┼──────────────────┤
+# │ Core Domain (domain, types, budget, stats)              │ 95-100%          │
+# │ Application (app, runtime adapters, client, server)     │ 90%              │
+# │ Infrastructure shims (host-detect, paired)              │ 80-85%           │
+# │ Presentation (export, render, sensor)                   │ 80%              │
+# │ CLI (cli)                                               │ 70%              │
+# └─────────────────────────────────────────────────────────┴──────────────────┘
+
+# Exclude test code and generated code from mutation
+exclude_globs = [
+    "**/tests/**",
+    "**/proptest-regressions/**",
+    "**/benches/**",
+    "fuzz/**",
+    "xtask/**",
+]
+
+# Focus on high-value targets - core business logic crates
+# These crates contain the most critical logic that should be thoroughly tested
+include_globs = [
+    "crates/perfgate/src/domain/**",
+    "crates/perfgate-types/src/**",
+    "crates/perfgate/src/app/**",
+    "crates/perfgate/src/runtime/**",
+    "crates/perfgate/src/integrations/**",
+    "crates/perfgate-cli/src/**",
+    "crates/perfgate-server/src/**",
+    "crates/perfgate-client/src/**",
+    "crates/perfgate/src/lib.rs",
+    "crates/perfgate-fake/src/**"
+]
+
+# Timeout per mutant in seconds
+# Set to 60s to allow for property-based tests which may take longer
+timeout = 60
+
+# Minimum test timeout - ensures fast tests don't timeout prematurely
+minimum_test_timeout = 20

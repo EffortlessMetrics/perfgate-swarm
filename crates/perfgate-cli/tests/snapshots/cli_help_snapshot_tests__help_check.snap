@@ -1,0 +1,73 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 295
+expression: "help_output(&[\"check\", \"--help\"])"
+---
+Config-driven one-command workflow.
+
+Reads a config file, runs a benchmark, compares against baseline, and produces all artifacts (run.json, compare.json, report.json, comment.md).
+
+This is the main adoption lever for perfgate in CI pipelines.
+
+Exit codes: - 0: pass (or warn without --fail-on-warn, or no baseline without --require-baseline) - 1: tool error (I/O, parse, spawn failures) - 2: fail (budget violated) - 3: warn treated as failure (with --fail-on-warn)
+
+Usage: perfgate check [OPTIONS]
+
+Options:
+      --config <CONFIG> Path to the config file (TOML or JSON) [default: perfgate.toml]
+
+      --bench <BENCH> Name of the benchmark to run (must match a [[bench]] in config)
+
+      --all Run all benchmarks defined in the config file
+
+      --bench-regex <BENCH_REGEX> Regex to filter benchmark names when used with --all
+
+      --out-dir <DIR> Output directory for artifacts. Defaults to [defaults].out_dir or artifacts/perfgate
+
+      --baseline <BASELINE> Path or cloud URI to the baseline file
+
+      --require-baseline Fail if baseline is missing (default: warn and continue)
+
+      --fail-on-warn Treat WARN verdict as a failing exit code
+
+      --noise-threshold <NOISE_THRESHOLD> Global noise threshold (coefficient of variation)
+
+      --noise-policy <NOISE_POLICY> Global noise policy (warn|skip|ignore)
+
+      --env <ENV> Environment variable (KEY=VALUE). Repeatable
+
+      --output-cap-bytes <OUTPUT_CAP_BYTES> Max bytes captured from stdout/stderr per run [default: 8192]
+
+      --allow-nonzero Do not fail the tool when the command returns nonzero
+
+      --host-mismatch <HOST_MISMATCH> Policy for handling host mismatches between baseline and current runs [default: warn]
+
+      --significance-alpha <SIGNIFICANCE_ALPHA> Compute per-metric significance metadata using Welch's t-test (p <= alpha)
+
+      --significance-min-samples <SIGNIFICANCE_MIN_SAMPLES> Minimum samples required in each run before significance is computed [default: 8]
+
+      --require-significance When set with --significance-alpha, warn/fail statuses require significance
+
+      --pretty Pretty-print JSON
+
+      --mode <MODE> Output mode (standard or cockpit)
+ Possible values: - standard: Standard mode: exit codes reflect verdict (0=pass, 2=fail, 3=warn with --fail-on-warn) - cockpit: Cockpit mode: always write receipt, exit 0 unless catastrophic failure [default: standard]
+
+      --md-template <MD_TEMPLATE> Render markdown using a Handlebars template file
+
+      --output-github Write GitHub Actions step outputs (verdict/counts) to $GITHUB_OUTPUT
+
+      --local-db Upload the run result to the local perfgate server (started via `perfgate serve`). Set the server URL via PERFGATE_LOCAL_DB (default: http://127.0.0.1:8484)
+
+      --profile-on-regression Automatically capture a flamegraph when a regression is detected (warn or fail). Requires a profiler: perf (Linux), dtrace (macOS), or cargo-flamegraph
+
+      --emit-repair-context Force `repair_context.json` emission even on passing checks. Warning and failing checks already emit it automatically
+
+  -h, --help Print help (see a summary with '-h')
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

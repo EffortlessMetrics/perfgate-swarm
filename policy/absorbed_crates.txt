@@ -1,0 +1,47 @@
+# Crate absorption map for the 0.16 public-surface collapse.
+#
+# Format:
+# old-package-name -> new owner path or disposition
+#
+# A package listed here has an explicit non-public disposition. During the
+# transition it may still be publishable as a compatibility shim. The strict
+# public-surface check fails until those packages are deleted, marked
+# `publish = false`, or intentionally converted into deprecated shims.
+
+# Landed in PR #223.
+perfgate-validation -> perfgate_types::validation [deleted]
+perfgate-auth -> perfgate_types::baseline_service::auth [deleted]
+perfgate-summary -> perfgate::presentation::render::summary [deleted]
+perfgate-stats -> perfgate::domain::stats [deleted]
+perfgate-paired -> perfgate::domain::paired [deleted]
+perfgate-error -> perfgate_types::error [deleted]
+
+# Contract-adjacent.
+perfgate-config -> perfgate_types::config and perfgate_client::ResolvedServerConfig [deleted]
+perfgate-api -> perfgate_types::baseline_service; perfgate_server::CredentialSource [deleted]
+
+# Pure core and domain policy.
+perfgate-domain -> perfgate::domain [deleted]
+perfgate-budget -> perfgate::domain::budget; perfgate::core::budget facade [deleted]
+perfgate-significance -> perfgate::domain::significance [deleted]
+perfgate-host-detect -> perfgate::domain::host [deleted]
+perfgate-scaling -> perfgate::domain::scaling [deleted]
+perfgate-sha256 -> perfgate_types::fingerprint; perfgate::core::fingerprint facade [deleted]
+
+# Presentation.
+perfgate-render -> perfgate::presentation::render [deleted]
+perfgate-export -> perfgate::presentation::export [deleted]
+perfgate-sensor -> perfgate::presentation::sensor [deleted]
+
+# Runtime, app, and integrations.
+perfgate-adapters -> perfgate::runtime [deleted]
+perfgate-profile -> perfgate::runtime::profile [deleted]
+perfgate-app -> perfgate::app [deleted]
+perfgate-github -> perfgate::integrations::github [deleted]
+perfgate-ingest -> perfgate::integrations::ingest [deleted]
+
+# Dev-only packages.
+perfgate-fake -> private workspace crate [publish=false]
+perfgate-selfbench -> private workspace crate
+perfgate-tests -> private workspace root package
+xtask -> private workspace automation crate

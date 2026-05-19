@@ -1,0 +1,62 @@
+[package]
+name = "perfgate"
+description = "Core library for perfgate performance budgets and baseline diffs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/perfgate"
+authors.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+perfgate-types.workspace = true
+anyhow.workspace = true
+glob.workspace = true
+humantime.workspace = true
+regex.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+statrs.workspace = true
+thiserror.workspace = true
+time.workspace = true
+toml.workspace = true
+uuid.workspace = true
+handlebars = "6.3"
+hostname = "0.4"
+num_cpus = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"], optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", optional = true }
+criterion = { version = "0.8.2", default-features = false, optional = true }
+which = "7"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.60", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Threading"] }
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+approx = "0.5"
+insta.workspace = true
+proptest = "1.7"
+serde_json.workspace = true
+tempfile.workspace = true
+tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
+wiremock.workspace = true
+
+[features]
+default = []
+github = ["dep:reqwest", "dep:tracing"]
+probe = []
+probe-criterion = ["probe", "dep:criterion"]
+probe-tracing = ["probe", "dep:tracing", "dep:tracing-subscriber"]
+
+[lints]
+workspace = true

@@ -1,0 +1,470 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CompareReceipt",
+  "description": "A versioned receipt comparing baseline vs current (`perfgate.compare.v1`).\n\n# Examples\n\n```\nuse perfgate_types::*;\nuse std::collections::BTreeMap;\n\nlet receipt = CompareReceipt {\n    schema: COMPARE_SCHEMA_V1.to_string(),\n    tool: ToolInfo { name: \"perfgate\".into(), version: \"0.1.0\".into() },\n    bench: BenchMeta {\n        name: \"my-bench\".into(), cwd: None,\n        command: vec![\"echo\".into()], repeat: 5, warmup: 0,\n        work_units: None, timeout_ms: None,\n    },\n    baseline_ref: CompareRef { path: Some(\"base.json\".into()), run_id: None },\n    current_ref: CompareRef { path: Some(\"cur.json\".into()), run_id: None },\n    budgets: BTreeMap::new(),\n    deltas: BTreeMap::new(),\n    verdict: Verdict {\n        status: VerdictStatus::Pass,\n        counts: VerdictCounts { pass: 0, warn: 0, fail: 0, skip: 0 },\n        reasons: vec![],\n    },\n};\nassert_eq!(receipt.schema, \"perfgate.compare.v1\");\n```",
+  "type": "object",
+  "properties": {
+    "baseline_ref": {
+      "$ref": "#/$defs/CompareRef"
+    },
+    "bench": {
+      "$ref": "#/$defs/BenchMeta"
+    },
+    "budgets": {
+      "type": "object",
+      "properties": {
+        "binary_bytes": {
+          "$ref": "#/$defs/Budget"
+        },
+        "cpu_ms": {
+          "$ref": "#/$defs/Budget"
+        },
+        "ctx_switches": {
+          "$ref": "#/$defs/Budget"
+        },
+        "energy_uj": {
+          "$ref": "#/$defs/Budget"
+        },
+        "io_read_bytes": {
+          "$ref": "#/$defs/Budget"
+        },
+        "io_write_bytes": {
+          "$ref": "#/$defs/Budget"
+        },
+        "max_rss_kb": {
+          "$ref": "#/$defs/Budget"
+        },
+        "network_packets": {
+          "$ref": "#/$defs/Budget"
+        },
+        "page_faults": {
+          "$ref": "#/$defs/Budget"
+        },
+        "throughput_per_s": {
+          "$ref": "#/$defs/Budget"
+        },
+        "wall_ms": {
+          "$ref": "#/$defs/Budget"
+        }
+      },
+      "additionalProperties": false
+    },
+    "current_ref": {
+      "$ref": "#/$defs/CompareRef"
+    },
+    "deltas": {
+      "type": "object",
+      "properties": {
+        "binary_bytes": {
+          "$ref": "#/$defs/Delta"
+        },
+        "cpu_ms": {
+          "$ref": "#/$defs/Delta"
+        },
+        "ctx_switches": {
+          "$ref": "#/$defs/Delta"
+        },
+        "energy_uj": {
+          "$ref": "#/$defs/Delta"
+        },
+        "io_read_bytes": {
+          "$ref": "#/$defs/Delta"
+        },
+        "io_write_bytes": {
+          "$ref": "#/$defs/Delta"
+        },
+        "max_rss_kb": {
+          "$ref": "#/$defs/Delta"
+        },
+        "network_packets": {
+          "$ref": "#/$defs/Delta"
+        },
+        "page_faults": {
+          "$ref": "#/$defs/Delta"
+        },
+        "throughput_per_s": {
+          "$ref": "#/$defs/Delta"
+        },
+        "wall_ms": {
+          "$ref": "#/$defs/Delta"
+        }
+      },
+      "additionalProperties": false
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolInfo"
+    },
+    "verdict": {
+      "$ref": "#/$defs/Verdict"
+    }
+  },
+  "required": [
+    "schema",
+    "tool",
+    "bench",
+    "baseline_ref",
+    "current_ref",
+    "budgets",
+    "deltas",
+    "verdict"
+  ],
+  "$defs": {
+    "BenchMeta": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "argv vector (no shell parsing).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "description": "Optional working directory (stringified path).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "warmup": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "work_units": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "name",
+        "command",
+        "repeat",
+        "warmup"
+      ]
+    },
+    "Budget": {
+      "type": "object",
+      "properties": {
+        "direction": {
+          "description": "Regression direction.",
+          "$ref": "#/$defs/Direction"
+        },
+        "noise_policy": {
+          "description": "Policy for handling noisy metrics.",
+          "$ref": "#/$defs/NoisePolicy"
+        },
+        "noise_threshold": {
+          "description": "Noise threshold (coefficient of variation).\nIf CV exceeds this, the metric is considered flaky/noisy.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "threshold": {
+          "description": "Fail threshold, as a fraction (0.20 = 20% regression allowed).",
+          "type": "number",
+          "format": "double"
+        },
+        "warn_threshold": {
+          "description": "Warn threshold, as a fraction.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "threshold",
+        "warn_threshold",
+        "direction"
+      ]
+    },
+    "CompareRef": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Delta": {
+      "type": "object",
+      "properties": {
+        "baseline": {
+          "type": "number",
+          "format": "double"
+        },
+        "current": {
+          "type": "number",
+          "format": "double"
+        },
+        "cv": {
+          "description": "Coefficient of variation for the current run.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "noise_threshold": {
+          "description": "Noise threshold used for this comparison.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "pct": {
+          "description": "(current - baseline) / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "ratio": {
+          "description": "current / baseline",
+          "type": "number",
+          "format": "double"
+        },
+        "regression": {
+          "description": "Positive regression amount, normalized as a fraction.",
+          "type": "number",
+          "format": "double"
+        },
+        "significance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Significance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statistic": {
+          "$ref": "#/$defs/MetricStatistic"
+        },
+        "status": {
+          "$ref": "#/$defs/MetricStatus"
+        }
+      },
+      "required": [
+        "baseline",
+        "current",
+        "ratio",
+        "pct",
+        "regression",
+        "status"
+      ]
+    },
+    "Direction": {
+      "type": "string",
+      "enum": [
+        "lower",
+        "higher"
+      ]
+    },
+    "MetricStatistic": {
+      "type": "string",
+      "enum": [
+        "median",
+        "p95"
+      ]
+    },
+    "MetricStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "NoisePolicy": {
+      "oneOf": [
+        {
+          "description": "No change to status based on noise.",
+          "type": "string",
+          "const": "ignore"
+        },
+        {
+          "description": "Escalate Pass to Warn, and demote Fail to Warn.",
+          "type": "string",
+          "const": "warn"
+        },
+        {
+          "description": "Demote Pass and Fail to Skip.",
+          "type": "string",
+          "const": "skip"
+        }
+      ]
+    },
+    "Significance": {
+      "type": "object",
+      "properties": {
+        "alpha": {
+          "type": "number",
+          "format": "double"
+        },
+        "baseline_samples": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "ci_lower": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "ci_upper": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "current_samples": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "p_value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "significant": {
+          "type": "boolean"
+        },
+        "test": {
+          "$ref": "#/$defs/SignificanceTest"
+        }
+      },
+      "required": [
+        "test",
+        "alpha",
+        "significant",
+        "baseline_samples",
+        "current_samples"
+      ]
+    },
+    "SignificanceTest": {
+      "type": "string",
+      "enum": [
+        "welch_t"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    },
+    "Verdict": {
+      "description": "Overall verdict for a comparison, with pass/warn/fail counts.\n\n# Examples\n\n```\nuse perfgate_types::{Verdict, VerdictStatus, VerdictCounts};\n\nlet verdict = Verdict {\n    status: VerdictStatus::Pass,\n    counts: VerdictCounts { pass: 2, warn: 0, fail: 0, skip: 0 },\n    reasons: vec![],\n};\nassert_eq!(verdict.status, VerdictStatus::Pass);\n\nlet failing = Verdict {\n    status: VerdictStatus::Fail,\n    counts: VerdictCounts { pass: 1, warn: 0, fail: 1, skip: 0 },\n    reasons: vec![\"wall_ms.fail\".into()],\n};\nassert_eq!(failing.status, VerdictStatus::Fail);\nassert!(!failing.reasons.is_empty());\n```",
+      "type": "object",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/VerdictCounts"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/VerdictStatus"
+        }
+      },
+      "required": [
+        "status",
+        "counts",
+        "reasons"
+      ]
+    },
+    "VerdictCounts": {
+      "type": "object",
+      "properties": {
+        "fail": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "pass": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "warn": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    },
+    "VerdictStatus": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skip"
+      ]
+    }
+  }
+}

@@ -1,0 +1,36 @@
+[defaults]
+repeat = 15
+warmup = 2
+threshold = 0.15
+warn_factor = 0.90
+baseline_pattern = "baselines/gha-ubuntu-24.04-x86_64/{bench}.json"
+significance_alpha = 0.05
+significance_min_samples = 10
+
+[[bench]]
+name = "cli/compare-small"
+command = ["./target/release/perfgate-selfbench", "ci-compare-small"]
+budgets = { wall_ms = { threshold = 0.12, warn_factor = 0.90, statistic = "median" } }
+
+[[bench]]
+name = "cli/compare-large"
+command = ["./target/release/perfgate-selfbench", "ci-compare-large"]
+budgets = { wall_ms = { threshold = 0.15, warn_factor = 0.90, statistic = "median" } }
+
+[[bench]]
+name = "cli/check-single"
+command = ["./target/release/perfgate-selfbench", "ci-check-single"]
+budgets = { wall_ms = { threshold = 0.18, warn_factor = 0.90, statistic = "p95" } }
+
+[[bench]]
+name = "cli/check-no-baseline"
+command = ["./target/release/perfgate-selfbench", "ci-check-no-baseline"]
+budgets = { wall_ms = { threshold = 0.18, warn_factor = 0.90, statistic = "p95" } }
+
+[[bench]]
+name = "render/md"
+command = ["./target/release/perfgate-selfbench", "ci-render-md"]
+
+[[bench]]
+name = "render/report"
+command = ["./target/release/perfgate-selfbench", "ci-render-report"]

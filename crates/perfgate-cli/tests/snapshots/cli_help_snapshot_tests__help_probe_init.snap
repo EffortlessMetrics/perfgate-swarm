@@ -1,0 +1,19 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 605
+expression: "help_output(&[\"probe\", \"init\", \"--help\"])"
+---
+Generate reviewable probe JSONL and policy starter templates
+
+Usage: perfgate probe init [OPTIONS] --template <TEMPLATE>
+
+Options:
+      --template <TEMPLATE> Starter template to generate [possible values: parser, batch, cli, server]
+      --out-dir <OUT_DIR> Directory for generated probe starter files [default: perfgate-probes]
+      --force Overwrite existing generated files
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

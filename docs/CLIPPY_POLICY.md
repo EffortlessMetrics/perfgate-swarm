@@ -1,0 +1,61 @@
+# Clippy Policy
+
+perfgate treats Clippy as a staged policy surface. The workspace still keeps
+`all = "warn"` at workspace level, with CI invoking Clippy under
+`-D warnings`, but the Rust 1.95 rollout now records active, planned, debt,
+and exception policy in explicit ledgers.
+
+## Target Files
+
+| File | Role |
+|------|------|
+| `clippy.toml` | Tool-level MSRV declaration, starting with `msrv = "1.95"`. |
+| `policy/clippy-lints.toml` | Active and planned lint ledger. |
+| `policy/clippy-debt.toml` | Known debt that is not yet ratcheted; empty at introduction. |
+| `policy/clippy-exceptions.toml` | Narrow exceptions with owners, reasons, and review dates; empty at introduction. |
+
+## Policy Defaults
+
+| Setting | Target |
+|---------|--------|
+| MSRV | `1.95` |
+| Panic-free tests | true |
+| Test carveouts | false by default |
+| Suppressions | `expect` or allow with a reason |
+| Blanket categories | false |
+
+The initial active ledger is small and reviewable:
+
+| Lint | Level | Reason |
+|------|-------|--------|
+| `clippy::dbg_macro` | deny | Debug macros are not reviewable diagnostics. |
+| `clippy::todo` | deny | TODO execution paths are not allowed. |
+| `clippy::unimplemented` | deny | Unimplemented execution paths are not allowed. |
+| `clippy::same_length_and_capacity` | deny | Vec raw-parts conversions must not conflate length and capacity. |
+| `clippy::manual_checked_ops` | warn | Manual checked arithmetic is easier to weaken than standard checked APIs. |
+| `clippy::manual_take` | warn | Prefer the standard take helper over open-coded replacement patterns. |
+| `clippy::unnecessary_trailing_comma` | warn | Avoid formatter-noise patterns from unnecessary trailing commas in expressions. |
+
+Rust 1.95 ratchets must be measured before activation:
+
+| Lint | Candidate Level | Status |
+|------|-----------------|--------|
+| `clippy::duration_suboptimal_units` | warn | Measured with existing warnings; tracked as debt. |
+| `clippy::needless_type_cast` | warn | Measured with existing warnings; tracked as debt. |
+| `clippy::manual_pop_if` | warn | Not recognized by Rust 1.95.0 Clippy. |
+
+Because CI uses `-D warnings`, warning-level ratchets become hard failures in
+practice. Do not add noisy warning lints unless the PR also fixes the warnings.
+
+## Rollout Rules
+
+1. Keep ledger changes separate from lint activation unless the activation is
+   already measured and cheap.
+2. Measure each candidate lint against the workspace.
+3. Activate only clean or cheap lints in the ratchet PR.
+4. Keep `disallowed_fields` out until protected seams are real.
+5. Keep every exception scoped to a selector, owner, reason, and review date.
+6. Add checker enforcement in a later PR unless it is small enough to review
+   with the ledger change.
+
+See [Rust 1.95 and 0.17.0 Governance Rollout](development/RUST_1_95_ROLLOUT.md).

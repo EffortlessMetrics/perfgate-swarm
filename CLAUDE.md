@@ -1,0 +1,182 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build and Test Commands
+
+```bash
+# Build all crates
+cargo build --all
+
+# Run all tests (unit, integration, property-based, BDD)
+cargo test --all
+
+# Run BDD/cucumber tests specifically
+cargo test --test cucumber
+
+# Run tests for a specific crate
+cargo test -p perfgate --all-features domain
+cargo test -p perfgate-types
+cargo test -p perfgate --all-features app
+cargo test -p perfgate-cli
+cargo test -p perfgate-server
+cargo test -p perfgate-client
+cargo test -p perfgate --all-features paired
+cargo test -p perfgate-fake
+cargo test -p perfgate-types baseline_service --all-features
+cargo test -p perfgate-selfbench
+
+# Run a single test by name
+cargo test test_name
+
+# Format and lint
+cargo fmt --all
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Full CI check (fmt, clippy, test, schema generation)
+cargo run -p xtask -- ci
+
+# Generate JSON schemas to schemas/
+cargo run -p xtask -- schema
+
+# Validate fixtures against vendored schema
+cargo run -p xtask -- conform
+cargo run -p xtask -- conform --file path/to/report.json
+cargo run -p xtask -- conform --fixtures path/to/dir
+
+# Run mutation testing (requires cargo-mutants installed)
+cargo run -p xtask -- mutants
+cargo run -p xtask -- mutants --crate perfgate-domain --summary  # logical alias for perfgate::domain
+
+# Run the CLI
+cargo run -p perfgate-cli -- --help
+cargo run -p perfgate-cli -- run --name bench --out out.json -- echo hello
+cargo run -p perfgate-cli -- compare --baseline base.json --current cur.json --out cmp.json
+cargo run -p perfgate-cli -- md --compare cmp.json
+cargo run -p perfgate-cli -- github-annotations --compare cmp.json
+cargo run -p perfgate-cli -- report --compare cmp.json --out report.json
+cargo run -p perfgate-cli -- promote --current out.json --to baselines/bench.json
+cargo run -p perfgate-cli -- export --run out.json --format csv --out data.csv
+cargo run -p perfgate-cli -- check --config perfgate.toml --bench my-bench
+cargo run -p perfgate-cli -- check --config perfgate.toml --bench my-bench --mode cockpit
+cargo run -p perfgate-cli -- paired --name my-bench --baseline-cmd "echo baseline" --current-cmd "echo current" --repeat 10 --out cmp.json
+cargo run -p perfgate-cli -- baseline list --project my-project
+cargo run -p perfgate-cli -- summary cmp.json
+cargo run -p perfgate-cli -- aggregate run1.json run2.json --out aggregated.json
+cargo run -p perfgate-cli -- bisect --good abc123 --bad HEAD --executable ./target/release/my-bench
+cargo run -p perfgate-cli -- blame --baseline old-Cargo.lock --current Cargo.lock
+cargo run -p perfgate-cli -- explain --compare cmp.json
+```
+
+## Fuzzing (requires nightly)
+
+```bash
+cd fuzz
+cargo +nightly fuzz list
+cargo +nightly fuzz run parse_run_receipt
+```
+
+## Architecture
+
+This is a clean-architecture Rust workspace for performance budgets and baseline diffs in CI. The architecture preserves SRP seams across the remaining workspace crates and absorbed owner modules:
+
+| Crate | Responsibility |
+|-------|----------------|
+| `perfgate-types` | Core domain types, stable schemas, baseline service contracts, and fingerprint helpers |
+| `perfgate_types::error` | Shared error types and categorization |
+| `perfgate::domain` | Core business logic, statistics, significance, paired analysis, and host mismatch logic |
+| `perfgate::domain::budget` | Budget evaluation and verdict logic |
+| `perfgate::domain::paired` | Paired benchmarking APIs |
+| `perfgate::app` | Orchestration layer for CLI commands |
+| `perfgate::presentation::render` | Markdown and terminal rendering logic |
+| `perfgate::presentation::export` | Multi-format data exporters |
+| `perfgate::presentation::sensor` | Sensor report envelopes for cockpit-style integrations |
+| `perfgate::integrations::github` | GitHub annotations and pull-request integration |
+| `perfgate::domain::scaling` | Complexity and scaling analysis |
+| `perfgate-server` | Centralized Baseline Service API (REST/Axum) |
+| `perfgate-client` | Client library for Baseline Service interaction |
+| `perfgate-cli` | Command-line interface and argument parsing |
+| `perfgate` | Unified facade library (re-exports core crates) |
+| `perfgate-fake` | Test fixtures and mock data generators |
+| `perfgate-selfbench` | Internal benchmarking workloads for self-dogfooding |
+| `xtask` | Repository automation (schemas, CI, conformance, mutants) |
+
+**Key design principles:**
+- `perfgate::domain` is intentionally I/O-free: it does statistics and budget policy only
+- `perfgate::runtime` contains platform-specific code (Unix `wait4()` for `max_rss_kb`)
+- Receipt types are versioned (`perfgate.run.v1`, `perfgate.compare.v1`, `perfgate.report.v1`) and have JSON Schema support via `schemars`
+- The `arbitrary` feature flag enables structure-aware fuzzing
+
+**Exit codes (all commands):**
+- `0`: success (or warn without `--fail-on-warn`)
+- `1`: tool/runtime error (I/O, parse, spawn failures)
+- `2`: policy fail (budget violated)
+- `3`: warn treated as failure (with `--fail-on-warn`)
+
+**Canonical artifact layout (standard mode):**
+```
+artifacts/perfgate/
+├── run.json        # perfgate.run.v1
+├── compare.json    # perfgate.compare.v1
+├── report.json     # perfgate.report.v1
+└── comment.md      # PR comment markdown
+```
+
+**Cockpit mode artifact layout (single bench):**
+```
+artifacts/perfgate/
+├── report.json                         # sensor.report.v1 envelope
+├── comment.md                          # PR comment markdown
+└── extras/
+    ├── perfgate.run.v1.json            # perfgate.run.v1
+    ├── perfgate.compare.v1.json        # perfgate.compare.v1 (if baseline)
+    └── perfgate.report.v1.json         # perfgate.report.v1
+```
+
+**Cockpit mode artifact layout (multi-bench `--all`):**
+```
+artifacts/perfgate/
+├── report.json                         # aggregated sensor.report.v1
+├── comment.md
+└── extras/
+    ├── bench-a/perfgate.run.v1.json
+    ├── bench-a/perfgate.compare.v1.json
+    ├── bench-a/perfgate.report.v1.json
+    ├── bench-b/perfgate.run.v1.json
+    └── ...
+```
+
+**Vendored schemas:**
+```
+contracts/schemas/
+└── sensor.report.v1.schema.json        # Hand-written generic schema (not auto-generated)
+```
+
+## Testing Strategy
+
+- **Property-based tests**: Use `proptest` in `perfgate-types` and `perfgate::app` for serialization round-trips and rendering completeness
+- **BDD tests**: Cucumber feature files in `features/` with step definitions in `tests/cucumber.rs`
+- **Integration tests**: CLI tests in `crates/perfgate-cli/tests/`
+- **Mutation testing**: Target kill rates by category:
+  - Core Domain (`domain`, `types`, `budget`, `stats`): **95-100%**
+  - Application (`app`, `client`, `server`): **90%**
+  - Adapters & Infrastructure (`adapters`, `host-detect`, `paired`): **80-85%**
+  - Presentation (`export`, `render`, `sensor`): **80%**
+  - CLI (`cli`): **70%**
+
+## Platform Notes
+
+- Timeout support uses `try_wait()` polling on both Unix and Windows
+- On other platforms, timeouts return `AdapterError::TimeoutUnsupported`
+- `max_rss_kb` collection only works on Unix via `rusage`
+- BDD tests skip `@unix` tagged scenarios on Windows
+- Windows parallel builds hit PDB lock contention (`fatal error C1041`); use `-j4` or stagger builds
+- SQLite in-memory databases silently reject `PRAGMA journal_mode=WAL` (returns `"memory"`); always verify the return value with `query_row`
+- `execute_batch` discards PRAGMA return values; use `query_row` for PRAGMAs that need verification
+- Nanosecond-to-millisecond conversion for float fields must use `ns as f64 / 1_000_000.0`, not integer division then cast
+- User-controlled strings (bench names, verdicts) must be HTML-escaped before DOM insertion in exports and dashboards
+- Chart.js cannot resolve CSS `var()` custom properties; use hardcoded hex colors
+- When `#[cfg(unix)]` and `#[cfg(windows)]` blocks are identical, unify with `#[cfg(any(unix, windows))]`
+- JS consumers must verify field names against actual serde JSON output, not Rust struct names (serde rename can differ)
+
+See [docs/REVIEW_CHECKLIST.md](docs/REVIEW_CHECKLIST.md) for the full pre-merge checklist with code examples.

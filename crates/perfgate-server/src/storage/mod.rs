@@ -1,0 +1,203 @@
+//! Storage trait and implementations for baseline persistence.
+//!
+//! This module provides the [`BaselineStore`] trait for abstracting storage
+//! operations and implementations for different backends.
+
+mod artifacts;
+pub mod fleet;
+mod key_store;
+mod memory;
+mod postgres;
+mod sqlite;
+
+pub use artifacts::ObjectArtifactStore;
+pub use fleet::{FleetStore, InMemoryFleetStore};
+pub use key_store::{InMemoryKeyStore, KeyRecord, KeyStore, SqliteKeyStore, hash_key, key_prefix};
+pub use memory::InMemoryStore;
+pub use postgres::PostgresStore;
+pub use sqlite::SqliteStore;
+pub(crate) use sqlite::open_configured_connection as open_configured_sqlite_connection;
+
+use crate::error::StoreError;
+use crate::models::{
+    AuditEvent, BaselineRecord, BaselineVersion, DecisionRecord, ListAuditEventsQuery,
+    ListAuditEventsResponse, ListBaselinesQuery, ListBaselinesResponse, ListDecisionsQuery,
+    ListDecisionsResponse, ListVerdictsQuery, ListVerdictsResponse, PoolMetrics,
+    PruneDecisionsResponse, VerdictRecord,
+};
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+
+/// Metadata for a stored artifact object.
+#[derive(Debug, Clone)]
+pub struct ArtifactMeta {
+    /// Object path/key.
+    pub path: String,
+    /// Last-modified timestamp (if available from the backend).
+    pub last_modified: DateTime<Utc>,
+    /// Size in bytes.
+    pub size: u64,
+}
+
+/// Trait for storing raw artifacts (receipts).
+#[async_trait]
+pub trait ArtifactStore: std::fmt::Debug + Send + Sync {
+    /// Stores an artifact at the given path.
+    async fn put(&self, path: &str, data: Vec<u8>) -> Result<(), StoreError>;
+
+    /// Retrieves an artifact from the given path.
+    async fn get(&self, path: &str) -> Result<Vec<u8>, StoreError>;
+
+    /// Deletes an artifact from the given path.
+    async fn delete(&self, path: &str) -> Result<(), StoreError>;
+
+    /// Lists all objects under the given prefix, returning their metadata.
+    async fn list(&self, prefix: Option<&str>) -> Result<Vec<ArtifactMeta>, StoreError>;
+}
+
+/// Trait for baseline storage operations.
+///
+/// This trait abstracts the storage layer, allowing different backends
+/// (in-memory, SQLite, PostgreSQL) to be used interchangeably.
+#[async_trait]
+pub trait BaselineStore: Send + Sync {
+    /// Stores a new baseline record.
+    async fn create(&self, record: &BaselineRecord) -> Result<(), StoreError>;
+
+    /// Retrieves a baseline by project, benchmark, and version.
+    async fn get(
+        &self,
+        project: &str,
+        benchmark: &str,
+        version: &str,
+    ) -> Result<Option<BaselineRecord>, StoreError>;
+
+    /// Retrieves the latest baseline for a project and benchmark.
+    async fn get_latest(
+        &self,
+        project: &str,
+        benchmark: &str,
+    ) -> Result<Option<BaselineRecord>, StoreError>;
+
+    /// Lists baselines with optional filtering.
+    async fn list(
+        &self,
+        project: &str,
+        query: &ListBaselinesQuery,
+    ) -> Result<ListBaselinesResponse, StoreError>;
+
+    /// Updates an existing baseline record.
+    async fn update(&self, record: &BaselineRecord) -> Result<(), StoreError>;
+
+    /// Deletes a baseline (soft delete).
+    async fn delete(
+        &self,
+        project: &str,
+        benchmark: &str,
+        version: &str,
+    ) -> Result<bool, StoreError>;
+
+    /// Permanently removes a deleted baseline.
+    async fn hard_delete(
+        &self,
+        project: &str,
+        benchmark: &str,
+        version: &str,
+    ) -> Result<bool, StoreError>;
+
+    /// Lists all versions for a benchmark.
+    async fn list_versions(
+        &self,
+        project: &str,
+        benchmark: &str,
+    ) -> Result<Vec<BaselineVersion>, StoreError>;
+
+    /// Checks if the storage backend is healthy.
+    async fn health_check(&self) -> Result<StorageHealth, StoreError>;
+
+    /// Returns the backend type name.
+    fn backend_type(&self) -> &'static str;
+
+    /// Returns connection pool metrics, if the backend uses a pool.
+    ///
+    /// The default implementation returns `None`, which is appropriate for
+    /// backends without a connection pool (e.g., in-memory or SQLite).
+    fn pool_metrics(&self) -> Option<PoolMetrics> {
+        None
+    }
+
+    /// Stores a new verdict record.
+    async fn create_verdict(&self, record: &VerdictRecord) -> Result<(), StoreError>;
+
+    /// Lists verdicts with optional filtering.
+    async fn list_verdicts(
+        &self,
+        project: &str,
+        query: &ListVerdictsQuery,
+    ) -> Result<ListVerdictsResponse, StoreError>;
+
+    /// Stores a new performance decision record.
+    async fn create_decision(&self, record: &DecisionRecord) -> Result<(), StoreError>;
+
+    /// Retrieves the latest performance decision for a project.
+    async fn latest_decision(&self, project: &str) -> Result<Option<DecisionRecord>, StoreError>;
+
+    /// Lists performance decisions with optional filtering.
+    async fn list_decisions(
+        &self,
+        project: &str,
+        query: &ListDecisionsQuery,
+    ) -> Result<ListDecisionsResponse, StoreError>;
+
+    /// Prunes performance decision records created before a cutoff.
+    async fn prune_decisions(
+        &self,
+        project: &str,
+        older_than: DateTime<Utc>,
+        dry_run: bool,
+    ) -> Result<PruneDecisionsResponse, StoreError>;
+}
+
+/// Trait for append-only audit event storage.
+///
+/// This trait abstracts audit log persistence, allowing different backends
+/// to store and query audit events.
+#[async_trait]
+pub trait AuditStore: Send + Sync {
+    /// Appends a new audit event to the log.
+    async fn log_event(&self, event: &AuditEvent) -> Result<(), StoreError>;
+
+    /// Lists audit events with optional filtering.
+    async fn list_events(
+        &self,
+        query: &ListAuditEventsQuery,
+    ) -> Result<ListAuditEventsResponse, StoreError>;
+}
+
+/// Storage backend health status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageHealth {
+    /// Storage is healthy and operational
+    Healthy,
+    /// Storage is degraded but functional
+    Degraded,
+    /// Storage is unavailable
+    Unhealthy,
+}
+
+impl StorageHealth {
+    /// Returns the string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Healthy => "healthy",
+            Self::Degraded => "degraded",
+            Self::Unhealthy => "unhealthy",
+        }
+    }
+}
+
+impl std::fmt::Display for StorageHealth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}

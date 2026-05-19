@@ -1,0 +1,33 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+expression: "help_output(&[\"run\", \"--help\"])"
+---
+Run a command repeatedly and emit a run receipt (JSON)
+
+Usage: perfgate run [OPTIONS] --name <NAME> -- <COMMAND>...
+
+Arguments:
+  <COMMAND>... Command to run (argv) after `--`
+
+Options:
+      --name <NAME> Bench identifier (used for baselines and reporting)
+      --repeat <REPEAT> Number of measured samples [default: 5]
+      --warmup <WARMUP> Warmup samples (excluded from stats) [default: 0]
+      --work <WORK> Units of work completed per run (enables throughput_per_s)
+      --cwd <CWD> Working directory
+      --timeout <TIMEOUT> Per-run timeout (e.g. "2s")
+      --env <ENV> Environment variable (KEY=VALUE). Repeatable
+      --output-cap-bytes <OUTPUT_CAP_BYTES> Max bytes captured from stdout/stderr per run [default: 8192]
+      --allow-nonzero Do not fail the tool when the command returns nonzero
+      --include-hostname-hash Include a hashed hostname in the host fingerprint for noise mitigation
+      --out <OUT> Output file path [default: perfgate.json]
+      --pretty Pretty-print JSON
+      --upload Upload the run result to the baseline server
+      --upload-project <UPLOAD_PROJECT> Project name for upload (overrides global --project flag)
+      --local-db Upload the run result to the local perfgate server (started via `perfgate serve`). Set the server URL via PERFGATE_LOCAL_DB (default: http://127.0.0.1:8484)
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable

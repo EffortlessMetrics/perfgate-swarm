@@ -1,0 +1,64 @@
+[package]
+name = "perfgate-cli"
+description = "CLI for perfgate performance budgets and baseline diffs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/perfgate-cli"
+authors.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "perfgate"
+path = "src/main.rs"
+
+[dependencies]
+perfgate-types.workspace = true
+perfgate-client.workspace = true
+perfgate-server.workspace = true
+perfgate = { workspace = true, features = ["github"] }
+anyhow.workspace = true
+glob.workspace = true
+clap.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+humantime.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shell-words = "1.1.0"
+regex.workspace = true
+toml.workspace = true
+uuid.workspace = true
+tokio.workspace = true
+notify.workspace = true
+ctrlc.workspace = true
+object_store = { version = "0.12", features = ["aws", "gcp"] }
+url = "2.5.7"
+tracing = "0.1"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/perfgate-{ target }.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "perfgate{ binary-ext }"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-url = "{ repo }/releases/download/v{ version }/perfgate-{ target }.zip"
+pkg-fmt = "zip"
+
+[dev-dependencies]
+assert_cmd.workspace = true
+insta.workspace = true
+jsonschema = "0.26"
+predicates.workspace = true
+tempfile = "3"
+serde_json.workspace = true
+wiremock = "0.6"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+perfgate-server = { workspace = true, features = ["test-utils"] }
+
+[lints]
+workspace = true

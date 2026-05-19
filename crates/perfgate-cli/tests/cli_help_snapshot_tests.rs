@@ -1,0 +1,789 @@
+//! Snapshot-style tests for CLI help text.
+//!
+//! Verifies that each subcommand prints help with expected key strings,
+//! catching accidental CLI interface changes.
+
+use predicates::prelude::*;
+
+mod common;
+use common::perfgate_cmd;
+
+#[test]
+fn cli_help_main() {
+    perfgate_cmd()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("perfgate"))
+        .stdout(predicate::str::contains(
+            "Perf budgets and baseline diffs for CI",
+        ))
+        .stdout(predicate::str::contains("run"))
+        .stdout(predicate::str::contains("compare"))
+        .stdout(predicate::str::contains("check"))
+        .stdout(predicate::str::contains("doctor"))
+        .stdout(predicate::str::contains("ledger"))
+        .stdout(predicate::str::contains("policy"))
+        .stdout(predicate::str::contains("paired"))
+        .stdout(predicate::str::contains("audit"))
+        .stdout(predicate::str::contains("probe"))
+        .stdout(predicate::str::contains("scenario"))
+        .stdout(predicate::str::contains("tradeoff"))
+        .stdout(predicate::str::contains("md"))
+        .stdout(predicate::str::contains("export"))
+        .stdout(predicate::str::contains("promote"))
+        .stdout(predicate::str::contains("report"))
+        .stdout(predicate::str::contains("github-annotations"));
+}
+
+#[test]
+fn cli_help_run() {
+    perfgate_cmd()
+        .args(["run", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Run a command repeatedly"))
+        .stdout(predicate::str::contains("--name"))
+        .stdout(predicate::str::contains("--repeat"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_compare() {
+    perfgate_cmd()
+        .args(["compare", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Compare a current receipt against a baseline",
+        ))
+        .stdout(predicate::str::contains("--baseline"))
+        .stdout(predicate::str::contains("--current"))
+        .stdout(predicate::str::contains("--threshold"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_check() {
+    perfgate_cmd()
+        .args(["check", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Config-driven one-command workflow",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--emit-repair-context"));
+}
+
+#[test]
+fn cli_help_calibrate() {
+    perfgate_cmd()
+        .args(["calibrate", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Suggest advisory thresholds"))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--emit-patch"));
+}
+
+#[test]
+fn cli_help_doctor() {
+    perfgate_cmd()
+        .args(["doctor", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Diagnose local setup"))
+        .stdout(predicate::str::contains("signal"))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--strict"));
+}
+
+#[test]
+fn cli_help_doctor_signal() {
+    perfgate_cmd()
+        .args(["doctor", "signal", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Report advisory signal maturity"))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"));
+}
+
+#[test]
+fn cli_help_paired() {
+    perfgate_cmd()
+        .args(["paired", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Run paired benchmark"))
+        .stdout(predicate::str::contains("--name"))
+        .stdout(predicate::str::contains("--repeat"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_md() {
+    perfgate_cmd()
+        .args(["md", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Render a Markdown summary"))
+        .stdout(predicate::str::contains("--compare"))
+        .stdout(predicate::str::contains("--tradeoff"));
+}
+
+#[test]
+fn cli_help_comment() {
+    perfgate_cmd()
+        .args(["comment", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Post or update a performance report comment",
+        ))
+        .stdout(predicate::str::contains("--compare"))
+        .stdout(predicate::str::contains("--report"))
+        .stdout(predicate::str::contains("--tradeoff"));
+}
+
+#[test]
+fn cli_help_export() {
+    perfgate_cmd()
+        .args(["export", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Export a run or compare receipt"))
+        .stdout(predicate::str::contains("--format"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_promote() {
+    perfgate_cmd()
+        .args(["promote", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Promote a run receipt"))
+        .stdout(predicate::str::contains("--current"))
+        .stdout(predicate::str::contains("--to"));
+}
+
+#[test]
+fn cli_help_baseline() {
+    perfgate_cmd()
+        .args(["baseline", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Inspect local baselines"))
+        .stdout(predicate::str::contains("status"))
+        .stdout(predicate::str::contains("init"))
+        .stdout(predicate::str::contains("doctor"))
+        .stdout(predicate::str::contains("promote"))
+        .stdout(predicate::str::contains("list"))
+        .stdout(predicate::str::contains("download"));
+}
+
+#[test]
+fn cli_help_audit() {
+    perfgate_cmd()
+        .args(["audit", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("List and export"))
+        .stdout(predicate::str::contains("list"))
+        .stdout(predicate::str::contains("export"));
+}
+
+#[test]
+fn cli_help_ratchet() {
+    perfgate_cmd()
+        .args(["ratchet", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Preview or apply conservative budget ratcheting",
+        ))
+        .stdout(predicate::str::contains("preview"));
+}
+
+#[test]
+fn cli_help_ratchet_preview() {
+    perfgate_cmd()
+        .args(["ratchet", "preview", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Show exactly what would change in perfgate.toml",
+        ))
+        .stdout(predicate::str::contains("--compare"))
+        .stdout(predicate::str::contains("--config"));
+}
+
+#[test]
+fn cli_help_report() {
+    perfgate_cmd()
+        .args(["report", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Generate a cockpit-compatible report",
+        ))
+        .stdout(predicate::str::contains("--compare"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_github_annotations() {
+    perfgate_cmd()
+        .args(["github-annotations", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("GitHub Actions annotations"))
+        .stdout(predicate::str::contains("--compare"));
+}
+
+#[test]
+fn cli_help_cargo_bench() {
+    perfgate_cmd()
+        .args(["cargo-bench", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("cargo bench"))
+        .stdout(predicate::str::contains("--out"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--compare"));
+}
+
+#[test]
+fn cli_help_scenario() {
+    perfgate_cmd()
+        .args(["scenario", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate configured workload scenarios",
+        ))
+        .stdout(predicate::str::contains("evaluate"));
+}
+
+#[test]
+fn cli_help_scenario_evaluate() {
+    perfgate_cmd()
+        .args(["scenario", "evaluate", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate configured scenarios into a perfgate.scenario.v1 receipt",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--scenario"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--workload-name"));
+}
+
+#[test]
+fn cli_help_tradeoff() {
+    perfgate_cmd()
+        .args(["tradeoff", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate configured tradeoff rules",
+        ))
+        .stdout(predicate::str::contains("evaluate"));
+}
+
+#[test]
+fn cli_help_tradeoff_evaluate() {
+    perfgate_cmd()
+        .args(["tradeoff", "evaluate", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate configured tradeoff rules into a perfgate.tradeoff.v1 receipt",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--scenario"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_decision() {
+    perfgate_cmd()
+        .args(["decision", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate scenario and tradeoff evidence",
+        ))
+        .stdout(predicate::str::contains("evaluate"))
+        .stdout(predicate::str::contains("debt"))
+        .stdout(predicate::str::contains("export"))
+        .stdout(predicate::str::contains("prune"));
+}
+
+#[test]
+fn cli_help_decision_evaluate() {
+    perfgate_cmd()
+        .args(["decision", "evaluate", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Evaluate configured scenarios and tradeoffs",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--scenario-out"))
+        .stdout(predicate::str::contains("--tradeoff-out"))
+        .stdout(predicate::str::contains("--decision-out"));
+}
+
+#[test]
+fn cli_help_decision_history() {
+    perfgate_cmd()
+        .args(["decision", "history", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "List stored decision receipts from the baseline server",
+        ))
+        .stdout(predicate::str::contains("--scenario"))
+        .stdout(predicate::str::contains("--status"))
+        .stdout(predicate::str::contains("--verdict"))
+        .stdout(predicate::str::contains("--review-required"))
+        .stdout(predicate::str::contains("--accepted"))
+        .stdout(predicate::str::contains("--rule"));
+}
+
+#[test]
+fn cli_help_decision_debt() {
+    perfgate_cmd()
+        .args(["decision", "debt", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Summarize accepted tradeoff debt"))
+        .stdout(predicate::str::contains("--days"))
+        .stdout(predicate::str::contains("--limit"));
+}
+
+#[test]
+fn cli_help_decision_export() {
+    perfgate_cmd()
+        .args(["decision", "export", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Export stored decision records as JSONL or JSON",
+        ))
+        .stdout(predicate::str::contains("--days"))
+        .stdout(predicate::str::contains("--format"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_decision_prune() {
+    perfgate_cmd()
+        .args(["decision", "prune", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Prune old decision records from the baseline server ledger",
+        ))
+        .stdout(predicate::str::contains("--older-than"))
+        .stdout(predicate::str::contains("--dry-run"))
+        .stdout(predicate::str::contains("--force"));
+}
+
+#[test]
+fn cli_help_decision_bundle() {
+    perfgate_cmd()
+        .args(["decision", "bundle", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Export indexed decision evidence as one portable JSON bundle",
+        ))
+        .stdout(predicate::str::contains("--index"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_ledger() {
+    perfgate_cmd()
+        .args(["ledger", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Inspect optional decision-ledger readiness",
+        ))
+        .stdout(predicate::str::contains("doctor"));
+}
+
+#[test]
+fn cli_help_ledger_doctor() {
+    perfgate_cmd()
+        .args(["ledger", "doctor", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Report optional server-ledger readiness",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--offline"));
+}
+
+#[test]
+fn cli_help_policy() {
+    perfgate_cmd()
+        .args(["policy", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Inspect advisory policy rollout profiles",
+        ))
+        .stdout(predicate::str::contains("profiles"))
+        .stdout(predicate::str::contains("doctor"))
+        .stdout(predicate::str::contains("emit-patch"))
+        .stdout(predicate::str::contains("review-packet"));
+}
+
+#[test]
+fn cli_help_policy_profiles() {
+    perfgate_cmd()
+        .args(["policy", "profiles", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "List reviewable policy rollout profiles",
+        ))
+        .stdout(predicate::str::contains("--profile"));
+}
+
+#[test]
+fn cli_help_policy_doctor() {
+    perfgate_cmd()
+        .args(["policy", "doctor", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Report advisory policy promotion readiness",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"));
+}
+
+#[test]
+fn cli_help_policy_emit_patch() {
+    perfgate_cmd()
+        .args(["policy", "emit-patch", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Emit a reviewable, non-mutating policy promotion patch",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--to"));
+}
+
+#[test]
+fn cli_help_policy_review_packet() {
+    perfgate_cmd()
+        .args(["policy", "review-packet", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Render a compact performance review packet",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_probe() {
+    perfgate_cmd()
+        .args(["probe", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Compare named probe receipts"))
+        .stdout(predicate::str::contains("init"))
+        .stdout(predicate::str::contains("compare"));
+}
+
+#[test]
+fn cli_help_probe_init() {
+    perfgate_cmd()
+        .args(["probe", "init", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Generate reviewable probe JSONL and policy starter templates",
+        ))
+        .stdout(predicate::str::contains("--template"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--force"));
+}
+
+#[test]
+fn cli_help_probe_compare() {
+    perfgate_cmd()
+        .args(["probe", "compare", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Compare two perfgate.probe.v1 receipts into a perfgate.probe_compare.v1 receipt",
+        ))
+        .stdout(predicate::str::contains("--baseline"))
+        .stdout(predicate::str::contains("--current"))
+        .stdout(predicate::str::contains("--out"));
+}
+
+// ── insta full-output snapshot tests ─────────────────────────────────
+
+fn help_output(args: &[&str]) -> String {
+    let output = perfgate_cmd()
+        .args(args)
+        .output()
+        .expect("failed to run perfgate");
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).expect("non-UTF-8 help output");
+    normalize_help(&text)
+}
+
+/// Normalize clap help text for platform-independent snapshots.
+///
+/// Clap formats help differently depending on terminal width, which varies
+/// between Windows and Linux even with piped output. This function collapses
+/// formatting differences into a canonical single-line representation.
+fn normalize_help(raw: &str) -> String {
+    let trailing_newline = raw.ends_with('\n');
+
+    // 1. Normalize binary name
+    let text = raw.replace("perfgate.exe", "perfgate");
+
+    // 2. Collapse multi-line option descriptions and wrapped continuations.
+    //    On narrow terminals, clap puts descriptions on the next line indented
+    //    by 10 spaces; on wide terminals they stay on the same line.
+    let text = text.replace("\n          ", " ");
+
+    // 3. Join non-indented wrapped continuation lines (about-text wrapping).
+    //    When terminal width is finite, long about-text paragraphs wrap and
+    //    the continuation starts at column 0.
+    let mut lines: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let is_continuation = !line.is_empty()
+            && !line.starts_with(' ')
+            && !lines.is_empty()
+            && !lines.last().unwrap().is_empty()
+            && !line.starts_with("Usage:")
+            && !line.starts_with("Options:")
+            && !line.starts_with("Commands:")
+            && !line.starts_with("Arguments:");
+        if is_continuation {
+            let last = lines.last_mut().unwrap();
+            last.push(' ');
+            last.push_str(line);
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+
+    // 4. Normalize each line: preserve leading indent, collapse runs of
+    //    multiple spaces in the content to a single space.
+    let normalized: Vec<String> = lines
+        .iter()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            if trimmed.is_empty() {
+                return String::new();
+            }
+            let indent = &line[..line.len() - trimmed.len()];
+            let mut content = String::new();
+            let mut in_spaces = false;
+            for ch in trimmed.chars() {
+                if ch == ' ' {
+                    if !in_spaces {
+                        content.push(' ');
+                        in_spaces = true;
+                    }
+                } else {
+                    content.push(ch);
+                    in_spaces = false;
+                }
+            }
+            if content.ends_with(' ') {
+                content.pop();
+            }
+            format!("{indent}{content}")
+        })
+        .collect();
+
+    let mut result = normalized.join("\n");
+    if trailing_newline {
+        result.push('\n');
+    }
+    result
+}
+
+#[test]
+fn snapshot_help_main() {
+    insta::assert_snapshot!("help_main", help_output(&["--help"]));
+}
+
+#[test]
+fn snapshot_help_run() {
+    insta::assert_snapshot!("help_run", help_output(&["run", "--help"]));
+}
+
+#[test]
+fn snapshot_help_compare() {
+    insta::assert_snapshot!("help_compare", help_output(&["compare", "--help"]));
+}
+
+#[test]
+fn snapshot_help_check() {
+    insta::assert_snapshot!("help_check", help_output(&["check", "--help"]));
+}
+
+#[test]
+fn snapshot_help_promote() {
+    insta::assert_snapshot!("help_promote", help_output(&["promote", "--help"]));
+}
+
+#[test]
+fn snapshot_help_ratchet() {
+    insta::assert_snapshot!("help_ratchet", help_output(&["ratchet", "--help"]));
+}
+
+#[test]
+fn snapshot_help_ratchet_preview() {
+    insta::assert_snapshot!(
+        "help_ratchet_preview",
+        help_output(&["ratchet", "preview", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_scenario() {
+    insta::assert_snapshot!("help_scenario", help_output(&["scenario", "--help"]));
+}
+
+#[test]
+fn snapshot_help_scenario_evaluate() {
+    insta::assert_snapshot!(
+        "help_scenario_evaluate",
+        help_output(&["scenario", "evaluate", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_tradeoff() {
+    insta::assert_snapshot!("help_tradeoff", help_output(&["tradeoff", "--help"]));
+}
+
+#[test]
+fn snapshot_help_tradeoff_evaluate() {
+    insta::assert_snapshot!(
+        "help_tradeoff_evaluate",
+        help_output(&["tradeoff", "evaluate", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_decision() {
+    insta::assert_snapshot!("help_decision", help_output(&["decision", "--help"]));
+}
+
+#[test]
+fn snapshot_help_decision_evaluate() {
+    insta::assert_snapshot!(
+        "help_decision_evaluate",
+        help_output(&["decision", "evaluate", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_decision_bundle() {
+    insta::assert_snapshot!(
+        "help_decision_bundle",
+        help_output(&["decision", "bundle", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_ledger() {
+    insta::assert_snapshot!("help_ledger", help_output(&["ledger", "--help"]));
+}
+
+#[test]
+fn snapshot_help_ledger_doctor() {
+    insta::assert_snapshot!(
+        "help_ledger_doctor",
+        help_output(&["ledger", "doctor", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_policy() {
+    insta::assert_snapshot!("help_policy", help_output(&["policy", "--help"]));
+}
+
+#[test]
+fn snapshot_help_policy_profiles() {
+    insta::assert_snapshot!(
+        "help_policy_profiles",
+        help_output(&["policy", "profiles", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_policy_doctor() {
+    insta::assert_snapshot!(
+        "help_policy_doctor",
+        help_output(&["policy", "doctor", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_policy_emit_patch() {
+    insta::assert_snapshot!(
+        "help_policy_emit_patch",
+        help_output(&["policy", "emit-patch", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_policy_review_packet() {
+    insta::assert_snapshot!(
+        "help_policy_review_packet",
+        help_output(&["policy", "review-packet", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_probe() {
+    insta::assert_snapshot!("help_probe", help_output(&["probe", "--help"]));
+}
+
+#[test]
+fn snapshot_help_probe_init() {
+    insta::assert_snapshot!("help_probe_init", help_output(&["probe", "init", "--help"]));
+}
+
+#[test]
+fn snapshot_help_probe_compare() {
+    insta::assert_snapshot!(
+        "help_probe_compare",
+        help_output(&["probe", "compare", "--help"])
+    );
+}

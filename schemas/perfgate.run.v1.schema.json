@@ -1,0 +1,489 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunReceipt",
+  "description": "A versioned receipt from a single benchmark run (`perfgate.run.v1`).\n\n# Examples\n\n```\nuse perfgate_types::*;\n\nlet receipt = RunReceipt {\n    schema: RUN_SCHEMA_V1.to_string(),\n    tool: ToolInfo { name: \"perfgate\".into(), version: \"0.1.0\".into() },\n    run: RunMeta {\n        id: \"run-1\".into(),\n        started_at: \"2024-01-01T00:00:00Z\".into(),\n        ended_at: \"2024-01-01T00:00:01Z\".into(),\n        host: HostInfo {\n            os: \"linux\".into(), arch: \"x86_64\".into(),\n            cpu_count: None, memory_bytes: None, hostname_hash: None,\n        },\n    },\n    bench: BenchMeta {\n        name: \"my-bench\".into(), cwd: None,\n        command: vec![\"echo\".into(), \"hello\".into()],\n        repeat: 3, warmup: 0, work_units: None, timeout_ms: None,\n    },\n    samples: vec![],\n    stats: Stats {\n        wall_ms: U64Summary::new(100, 90, 120 ),\n        cpu_ms: None, page_faults: None, ctx_switches: None,\n        max_rss_kb: None, io_read_bytes: None, io_write_bytes: None,\n        network_packets: None, energy_uj: None, binary_bytes: None, throughput_per_s: None,\n    },\n};\n\n// Serialize to JSON\nlet json = serde_json::to_string(&receipt).unwrap();\nassert!(json.contains(\"perfgate.run.v1\"));\n```",
+  "type": "object",
+  "properties": {
+    "bench": {
+      "$ref": "#/$defs/BenchMeta"
+    },
+    "run": {
+      "$ref": "#/$defs/RunMeta"
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Sample"
+      }
+    },
+    "schema": {
+      "type": "string"
+    },
+    "stats": {
+      "$ref": "#/$defs/Stats"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolInfo"
+    }
+  },
+  "required": [
+    "schema",
+    "tool",
+    "run",
+    "bench",
+    "samples",
+    "stats"
+  ],
+  "$defs": {
+    "BenchMeta": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "argv vector (no shell parsing).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "description": "Optional working directory (stringified path).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "warmup": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "work_units": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "name",
+        "command",
+        "repeat",
+        "warmup"
+      ]
+    },
+    "F64Summary": {
+      "type": "object",
+      "properties": {
+        "max": {
+          "type": "number",
+          "format": "double"
+        },
+        "mean": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "median": {
+          "type": "number",
+          "format": "double"
+        },
+        "min": {
+          "type": "number",
+          "format": "double"
+        },
+        "stddev": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      },
+      "required": [
+        "median",
+        "min",
+        "max"
+      ]
+    },
+    "HostInfo": {
+      "type": "object",
+      "properties": {
+        "arch": {
+          "description": "CPU architecture (e.g., \"x86_64\", \"aarch64\")",
+          "type": "string"
+        },
+        "cpu_count": {
+          "description": "Number of logical CPUs (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "hostname_hash": {
+          "description": "Hashed hostname for fingerprinting (opt-in, privacy-preserving).\nWhen present, this is a SHA-256 hash of the actual hostname.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memory_bytes": {
+          "description": "Total system memory in bytes (best-effort, None if unavailable)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "os": {
+          "description": "Operating system (e.g., \"linux\", \"macos\", \"windows\")",
+          "type": "string"
+        }
+      },
+      "required": [
+        "os",
+        "arch"
+      ]
+    },
+    "RunMeta": {
+      "type": "object",
+      "properties": {
+        "ended_at": {
+          "type": "string"
+        },
+        "host": {
+          "$ref": "#/$defs/HostInfo"
+        },
+        "id": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "started_at",
+        "ended_at",
+        "host"
+      ]
+    },
+    "Sample": {
+      "type": "object",
+      "properties": {
+        "binary_bytes": {
+          "description": "Size of executed binary in bytes (best-effort).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "cpu_ms": {
+          "description": "CPU time (user + system) in milliseconds (Unix only).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "ctx_switches": {
+          "description": "Voluntary + involuntary context switches (Unix only).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "energy_uj": {
+          "description": "CPU energy used in microjoules (RAPL on Linux).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "exit_code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "io_read_bytes": {
+          "description": "Bytes read from disk (best-effort).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "io_write_bytes": {
+          "description": "Bytes written to disk (best-effort).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "max_rss_kb": {
+          "description": "Peak resident set size in KB.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "network_packets": {
+          "description": "Total network packets (best-effort).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "page_faults": {
+          "description": "Major page faults (Unix only).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "stderr": {
+          "description": "Truncated stderr (bytes interpreted as UTF-8 lossily).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stdout": {
+          "description": "Truncated stdout (bytes interpreted as UTF-8 lossily).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timed_out": {
+          "type": "boolean",
+          "default": false
+        },
+        "wall_ms": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "warmup": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "wall_ms",
+        "exit_code"
+      ]
+    },
+    "Stats": {
+      "description": "Aggregated statistics for a benchmark run.\n\n# Examples\n\n```\nuse perfgate_types::{Stats, U64Summary};\n\nlet stats = Stats {\n    wall_ms: U64Summary::new(100, 90, 120 ),\n    cpu_ms: None,\n    page_faults: None,\n    ctx_switches: None,\n    max_rss_kb: Some(U64Summary::new(4096, 4000, 4200 )),\n    io_read_bytes: None,\n    io_write_bytes: None,\n    network_packets: None,\n    energy_uj: None,\n    binary_bytes: None,\n    throughput_per_s: None,\n};\nassert_eq!(stats.wall_ms.median, 100);\nassert_eq!(stats.max_rss_kb.unwrap().median, 4096);\n```",
+      "type": "object",
+      "properties": {
+        "binary_bytes": {
+          "description": "Size of executed binary in bytes (best-effort).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cpu_ms": {
+          "description": "CPU time (user + system) summary in milliseconds (Unix only).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ctx_switches": {
+          "description": "Voluntary + involuntary context switches summary (Unix only).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "energy_uj": {
+          "description": "CPU energy used summary in microjoules (RAPL on Linux).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "io_read_bytes": {
+          "description": "Bytes read from disk summary (best-effort).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "io_write_bytes": {
+          "description": "Bytes written to disk summary (best-effort).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_rss_kb": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "network_packets": {
+          "description": "Total network packets summary (best-effort).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page_faults": {
+          "description": "Major page faults summary (Unix only).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/U64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "throughput_per_s": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/F64Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wall_ms": {
+          "$ref": "#/$defs/U64Summary"
+        }
+      },
+      "required": [
+        "wall_ms"
+      ]
+    },
+    "ToolInfo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    },
+    "U64Summary": {
+      "type": "object",
+      "properties": {
+        "max": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "mean": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "median": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "min": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "stddev": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      },
+      "required": [
+        "median",
+        "min",
+        "max"
+      ]
+    }
+  }
+}

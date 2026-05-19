@@ -1,0 +1,71 @@
+{
+  "report_type": "perfgate.report.v1",
+  "verdict": {
+    "status": "pass",
+    "counts": {
+      "pass": 1,
+      "warn": 0,
+      "fail": 0,
+      "skip": 0
+    },
+    "reasons": []
+  },
+  "compare": {
+    "schema": "perfgate.compare.v1",
+    "tool": {
+      "name": "perfgate",
+      "version": "0.15.1"
+    },
+    "bench": {
+      "name": "compat-bench",
+      "command": [
+        "echo",
+        "compat"
+      ],
+      "repeat": 3,
+      "warmup": 1
+    },
+    "baseline_ref": {
+      "path": "baselines/compat-bench.json",
+      "run_id": "baseline-run-001"
+    },
+    "current_ref": {
+      "path": "artifacts/perfgate/run.json",
+      "run_id": "compat-run-001"
+    },
+    "budgets": {
+      "wall_ms": {
+        "threshold": 0.2,
+        "warn_threshold": 0.1,
+        "direction": "lower"
+      }
+    },
+    "deltas": {
+      "wall_ms": {
+        "baseline": 100.0,
+        "current": 102.0,
+        "ratio": 1.02,
+        "pct": 0.02,
+        "regression": 0.02,
+        "status": "pass"
+      }
+    },
+    "verdict": {
+      "status": "pass",
+      "counts": {
+        "pass": 1,
+        "warn": 0,
+        "fail": 0,
+        "skip": 0
+      },
+      "reasons": []
+    }
+  },
+  "findings": [],
+  "summary": {
+    "pass_count": 1,
+    "warn_count": 0,
+    "fail_count": 0,
+    "total_count": 1
+  }
+}

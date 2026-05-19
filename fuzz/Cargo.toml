@@ -1,0 +1,114 @@
+[package]
+name = "perfgate-fuzz"
+description = "cargo-fuzz harnesses for perfgate types, domain logic, and rendering"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+humantime = "2"
+perfgate-types = { path = "../crates/perfgate-types", features = ["arbitrary"] }
+perfgate = { path = "../crates/perfgate" }
+
+[[bin]]
+name = "parse_run_receipt"
+path = "fuzz_targets/parse_run_receipt.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_compare_receipt"
+path = "fuzz_targets/parse_compare_receipt.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "render_markdown"
+path = "fuzz_targets/render_markdown.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_config"
+path = "fuzz_targets/parse_config.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_duration"
+path = "fuzz_targets/parse_duration.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "compare_stats"
+path = "fuzz_targets/compare_stats.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_report_receipt"
+path = "fuzz_targets/parse_report_receipt.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_sha256"
+path = "fuzz_targets/fuzz_sha256.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_stats"
+path = "fuzz_targets/fuzz_stats.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_validation"
+path = "fuzz_targets/fuzz_validation.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_export_csv"
+path = "fuzz_targets/fuzz_export_csv.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_budget"
+path = "fuzz_targets/fuzz_budget.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_significance"
+path = "fuzz_targets/fuzz_significance.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_paired"
+path = "fuzz_targets/fuzz_paired.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_sensor_report"
+path = "fuzz_targets/fuzz_sensor_report.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_host_detect"
+path = "fuzz_targets/fuzz_host_detect.rs"
+test = false
+doc = false

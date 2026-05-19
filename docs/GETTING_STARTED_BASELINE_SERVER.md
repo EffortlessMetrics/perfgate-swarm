@@ -1,0 +1,336 @@
+# Getting Started with the Baseline Server
+
+This guide documents the current, shipped baseline-server workflow in
+`perfgate 0.17.0`. Every CLI example below has been validated against the
+actual binary. It intentionally focuses on commands and flags that exist today.
+
+## Pick a Mode
+
+Use one of these two entry points:
+
+- `perfgate serve`: local single-user sandbox with SQLite storage, dashboard,
+  and auth disabled
+- `perfgate-server`: shared service for CI and teams; use API keys from the
+  CLI today
+
+Use `perfgate serve` for local exploration and `perfgate-server` for a real
+shared baseline service.
+
+For production-style decision ledger operations, see the
+[decision ledger operations runbook](DECISION_LEDGER_RUNBOOK.md).
+
+## Local Sandbox
+
+Preflight the local SQLite database path and dashboard port:
+
+```bash
+cargo run -p perfgate-cli -- serve --doctor --port 8484
+```
+
+The preflight opens and initializes the SQLite database, verifies WAL setup,
+checks that `127.0.0.1:8484` is available, and prints the dashboard, API, and
+health URLs it will use.
+
+Start a local server on `127.0.0.1:8484`:
+
+```bash
+cargo run -p perfgate-cli -- serve --no-open --port 8484
+```
+
+Point the CLI at the local API:
+
+```bash
+export PERFGATE_SERVER_URL=http://127.0.0.1:8484/api/v1
+export PERFGATE_PROJECT=my-project
+```
+
+Create and promote a baseline:
+
+```bash
+perfgate run --name my-bench --out run.json -- ./my-benchmark
+
+perfgate promote \
+  --current run.json \
+  --to-server \
+  --benchmark my-bench \
+  --version main-2026-03-28
+```
+
+Query and compare against the stored baseline:
+
+```bash
+perfgate baseline list
+perfgate baseline history --benchmark my-bench
+
+perfgate run --name my-bench --out current.json -- ./my-benchmark
+perfgate compare \
+  --baseline @server:my-bench \
+  --current current.json \
+  --out compare.json
+```
+
+`perfgate serve` runs in local mode and is intended for one developer on one
+machine. Do not treat it as a shared or internet-facing deployment.
+The dashboard at `/` includes baseline, verdict, flakiness, decision-ledger,
+and audit-event views; shared authenticated servers require an API key in the
+dashboard header before protected API data can load.
+
+## Shared Server
+
+Install or build the dedicated server:
+
+```bash
+cargo install perfgate-server
+```
+
+Start a shared SQLite-backed instance:
+
+```bash
+perfgate-server \
+  --storage-type sqlite \
+  --database-url ./perfgate.db \
+  --api-keys promoter:pg_live_<32+alnum>:my-project \
+  --api-keys viewer:pg_live_<32+alnum>:my-project
+```
+
+SQLite file storage is configured for single-node service use: the server
+enables WAL mode and applies a 5 second busy timeout on its SQLite connections.
+Use PostgreSQL instead when multiple server instances need to share storage.
+
+For PostgreSQL-backed deployments, tune the built-in pool explicitly instead of
+relying on database defaults:
+
+```bash
+perfgate-server \
+  --storage-type postgres \
+  --database-url postgresql://perfgate:secret@db.example.com/perfgate \
+  --pg-max-connections 20 \
+  --pg-min-connections 4 \
+  --pg-idle-timeout 300 \
+  --pg-max-lifetime 1800 \
+  --pg-acquire-timeout 10 \
+  --pg-statement-timeout 30 \
+  --api-keys promoter:pg_live_<32+alnum>:my-project
+```
+
+Then configure the CLI:
+
+```bash
+export PERFGATE_SERVER_URL=http://localhost:8080/api/v1
+export PERFGATE_API_KEY=pg_live_<32+alnum>
+export PERFGATE_PROJECT=my-project
+```
+
+From there, the workflow is the same:
+
+```bash
+perfgate run --name my-bench --out run.json -- ./my-benchmark
+
+perfgate promote \
+  --current run.json \
+  --to-server \
+  --benchmark my-bench \
+  --version main-2026-03-28
+
+perfgate compare \
+  --baseline @server:my-bench \
+  --current run.json \
+  --out compare.json
+```
+
+## `perfgate.toml` Configuration
+
+For config-driven workflows such as `perfgate check`, put server settings in
+`perfgate.toml`:
+
+```toml
+[baseline_server]
+url = "http://127.0.0.1:8484/api/v1"
+api_key = "${PERFGATE_API_KEY}"
+project = "my-project"
+fallback_to_local = true
+```
+
+Then run:
+
+```bash
+perfgate check --config perfgate.toml --bench my-bench
+```
+
+`fallback_to_local = true` allows config-driven workflows to fall back to the
+local `baselines/` directory when the server is unavailable.
+
+Fallback is intentionally limited. Explicit local paths always use the file you
+named. Explicit remote operations such as `compare --baseline @server:my-bench`,
+`run --upload`, and `promote --to-server` hard-fail when the server cannot be
+used; they do not silently write to or read from local fallback storage. Bare
+benchmark selectors such as `--baseline my-bench` may use the server only when
+no local file/path is selected and the server is configured.
+
+## Supported CLI Workflows
+
+The current CLI surfaces that talk to the baseline service are:
+
+| Command | Current behavior |
+|---------|------------------|
+| `promote --to-server` | Upload a run receipt as a new baseline version |
+| `compare --baseline @server:<bench>` | Fetch the latest server baseline for a benchmark |
+| `compare --baseline @server:<bench> --baseline-project <project>` | Fetch a benchmark baseline from another project without changing the global compare project |
+| `baseline list` | List baselines for a project |
+| `baseline download` | Download the latest or a specific version |
+| `baseline upload` | Upload a run receipt directly |
+| `baseline delete` | Delete a specific version |
+| `baseline history` | Show version history |
+| `baseline verdicts` | Query pass/warn/fail verdict history |
+| `baseline submit-verdict` | Submit verdict data from a compare receipt |
+| `baseline migrate` | Upload local baseline JSON files to the server |
+| `decision upload` | Store a structured performance decision receipt |
+| `decision history` | List stored performance decisions, with scenario/status/verdict/review/rule filters |
+| `decision export` | Export decision ledger records as JSONL or JSON |
+| `decision debt` | Summarize accepted tradeoff debt, cap usage, and accepted deltas by scenario |
+| `decision prune --dry-run` / `--force` | Preview or delete old decision ledger records |
+| `audit list` | List admin audit events |
+| `audit export --format jsonl` | Export audit events for external review |
+
+Example audit queries:
+
+```bash
+perfgate audit list --project my-project
+perfgate audit export --project my-project --format jsonl
+```
+
+## Server Endpoints
+
+The server exposes these top-level surfaces:
+
+- `GET /health`: health check
+- `GET /metrics`: Prometheus metrics
+- `GET /`: web dashboard
+- `GET /api/v1/info`: server info, including local-mode status
+- `POST /api/v1/projects/{project}/baselines`: upload a baseline
+- `GET /api/v1/projects/{project}/baselines`: list baselines
+- `GET /api/v1/projects/{project}/baselines/{benchmark}/latest`: fetch latest
+- `GET /api/v1/projects/{project}/baselines/{benchmark}/versions/{version}`:
+  fetch a specific version
+- `DELETE /api/v1/projects/{project}/baselines/{benchmark}/versions/{version}`:
+  delete a version
+- `POST /api/v1/projects/{project}/baselines/{benchmark}/promote`: promote a
+  version
+- `GET /api/v1/projects/{project}/baselines/{benchmark}/trend`: fetch trend
+  data
+- `POST /api/v1/projects/{project}/verdicts`: submit a verdict
+- `GET /api/v1/projects/{project}/verdicts`: list verdicts
+- `POST /api/v1/projects/{project}/decisions`: upload a decision receipt
+- `GET /api/v1/projects/{project}/decisions`: list decision receipts
+- `GET /api/v1/projects/{project}/decisions/latest`: fetch latest decision
+
+Decision history accepts `scenario`, `status`, `verdict`, `review_required`,
+`accepted`, and `rule` query parameters so operators can drill into accepted
+tradeoffs, review-required records, and specific policy rules without scanning
+the full ledger locally.
+- `GET /api/v1/audit`: list audit events
+- `POST /api/v1/keys`: create an API key
+- `GET /api/v1/keys`: list API keys
+- `DELETE /api/v1/keys/{id}`: revoke an API key
+- `DELETE /api/v1/admin/cleanup`: run artifact cleanup
+
+Point the CLI at the versioned API root, for example
+`http://localhost:8080/api/v1`, not just `http://localhost:8080`.
+
+## Operational Checks
+
+Use `/health` for liveness and storage readiness. PostgreSQL deployments also
+include current pool occupancy. When storage is not healthy, `storage.detail`
+contains a coarse non-secret reason such as `query_error` or `connection_error`;
+inspect server logs for the full database error.
+
+```json
+{
+  "status": "healthy",
+  "version": "0.17.0",
+  "storage": {
+    "backend": "postgres",
+    "status": "healthy"
+  },
+  "pool": {
+    "idle": 2,
+    "active": 1,
+    "max": 20
+  }
+}
+```
+
+`/metrics` exposes Prometheus counters and histograms for request volume,
+request latency, storage operations, upload failures, auth failures, and
+storage errors:
+
+```text
+perfgate_server_requests_total
+perfgate_server_request_duration_seconds
+perfgate_baselines_total
+perfgate_verdicts_total
+perfgate_upload_failures_total
+perfgate_auth_failures_total
+perfgate_storage_errors_total
+```
+
+The server binary accepts `--retention-days` and
+`--cleanup-interval-hours` for background artifact cleanup. Cleanup only runs
+when an artifact store exists; embedded deployments configure that with
+`ServerConfig::artifacts_url`. For managed object stores such as S3, GCS, or
+Azure Blob Storage, keep provider lifecycle rules enabled as the durable
+retention backstop.
+
+## Authentication Notes
+
+Current auth surfaces are split like this:
+
+- CLI today: `--api-key` or `PERFGATE_API_KEY`
+- Server binary: API keys, JWT (`--jwt-secret`), GitHub OIDC
+  (`--github-oidc`), GitLab OIDC (`--gitlab-oidc`), and custom OIDC
+  (`--oidc-provider`)
+- Local sandbox: `perfgate serve` disables auth for local use
+
+If you are using the CLI end to end today, API keys are the supported path.
+
+## Troubleshooting
+
+`401 Missing authentication header`
+
+You are talking to `perfgate-server` without an API key. Set
+`PERFGATE_API_KEY` or pass `--api-key`.
+
+`compare --baseline @server:my-bench` fails immediately
+
+Set the server configuration first. For same-project lookups, set the default
+project:
+
+```bash
+export PERFGATE_SERVER_URL=http://localhost:8080/api/v1
+export PERFGATE_PROJECT=my-project
+```
+
+For cross-project compares, keep the benchmark selector and override only the
+baseline lookup project:
+
+```bash
+perfgate compare \
+  --baseline @server:my-bench \
+  --baseline-project other-project \
+  --current artifacts/perfgate/run.json
+```
+
+Health checks work but baseline commands do not
+
+`/health` lives at the server root. Data endpoints live under `/api/v1`.
+
+Need a local dashboard without setting up shared auth
+
+Use `perfgate serve`, not bare `perfgate-server`.
+
+## Related Docs
+
+- [Main README](../README.md)
+- [perfgate-server README](../crates/perfgate-server/README.md)
+- [Configuration](CONFIG.md)
+- [Architecture](ARCHITECTURE.md)
