@@ -46,6 +46,7 @@ Use concrete review targets:
 - `next-decision-contract-change`
 - `next-release-candidate`
 - `next-evidence-maturity-change`
+- `next-evidence-intake-change`
 - `next-canary-refresh`
 - `next-agent-repair-contract-change`
 
