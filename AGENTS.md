@@ -2,6 +2,16 @@
 
 This file provides guidance to autonomous agents when working with code in this repository.
 
+## Repository Role
+
+This checkout is `EffortlessMetrics/perfgate-swarm`: the internal swarm development repo.
+
+- Do not move release, publish, signing, tags, package metadata, or release secrets here.
+- Do not use this repo as the external PR intake surface.
+- Keep canonical package `repository` and `homepage` metadata pointed at `EffortlessMetrics/perfgate`.
+- Release promotion goes through `EffortlessMetrics/perfgate`, which remains the publishing repo permanently.
+- External PR intake will be handled later through `EffortlessMetrics/perfgate-dev`.
+
 ## Build and Test Commands
 
 ```bash
