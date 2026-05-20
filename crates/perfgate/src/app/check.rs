@@ -9,28 +9,29 @@
 //! 6. Generates all artifacts (run.json, compare.json, report.json, comment.md)
 
 use crate::app::runtime::{CommandSpec, HostProbe, ProcessRunner};
-use crate::app::{
-    Clock, CompareRequest, CompareUseCase, RunBenchRequest, RunBenchUseCase, format_metric,
-    format_pct,
-};
+use crate::app::{Clock, CompareRequest, CompareUseCase, RunBenchRequest, RunBenchUseCase};
 use crate::domain::SignificancePolicy;
 use crate::domain::scaling::{
     SizeMeasurement, classify_complexity, is_complexity_degraded, parse_complexity,
 };
 use anyhow::Context;
 use perfgate_types::{
-    BenchConfigFile, Budget, CHECK_ID_BASELINE, CHECK_ID_BUDGET, CHECK_ID_COMPLEXITY,
-    CompareReceipt, CompareRef, ComplexityGateResult, ComplexityGateStatus, ConfigFile,
-    ConfigValidationError, FINDING_CODE_BASELINE_MISSING, FINDING_CODE_COMPLEXITY_FAIL,
-    FINDING_CODE_COMPLEXITY_INCONCLUSIVE, FINDING_CODE_METRIC_FAIL, FINDING_CODE_METRIC_WARN,
-    FindingData, HostMismatchPolicy, Metric, MetricStatistic, MetricStatus, PerfgateError,
-    PerfgateReport, REPORT_SCHEMA_V1, ReportFinding, ReportSummary, RunReceipt, ScalingConfig,
-    Severity, ToolInfo, VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED,
-    VERDICT_REASON_COMPLEXITY_FIT_LOW_CONFIDENCE, VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE,
-    VERDICT_REASON_NO_BASELINE, Verdict, VerdictCounts, VerdictStatus,
+    BenchConfigFile, Budget, CompareReceipt, CompareRef, ComplexityGateResult,
+    ComplexityGateStatus, ConfigFile, ConfigValidationError, HostMismatchPolicy, Metric,
+    MetricStatistic, MetricStatus, PerfgateError, PerfgateReport, RunReceipt, ScalingConfig,
+    Severity, ToolInfo, REPORT_SCHEMA_V1, VERDICT_REASON_COMPLEXITY_EXPECTED_EXCEEDED,
+    VERDICT_REASON_COMPLEXITY_FIT_LOW_CONFIDENCE,
+    VERDICT_REASON_COMPLEXITY_MEASUREMENT_INCOMPLETE, VerdictStatus,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+mod complexity;
+mod reporting;
+
+use self::complexity::{apply_complexity_gate, median};
+use self::reporting::{build_no_baseline_report, build_report, detect_high_cv, render_no_baseline_markdown};
+
 
 /// Request for the check use case.
 #[derive(Debug, Clone)]
@@ -598,282 +599,6 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
     }
 }
 
-fn median(values: &mut [f64]) -> Option<f64> {
-    if values.is_empty() {
-        return None;
-    }
-    values.sort_by(f64::total_cmp);
-    let mid = values.len() / 2;
-    if values.len().is_multiple_of(2) {
-        Some((values[mid - 1] + values[mid]) / 2.0)
-    } else {
-        Some(values[mid])
-    }
-}
-
-fn apply_complexity_gate(
-    mut compare: Option<CompareReceipt>,
-    mut report: PerfgateReport,
-    complexity: Option<ComplexityGateResult>,
-) -> (Option<CompareReceipt>, PerfgateReport) {
-    let Some(complexity) = complexity else {
-        return (compare, report);
-    };
-
-    let token = complexity.reason.clone();
-    match complexity.status {
-        ComplexityGateStatus::Pass => {
-            report.summary.pass_count += 1;
-        }
-        ComplexityGateStatus::Inconclusive => {
-            report.summary.warn_count += 1;
-            if let Some(token) = &token {
-                report.verdict.reasons.push(token.clone());
-            }
-            report.findings.push(ReportFinding {
-                check_id: CHECK_ID_COMPLEXITY.to_string(),
-                code: FINDING_CODE_COMPLEXITY_INCONCLUSIVE.to_string(),
-                severity: Severity::Warn,
-                message: complexity.message.clone(),
-                data: None,
-            });
-        }
-        ComplexityGateStatus::Fail => {
-            report.summary.fail_count += 1;
-            if let Some(token) = &token {
-                report.verdict.reasons.push(token.clone());
-            }
-            report.findings.push(ReportFinding {
-                check_id: CHECK_ID_COMPLEXITY.to_string(),
-                code: FINDING_CODE_COMPLEXITY_FAIL.to_string(),
-                severity: Severity::Fail,
-                message: complexity.message.clone(),
-                data: None,
-            });
-        }
-    }
-    report.summary.total_count =
-        report.summary.pass_count + report.summary.warn_count + report.summary.fail_count;
-    report.verdict.counts.pass = report.summary.pass_count;
-    report.verdict.counts.warn = report.summary.warn_count;
-    report.verdict.counts.fail = report.summary.fail_count;
-    report.verdict.status = if report.summary.fail_count > 0 {
-        VerdictStatus::Fail
-    } else if report.summary.warn_count > 0 {
-        VerdictStatus::Warn
-    } else {
-        VerdictStatus::Pass
-    };
-    report.complexity = Some(complexity.clone());
-
-    if let Some(compare_receipt) = compare.as_mut() {
-        match complexity.status {
-            ComplexityGateStatus::Pass => compare_receipt.verdict.counts.pass += 1,
-            ComplexityGateStatus::Inconclusive => compare_receipt.verdict.counts.warn += 1,
-            ComplexityGateStatus::Fail => compare_receipt.verdict.counts.fail += 1,
-        }
-        if let Some(token) = token {
-            compare_receipt.verdict.reasons.push(token);
-        }
-        compare_receipt.verdict.status = if compare_receipt.verdict.counts.fail > 0 {
-            VerdictStatus::Fail
-        } else if compare_receipt.verdict.counts.warn > 0 {
-            VerdictStatus::Warn
-        } else {
-            VerdictStatus::Pass
-        };
-    }
-
-    (compare, report)
-}
-
-/// Build a PerfgateReport from a CompareReceipt.
-fn build_report(compare: &CompareReceipt) -> PerfgateReport {
-    let mut findings = Vec::new();
-
-    for (metric, delta) in &compare.deltas {
-        let severity = match delta.status {
-            MetricStatus::Pass | MetricStatus::Skip => continue,
-            MetricStatus::Warn => Severity::Warn,
-            MetricStatus::Fail => Severity::Fail,
-        };
-
-        let budget = compare.budgets.get(metric);
-        let (threshold, direction) = budget
-            .map(|b| (b.threshold, b.direction))
-            .unwrap_or((0.20, metric.default_direction()));
-
-        let code = match delta.status {
-            MetricStatus::Warn => FINDING_CODE_METRIC_WARN.to_string(),
-            MetricStatus::Fail => FINDING_CODE_METRIC_FAIL.to_string(),
-            MetricStatus::Pass | MetricStatus::Skip => unreachable!(),
-        };
-
-        let metric_name = format_metric(*metric).to_string();
-        let regression_pct = delta.regression * 100.0;
-        let message = format!(
-            "{} regression: {:.2}% (change: {}, threshold: {:.1}%)",
-            metric_name,
-            regression_pct,
-            format_pct(delta.pct),
-            threshold * 100.0
-        );
-
-        findings.push(ReportFinding {
-            check_id: CHECK_ID_BUDGET.to_string(),
-            code,
-            severity,
-            message,
-            data: Some(FindingData {
-                metric_name,
-                baseline: delta.baseline,
-                current: delta.current,
-                regression_pct,
-                threshold,
-                direction,
-            }),
-        });
-    }
-
-    let summary = ReportSummary {
-        pass_count: compare.verdict.counts.pass,
-        warn_count: compare.verdict.counts.warn,
-        fail_count: compare.verdict.counts.fail,
-        skip_count: compare.verdict.counts.skip,
-        total_count: compare.verdict.counts.pass
-            + compare.verdict.counts.warn
-            + compare.verdict.counts.fail
-            + compare.verdict.counts.skip,
-    };
-
-    PerfgateReport {
-        report_type: REPORT_SCHEMA_V1.to_string(),
-        verdict: compare.verdict.clone(),
-        compare: Some(compare.clone()),
-        findings,
-        summary,
-        complexity: None,
-        profile_path: None,
-    }
-}
-
-/// Build a PerfgateReport for the case when there is no baseline.
-///
-/// Returns a report with Warn status (not Pass) to indicate that while
-/// the check is non-blocking by default, no actual performance evaluation
-/// occurred. The cockpit can highlight this as "baseline missing" rather
-/// than incorrectly showing "pass".
-fn build_no_baseline_report(run: &RunReceipt) -> PerfgateReport {
-    // Warn verdict: the sensor ran but no comparison was possible
-    let verdict = Verdict {
-        status: VerdictStatus::Warn,
-        counts: VerdictCounts {
-            pass: 0,
-            warn: 1,
-            fail: 0,
-            skip: 0,
-        },
-        reasons: vec![VERDICT_REASON_NO_BASELINE.to_string()],
-    };
-
-    // Single finding for the baseline-missing condition
-    let finding = ReportFinding {
-        check_id: CHECK_ID_BASELINE.to_string(),
-        code: FINDING_CODE_BASELINE_MISSING.to_string(),
-        severity: Severity::Warn,
-        message: format!(
-            "No baseline found for bench '{}'; comparison skipped",
-            run.bench.name
-        ),
-        data: None, // No metric data for structural findings
-    };
-
-    PerfgateReport {
-        report_type: REPORT_SCHEMA_V1.to_string(),
-        verdict,
-        compare: None, // No synthetic compare receipt
-        findings: vec![finding],
-        summary: ReportSummary {
-            pass_count: 0,
-            warn_count: 1,
-            fail_count: 0,
-            skip_count: 0,
-            total_count: 1,
-        },
-        complexity: None,
-        profile_path: None,
-    }
-}
-
-/// Detect high coefficient of variation in run receipt wall_ms.
-///
-/// Returns true if the wall_ms CV exceeds 0.30 (30%), which indicates
-/// the benchmark environment is noisy and paired mode would give better results.
-fn detect_high_cv(run: &RunReceipt) -> bool {
-    run.stats.wall_ms.cv().map(|cv| cv > 0.30).unwrap_or(false)
-}
-
-/// Render markdown for the case when there is no baseline.
-fn render_no_baseline_markdown(run: &RunReceipt, warnings: &[String]) -> String {
-    let mut out = String::new();
-
-    out.push_str("## perfgate: no baseline\n\n");
-    out.push_str(&format!("**Bench:** `{}`\n\n", run.bench.name));
-    out.push_str("No baseline found for comparison. This run will establish a new baseline.\n\n");
-
-    out.push_str("### Current Results\n\n");
-    out.push_str("| metric | value |\n");
-    out.push_str("|---|---:|\n");
-    out.push_str(&format!(
-        "| `wall_ms` | {} ms |\n",
-        run.stats.wall_ms.median
-    ));
-
-    if let Some(cpu) = &run.stats.cpu_ms {
-        out.push_str(&format!("| `cpu_ms` | {} ms |\n", cpu.median));
-    }
-
-    if let Some(page_faults) = &run.stats.page_faults {
-        out.push_str(&format!(
-            "| `page_faults` | {} count |\n",
-            page_faults.median
-        ));
-    }
-
-    if let Some(ctx_switches) = &run.stats.ctx_switches {
-        out.push_str(&format!(
-            "| `ctx_switches` | {} count |\n",
-            ctx_switches.median
-        ));
-    }
-
-    if let Some(rss) = &run.stats.max_rss_kb {
-        out.push_str(&format!("| `max_rss_kb` | {} KB |\n", rss.median));
-    }
-
-    if let Some(binary_bytes) = &run.stats.binary_bytes {
-        out.push_str(&format!(
-            "| `binary_bytes` | {} bytes |\n",
-            binary_bytes.median
-        ));
-    }
-
-    if let Some(throughput) = &run.stats.throughput_per_s {
-        out.push_str(&format!(
-            "| `throughput_per_s` | {:.3} /s |\n",
-            throughput.median
-        ));
-    }
-
-    if !warnings.is_empty() {
-        out.push_str("\n**Warnings:**\n");
-        for w in warnings {
-            out.push_str(&format!("- {}\n", w));
-        }
-    }
-
-    out
-}
 
 #[cfg(test)]
 mod tests {
