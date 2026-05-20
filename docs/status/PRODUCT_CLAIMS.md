@@ -41,6 +41,9 @@ freshness definitions live in [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md).
 | PG-CLAIM-0028 | perfgate supports advisory policy rollout profiles, promotion readiness, and non-mutating policy patches. | supported | CLI, docs, config | next-policy-ergonomics-change |
 | PG-CLAIM-0029 | perfgate surfaces policy posture in review packets and Action summaries without changing configured behavior. | supported | CLI, action, artifacts | next-policy-ergonomics-change |
 | PG-CLAIM-0030 | perfgate has fixture-backed agent policy guardrails for review-required policy changes. | advisory | CLI guidance, specs, tests | next-agent-policy-change |
+| PG-CLAIM-0031 | perfgate imports existing benchmark outputs into receipts with explicit units, directions, sample model, and non-inferences. | supported | CLI, receipts, docs | next-evidence-intake-change |
+| PG-CLAIM-0032 | perfgate surfaces imported-evidence limits in maturity, policy, review packet, and Action posture output. | supported | CLI, action, artifacts | next-evidence-intake-change |
+| PG-CLAIM-0033 | perfgate provides reviewable adoption packs for common repo shapes without automatic policy changes. | supported | CLI, docs | next-evidence-intake-change |
 
 ## PG-CLAIM-0001: Reviewable performance decisions
 
@@ -937,3 +940,132 @@ Known limits:
 - Fresh guardrail fixtures do not prove every agent workflow or external repo.
 
 Review after: next-agent-policy-change
+
+## PG-CLAIM-0031: Evidence intake adapters
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, receipts, docs
+Linked docs: [`EVIDENCE_INTAKE.md`](../EVIDENCE_INTAKE.md), [`PERFGATE-SPEC-0013-evidence-source-contract`](../specs/PERFGATE-SPEC-0013-evidence-source-contract.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features import
+cargo +1.95.0 run -p xtask -- schema-compat
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_ingest_tests.rs`](../../crates/perfgate-cli/tests/cli_ingest_tests.rs)
+- [`imported_evidence.rs`](../../crates/perfgate-cli/src/imported_evidence.rs)
+- [`main.rs`](../../crates/perfgate-cli/src/main.rs)
+
+Artifacts:
+
+- `perfgate ingest --format generic-command-json`
+- `perfgate ingest --format hyperfine`
+- `perfgate ingest --format criterion`
+- `perfgate ingest --format pytest-benchmark`
+- `perfgate ingest --format k6`
+- `perfgate ingest --format custom-json`
+- `perfgate ingest --format custom-csv`
+- `perfgate.run.v1` receipts with imported source metadata where supported
+
+Known limits:
+
+- External tools remain the measurement authority; perfgate imports evidence
+  into receipts and review surfaces.
+- Successful import does not prove benchmark maturity, host compatibility, or
+  baseline quality.
+- Summary-only imports have weaker noise support than raw samples.
+- Current proof is in-repo/source proof. External Rust and non-Rust intake
+  canaries remain pending.
+
+Review after: next-evidence-intake-change
+
+## PG-CLAIM-0032: Imported evidence in review surfaces
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, GitHub Action, artifacts
+Linked docs: [`EVIDENCE_INTAKE.md`](../EVIDENCE_INTAKE.md), [`ADOPTION_PACKS.md`](../ADOPTION_PACKS.md), [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`PERFGATE-SPEC-0013-evidence-source-contract`](../specs/PERFGATE-SPEC-0013-evidence-source-contract.md), [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features baseline
+cargo +1.95.0 test -p perfgate-cli --all-features doctor
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+cargo +1.95.0 run -p xtask -- action-check
+```
+
+Linked tests:
+
+- [`cli_baseline_bootstrap_tests.rs`](../../crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs)
+- [`cli_doctor_tests.rs`](../../crates/perfgate-cli/tests/cli_doctor_tests.rs)
+- [`cli_calibrate_tests.rs`](../../crates/perfgate-cli/tests/cli_calibrate_tests.rs)
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`xtask/src/main.rs`](../../xtask/src/main.rs)
+
+Artifacts:
+
+- `perfgate baseline doctor --config perfgate.toml --bench <bench>`
+- `perfgate doctor signal --config perfgate.toml --bench <bench>`
+- `perfgate calibrate --config perfgate.toml --bench <bench> --emit-patch`
+- `perfgate policy doctor --config perfgate.toml --bench <bench>`
+- `perfgate policy review-packet --config perfgate.toml --bench <bench>`
+- Action policy posture summary for imported evidence where receipts expose
+  source metadata
+
+Known limits:
+
+- Imported evidence remains advisory until normal maturity and policy review
+  surfaces support promotion.
+- Action summaries preserve configured exit-code behavior; they do not make
+  advisory evidence blocking.
+- Missing source path, metric mapping, host context, or raw samples is surfaced
+  as a review limit, not treated as native proof.
+- External hosted Action canaries for the 0.21 intake path remain pending.
+
+Review after: next-evidence-intake-change
+
+## PG-CLAIM-0033: Reviewable adoption packs
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, docs
+Linked docs: [`ADOPTION_PACKS.md`](../ADOPTION_PACKS.md), [`EVIDENCE_INTAKE.md`](../EVIDENCE_INTAKE.md), [`BENCHMARK_RECIPES.md`](../BENCHMARK_RECIPES.md), [`GETTING_STARTED_GITHUB_ACTIONS.md`](../GETTING_STARTED_GITHUB_ACTIONS.md), [`PERFGATE-PROP-0008-evidence-intake-adoption-packs`](../proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features adoption
+cargo +1.95.0 run -p xtask -- docs-check
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_adoption_tests.rs`](../../crates/perfgate-cli/tests/cli_adoption_tests.rs)
+- [`adoption_packs.rs`](../../crates/perfgate-cli/src/adoption_packs.rs)
+- [`cli_help_snapshot_tests.rs`](../../crates/perfgate-cli/tests/cli_help_snapshot_tests.rs)
+
+Artifacts:
+
+- `perfgate adoption packs`
+- `perfgate adoption packs --pack rust-cli`
+- `perfgate adoption packs --pack rust-workspace`
+- `perfgate adoption packs --pack python-service`
+- `perfgate adoption packs --pack node-tool-action`
+- `perfgate adoption packs --pack http-local-smoke`
+- `perfgate adoption packs --pack generic-command`
+
+Known limits:
+
+- Adoption packs are starting points, not automatic benchmark selection.
+- They do not promote baselines, loosen thresholds, make checks blocking, or
+  require server ledger mode.
+- External canaries have not yet proven the 0.21 adoption-pack path in a Rust
+  existing-benchmark repo or a non-Rust command/HTTP repo.
+- Source-built adoption-pack docs are not public release proof.
+
+Review after: next-evidence-intake-change

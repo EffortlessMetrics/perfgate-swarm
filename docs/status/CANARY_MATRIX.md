@@ -35,6 +35,11 @@ adoption evidence?
 | Optional server-ledger operations smoke | in-repo optional ledger operations | 2026-05-18 | [`release-0.18.0-adoption-readiness.md`](../audits/release-0.18.0-adoption-readiness.md), [`2026-05-13-external-trust-closeout.md`](../handoffs/2026-05-13-external-trust-closeout.md), [`memory.rs`](../../crates/perfgate-server/src/storage/memory.rs) | In-repo proof covers optional decision upload/history/latest/debt/export, dry-run prune preservation, audit visibility, API key create/list/rotate smoke, and in-memory backup/restore equivalence for latest/history/audit plus prune dry-run preservation. | External team operation, production database backup/restore, production retention execution, large histories, migration compatibility, or any requirement that server mode be part of local correctness. | `current` |
 | Probe-backed external canary | real repo with stable probe IDs | Not run | No durable artifact yet. | Nothing yet; this remains a planned canary shape for a repo with meaningful stable probes. | Probe adoption in external repos, probe naming stability under refactor, and probe-backed hosted CI. | `unproven` |
 | Policy rollout canary | non-Rust command repo using advisory-to-review workflow | 2026-05-19 | [`2026-05-19-policy-rollout-canary-droid-action.md`](../audits/2026-05-19-policy-rollout-canary-droid-action.md) | A real non-Rust repo can use benchmark suggestions, baseline doctor, signal doctor, policy doctor, non-mutating policy patch output, calibration patch output, and review packets to keep noisy evidence advisory. | Hosted external Action policy posture, public 0.20 install behavior, a mature `gate_candidate` promotion, probe-backed policy rollout, or server ledger correctness. | `current` |
+| Evidence intake adapter fixture proof | in-repo adapter fixture matrix | 2026-05-20 | [`cli_ingest_tests.rs`](../../crates/perfgate-cli/tests/cli_ingest_tests.rs), [`EVIDENCE_INTAKE.md`](../EVIDENCE_INTAKE.md), [`PERFGATE-SPEC-0013-evidence-source-contract`](../specs/PERFGATE-SPEC-0013-evidence-source-contract.md) | Generic command JSON, hyperfine, Criterion, pytest-benchmark, k6, custom JSON, and custom CSV adapters map source output into receipts with explicit unit, direction, sample model, host, and non-inference behavior. | External repo adoption, hosted Action import workflows, public release artifacts for 0.21 adapters, or every upstream tool JSON variant. | `current` |
+| Imported evidence review-surface proof | in-repo maturity, policy, and Action fixtures | 2026-05-20 | [`cli_baseline_bootstrap_tests.rs`](../../crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs), [`cli_doctor_tests.rs`](../../crates/perfgate-cli/tests/cli_doctor_tests.rs), [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs), [`action.yml`](../../action.yml) | Imported evidence limits are visible in baseline doctor, signal doctor, calibration, policy doctor, review packets, and Action posture summaries where receipts expose source metadata. | Blocking policy promotion, hosted external 0.21 intake workflows, public release install behavior, or server-ledger correctness. | `current` |
+| Adoption pack catalog proof | in-repo CLI and docs | 2026-05-20 | [`ADOPTION_PACKS.md`](../ADOPTION_PACKS.md), [`cli_adoption_tests.rs`](../../crates/perfgate-cli/tests/cli_adoption_tests.rs), [`adoption_packs.rs`](../../crates/perfgate-cli/src/adoption_packs.rs) | Rust CLI, Rust workspace, Python service, Node tool/action, HTTP local smoke, and generic command packs describe source, artifacts, local reproduction, Action posture, promotion path, bad fits, and non-inferences. | External repo adoption, public release proof for 0.21 adoption packs, or automatic benchmark selection/policy promotion. | `current` |
+| 0.21 Rust intake canary | external Rust repo with existing Criterion, hyperfine, or command benchmark | Not run | No durable artifact yet. | Nothing yet; this is the planned Rust external intake proof. | Existing-benchmark Rust adoption, hosted Action import posture, public-release adapter behavior, and cross-repo promotion readiness. | `unproven` |
+| 0.21 non-Rust intake canary | external non-Rust command, Python, Node, HTTP, JSON, CSV, or k6 repo | Not run | No durable artifact yet. | Nothing yet; this is the planned non-Rust external intake proof. | Non-Rust adapter adoption, hosted Action import posture, shell portability, and public-release adapter behavior. | `unproven` |
 
 ## Policy Rollout Rerun Plan
 
@@ -89,6 +94,21 @@ follow after the path is proven once.
 - Do not cite source-built canaries as public-install proof.
 - Keep server ledger mode optional team history in any canary that configures
   ledger upload.
+
+## Evidence Intake Canary Plan
+
+The 0.21 lane adds adapter and adoption-pack surfaces on top of the existing
+evidence maturity and policy rollout paths. In-repo fixtures can support
+adapter claims, but external canaries must prove that real repositories can keep
+their existing benchmark tools while adopting perfgate review surfaces.
+
+| Target | Existing proof to reuse | Rerun should record | Do not infer |
+|--------|-------------------------|---------------------|--------------|
+| Rust existing-benchmark repo | adapter fixture proof plus `diffguard`/`shipper` adoption history | source benchmark artifact, adapter command, imported run receipt, baseline doctor, signal doctor, policy doctor, review packet, optional Action posture | fixture success proves every Criterion or hyperfine repo |
+| Non-Rust command or HTTP repo | adapter fixture proof plus `droid-action` command/policy canaries | source artifact, explicit field mapping or tool adapter, imported receipt, maturity output, policy output, review packet, optional hosted Action summary | one non-Rust repo proves every shell, runtime, or hosted runner |
+
+Source-built canaries should be cited as current-source proof only. They do not
+prove public release artifacts until a release installs and runs the same path.
 
 ## Use
 
