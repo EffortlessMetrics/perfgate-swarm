@@ -2,12 +2,14 @@
 //!
 //! Supports:
 //! - **Criterion** (`target/criterion/**/new/estimates.json`)
+//! - **custom JSON/CSV** with explicit metric field mappings
 //! - **hyperfine** (`--export-json` output)
 //! - **Go benchmark** (`go test -bench . -benchmem` text output)
 //! - **k6** (`--summary-export` or `handleSummary()` summary JSON)
 //! - **pytest-benchmark** (`.benchmarks/*.json`)
 
 mod criterion;
+mod custom;
 mod generic_command_json;
 mod gobench;
 mod hyperfine;
@@ -16,6 +18,7 @@ mod otel;
 mod probes;
 mod pytest;
 
+use anyhow::Context;
 use perfgate_types::{
     BenchMeta, HostInfo, PROBE_SCHEMA_V1, ProbeReceipt, RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample,
     Stats, ToolInfo, U64Summary,
@@ -24,6 +27,10 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub use criterion::parse_criterion;
+pub use custom::{
+    CustomHostMapping, CustomMappingOptions, CustomMetricMapping, parse_custom_csv,
+    parse_custom_json, parse_custom_metric_mapping_spec,
+};
 pub use generic_command_json::parse_generic_command_json;
 pub use gobench::parse_gobench;
 pub use hyperfine::parse_hyperfine;
@@ -36,6 +43,8 @@ pub use pytest::parse_pytest_benchmark;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IngestFormat {
     Criterion,
+    CustomCsv,
+    CustomJson,
     GenericCommandJson,
     Hyperfine,
     GoBench,
@@ -49,6 +58,8 @@ impl IngestFormat {
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "criterion" => Some(Self::Criterion),
+            "custom-csv" | "custom_csv" => Some(Self::CustomCsv),
+            "custom-json" | "custom_json" => Some(Self::CustomJson),
             "generic-command-json" | "generic_command_json" | "generic-json" | "generic_json" => {
                 Some(Self::GenericCommandJson)
             }
@@ -76,12 +87,28 @@ pub struct IngestRequest {
     pub include_spans: Vec<String>,
     /// Optional exclude filter for span names (exact match).
     pub exclude_spans: Vec<String>,
+    /// Optional custom mapping options for custom JSON/CSV imports.
+    pub custom: Option<CustomMappingOptions>,
 }
 
 /// Perform an ingest operation, returning a `RunReceipt`.
 pub fn ingest(request: &IngestRequest) -> anyhow::Result<RunReceipt> {
     match request.format {
         IngestFormat::Criterion => parse_criterion(&request.input, request.name.as_deref()),
+        IngestFormat::CustomCsv => {
+            let custom = request
+                .custom
+                .as_ref()
+                .context("custom CSV import requires --metric mappings")?;
+            parse_custom_csv(&request.input, request.name.as_deref(), custom)
+        }
+        IngestFormat::CustomJson => {
+            let custom = request
+                .custom
+                .as_ref()
+                .context("custom JSON import requires --metric mappings")?;
+            parse_custom_json(&request.input, request.name.as_deref(), custom)
+        }
         IngestFormat::GenericCommandJson => {
             parse_generic_command_json(&request.input, request.name.as_deref())
         }
@@ -240,6 +267,14 @@ mod tests {
         assert_eq!(
             IngestFormat::parse("Criterion"),
             Some(IngestFormat::Criterion)
+        );
+        assert_eq!(
+            IngestFormat::parse("custom-csv"),
+            Some(IngestFormat::CustomCsv)
+        );
+        assert_eq!(
+            IngestFormat::parse("custom_json"),
+            Some(IngestFormat::CustomJson)
         );
         assert_eq!(
             IngestFormat::parse("hyperfine"),

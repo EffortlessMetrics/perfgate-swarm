@@ -303,3 +303,71 @@ Do not infer:
 - error-rate metadata has a dedicated `perfgate.run.v1` metric field;
 - the first imported result should become a baseline; or
 - successful import means the benchmark should block CI.
+
+## Custom JSON And CSV Mapping
+
+Use custom JSON or CSV mapping when a project already emits benchmark data but
+does not match one of the built-in tool adapters. perfgate does not guess field
+meaning. Every imported metric needs an explicit field, unit, and direction:
+
+```bash
+perfgate ingest \
+  --format custom-json \
+  --input artifacts/bench.json \
+  --name api-smoke \
+  --metric wall_ms=duration_ms,unit=ms,direction=lower_is_better \
+  --metric throughput_per_s=rps,unit=requests/s,direction=higher_is_better \
+  --sample-id-field sample_id \
+  --host-os-field host.os \
+  --host-arch-field host.arch \
+  --out artifacts/perfgate/run.json
+```
+
+CSV uses the same mapping syntax, with fields resolved from header names:
+
+```bash
+perfgate ingest \
+  --format custom-csv \
+  --input artifacts/bench.csv \
+  --name csv-smoke \
+  --metric wall_ms=duration_ms,unit=ms,direction=lower_is_better \
+  --metric max_rss_kb=rss_bytes,unit=bytes,direction=lower_is_better \
+  --out artifacts/perfgate/run.json
+```
+
+Mapping:
+
+```text
+custom_json source kind -> custom_json
+custom_csv source kind  -> custom_csv
+--metric wall_ms=...    -> required wall_ms sample series
+--metric throughput_per_s=... -> higher-is-better throughput summary
+other known metrics     -> sample fields and summaries when mapped
+--sample-id-field       -> validated sample identity metadata
+host field flags        -> run.host fields when provided
+missing host fields     -> unknown
+```
+
+JSON input can be an array of sample objects, a single object, or an object with
+`samples: []`. Dot paths such as `host.os` read nested JSON fields. CSV input
+uses the first row as headers and reports line/field-count errors without
+dumping large payloads.
+
+After import, use the same maturity and policy surfaces:
+
+```bash
+perfgate baseline doctor --config perfgate.toml
+perfgate doctor signal --config perfgate.toml
+perfgate policy doctor --config perfgate.toml --bench api-smoke
+perfgate policy review-packet --config perfgate.toml --bench api-smoke --out artifacts/perfgate/review-packet.md
+```
+
+Do not infer:
+
+- field names alone define metric meaning;
+- missing unit or direction can be guessed safely;
+- row order proves stable sample identity unless that is acceptable for review;
+- missing host context proves host compatibility;
+- custom imported evidence should block CI by default;
+- a successful import promotes a baseline; or
+- server ledger mode is required for correctness.
