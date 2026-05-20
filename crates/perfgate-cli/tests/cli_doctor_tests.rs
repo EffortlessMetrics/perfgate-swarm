@@ -114,6 +114,49 @@ fn write_signal_receipt(path: &std::path::Path, bench: &str, sample_count: usize
     .expect("write receipt");
 }
 
+fn write_imported_summary_receipt(path: &std::path::Path, bench: &str) {
+    let started_at = chrono::Utc::now() - chrono::Duration::days(1);
+    let receipt = serde_json::json!({
+        "schema": "perfgate.run.v1",
+        "tool": { "name": "perfgate-ingest", "version": "0.21.0" },
+        "run": {
+            "id": format!("{bench}-imported"),
+            "started_at": started_at.to_rfc3339(),
+            "ended_at": (started_at + chrono::Duration::seconds(1)).to_rfc3339(),
+            "host": {
+                "os": "unknown",
+                "arch": "unknown"
+            }
+        },
+        "bench": {
+            "name": bench,
+            "command": [
+                "(ingested k6 summary JSON)",
+                "sample_model=summary_only",
+                "capacity_proof=not_production"
+            ],
+            "repeat": 0,
+            "warmup": 0
+        },
+        "samples": [],
+        "stats": {
+            "wall_ms": {
+                "median": 120,
+                "min": 100,
+                "max": 150,
+                "mean": 122.0,
+                "stddev": 12.0
+            }
+        }
+    });
+    fs::create_dir_all(path.parent().expect("receipt parent")).expect("create receipt parent");
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize receipt"),
+    )
+    .expect("write receipt");
+}
+
 fn write_signal_compare(path: &std::path::Path, bench: &str) {
     let compare = serde_json::json!({
         "schema": "perfgate.compare.v1",
@@ -274,6 +317,41 @@ fn doctor_signal_treats_missing_baseline_as_incomplete_setup() {
         .stdout(predicate::str::contains("recommendation: no_decision_yet"))
         .stdout(predicate::str::contains("setup or receipts are incomplete"))
         .stdout(predicate::str::contains("perfgate baseline promote"));
+}
+
+#[test]
+fn doctor_signal_explains_imported_summary_evidence_limits() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_imported_summary_receipt(
+        &dir.path().join("baselines/doctor-bench.json"),
+        "doctor-bench",
+    );
+    write_imported_summary_receipt(
+        &dir.path().join("artifacts/perfgate/doctor-bench/run.json"),
+        "doctor-bench",
+    );
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args(["doctor", "signal", "--config", "perfgate.toml"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "evidence source: imported (k6_summary_json)",
+        ))
+        .stdout(predicate::str::contains("sample model: summary_only"))
+        .stdout(predicate::str::contains("host context: missing_or_partial"))
+        .stdout(predicate::str::contains(
+            "noise support: limited_summary_only",
+        ))
+        .stdout(predicate::str::contains(
+            "summary-only evidence has limited noise support",
+        ))
+        .stdout(predicate::str::contains("recommendation: increase_samples"))
+        .stdout(predicate::str::contains(
+            "collect more measured samples before tightening or blocking",
+        ));
 }
 
 #[test]

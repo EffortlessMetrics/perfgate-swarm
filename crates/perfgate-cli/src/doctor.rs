@@ -3,6 +3,7 @@
 //! This module keeps setup-health diagnostics and benchmark-threshold calibration
 //! separate from argument parsing and command dispatch in `main.rs`.
 
+use crate::imported_evidence::{ImportedEvidenceSummary, summarize_imported_receipt};
 use crate::{
     COMPARE_RECEIPT_FILE, CalibrateArgs, DoctorArgs, RUN_RECEIPT_FILE, ServerFlags,
     SignalDoctorArgs, check_command, load_optional_baseline_receipt, paired_command, read_json,
@@ -308,6 +309,7 @@ pub(crate) fn execute_calibrate(args: CalibrateArgs) -> anyhow::Result<()> {
     let sample_count = evidence_receipt
         .map(measured_sample_count)
         .unwrap_or_default();
+    let imported_evidence = evidence_receipt.and_then(summarize_imported_receipt);
     let configured_threshold = configured_wall_threshold(&config, bench);
     let suggestion = suggest_calibration(cv, sample_count, configured_threshold);
 
@@ -331,6 +333,18 @@ pub(crate) fn execute_calibrate(args: CalibrateArgs) -> anyhow::Result<()> {
         .map(host_class)
         .unwrap_or_else(|| "unknown".to_string());
     println!("Host class: {evidence_host_class}");
+    if let Some(imported) = imported_evidence.as_ref() {
+        println!("Evidence source: {}", imported.source_label());
+        println!("Sample model: {}", imported.sample_model);
+        println!("Host context: {}", imported.host_context);
+        println!("Noise support: {}", imported.noise_support);
+        println!("Source limits:");
+        for limit in imported.limitations() {
+            println!("  - {limit}");
+        }
+    } else {
+        println!("Evidence source: native perfgate run");
+    }
     println!();
     println!("Evidence:");
     if let Some(path) = run_path.as_ref().filter(|path| path.exists()) {
@@ -381,7 +395,13 @@ pub(crate) fn execute_calibrate(args: CalibrateArgs) -> anyhow::Result<()> {
     println!("  noise_threshold = {:.2}", suggestion.noise_threshold);
     println!("  noise_policy = \"{}\"", suggestion.noise_policy.as_str());
     if args.emit_patch {
-        print_calibration_patch(&suggestion, sample_count, cv, &evidence_host_class);
+        print_calibration_patch(
+            &suggestion,
+            sample_count,
+            cv,
+            &evidence_host_class,
+            imported_evidence.as_ref(),
+        );
     } else {
         println!("  run with --emit-patch for a reasoned, copy-ready TOML fragment");
     }
@@ -410,6 +430,7 @@ fn print_calibration_patch(
     sample_count: usize,
     cv: Option<f64>,
     host_class: &str,
+    imported_evidence: Option<&ImportedEvidenceSummary>,
 ) {
     println!();
     println!("Reviewable TOML patch:");
@@ -448,6 +469,11 @@ fn print_calibration_patch(
             .unwrap_or_else(|| "unavailable".to_string())
     );
     println!("  host: {host_class}");
+    if let Some(imported) = imported_evidence {
+        println!("  source: {}", imported.source_label());
+        println!("  sample model: {}", imported.sample_model);
+        println!("  noise support: {}", imported.noise_support);
+    }
     if suggestion.suggest_paired {
         println!("  paired mode: recommended before blocking");
     } else {
@@ -458,6 +484,11 @@ fn print_calibration_patch(
     println!("  benchmark is not the workload reviewers want to gate");
     println!("  samples are missing, too few, or collected on the wrong host class");
     println!("  paired mode is recommended but has not been run");
+    if let Some(imported) = imported_evidence {
+        for limit in imported.limitations() {
+            println!("  {limit}");
+        }
+    }
 }
 
 fn calibration_patch_summary(suggestion: &CalibrationSuggestion) -> &'static str {
@@ -585,6 +616,7 @@ pub(crate) struct SignalDoctorRow {
     pub(crate) run_path: PathBuf,
     pub(crate) baseline_path: PathBuf,
     pub(crate) compare_path: PathBuf,
+    pub(crate) imported_evidence: Option<ImportedEvidenceSummary>,
     pub(crate) run_found: bool,
     pub(crate) baseline_found: bool,
     pub(crate) baseline_remote: bool,
@@ -693,6 +725,7 @@ fn print_signal_row(row: &SignalDoctorRow, config_path: &Path) {
             .unwrap_or_else(|| "unknown".to_string())
     );
     println!("recent drift: {}", row.recent_drift);
+    print_signal_imported_evidence(row.imported_evidence.as_ref());
     println!("recommendation: {}", row.recommendation.as_str());
     println!("meaning: {}", row.recommendation.meaning());
     println!("artifacts:");
@@ -723,6 +756,22 @@ fn print_signal_row(row: &SignalDoctorRow, config_path: &Path) {
         println!("  {command}");
     }
     println!();
+}
+
+fn print_signal_imported_evidence(imported: Option<&ImportedEvidenceSummary>) {
+    let Some(imported) = imported else {
+        println!("evidence source: native perfgate run");
+        return;
+    };
+
+    println!("evidence source: {}", imported.source_label());
+    println!("sample model: {}", imported.sample_model);
+    println!("host context: {}", imported.host_context);
+    println!("noise support: {}", imported.noise_support);
+    println!("source limits:");
+    for limit in imported.limitations() {
+        println!("  - {limit}");
+    }
 }
 
 fn signal_next_commands(row: &SignalDoctorRow, config_path: &Path) -> Vec<String> {
@@ -831,12 +880,21 @@ pub(crate) fn inspect_signal(
         host_mismatch,
         baseline_age_days,
     });
+    let imported_evidence = run_receipt
+        .as_ref()
+        .and_then(summarize_imported_receipt)
+        .or_else(|| {
+            baseline_receipt
+                .as_ref()
+                .and_then(summarize_imported_receipt)
+        });
 
     Ok(SignalDoctorRow {
         bench: bench_name.to_string(),
         run_path,
         baseline_path,
         compare_path,
+        imported_evidence,
         run_found: run_receipt.is_some(),
         baseline_found: baseline_receipt.is_some(),
         baseline_remote,

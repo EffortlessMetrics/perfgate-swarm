@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-19
 Milestone: 0.21.0
-Current PR: ingest/custom-json-csv-mapping
+Current PR: ingest/imported-evidence-maturity
 Linked proposal: [`PERFGATE-PROP-0008-evidence-intake-adoption-packs`](../../docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md)
 Linked specs: [`PERFGATE-SPEC-0013-evidence-source-contract`](../../docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -74,8 +74,8 @@ schema-compat proof.
 | 591 | Criterion adapter | merged | Criterion fixtures and non-inference docs |
 | 597 | pytest-benchmark JSON adapter | merged | Python benchmark fixtures and environment limits |
 | 4 | k6 summary JSON adapter | merged | HTTP/load-test fixtures and capacity non-inferences |
-| TBD | Custom JSON/CSV mapping | in progress | explicit field mapping and fail-closed errors |
-| TBD | Imported evidence maturity integration | pending | baseline doctor, signal doctor, calibration/policy surfaces |
+| 6 | Custom JSON/CSV mapping | merged | explicit field mapping and fail-closed errors |
+| TBD | Imported evidence maturity integration | in progress | baseline doctor, signal doctor, calibration/policy surfaces |
 | TBD | Review packet and Action posture | pending | report/comment/action-check coverage |
 | TBD | Adoption pack catalog | pending | Rust CLI, Rust workspace, Python, Node, HTTP, generic command packs |
 | TBD | Adoption pack docs | pending | user-facing intake and anti-pattern guidance |
@@ -301,7 +301,7 @@ git diff --check
 
 ## Work item: custom-json-csv-mapping
 
-Status: in progress
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: generic-adoption-pack
@@ -329,7 +329,7 @@ git diff --check
 
 ## Work item: imported-evidence-maturity
 
-Status: pending
+Status: in progress
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: review-packet-action-posture, product-claims-canary-freshness

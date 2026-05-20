@@ -92,6 +92,56 @@ fn write_baseline_maturity_fixture(
     .expect("write baseline fixture");
 }
 
+fn write_imported_summary_fixture(path: &Path, bench: &str) {
+    let started_at = chrono::Utc::now() - chrono::Duration::days(1);
+    let receipt = serde_json::json!({
+        "schema": "perfgate.run.v1",
+        "tool": { "name": "perfgate-ingest", "version": "0.21.0" },
+        "run": {
+            "id": format!("{bench}-imported"),
+            "started_at": started_at.to_rfc3339(),
+            "ended_at": (started_at + chrono::Duration::seconds(1)).to_rfc3339(),
+            "host": {
+                "os": "unknown",
+                "arch": "unknown"
+            }
+        },
+        "bench": {
+            "name": bench,
+            "command": [
+                "(ingested k6 summary JSON)",
+                "sample_model=summary_only",
+                "capacity_proof=not_production"
+            ],
+            "repeat": 0,
+            "warmup": 0
+        },
+        "samples": [],
+        "stats": {
+            "wall_ms": {
+                "median": 120,
+                "min": 100,
+                "max": 150,
+                "mean": 122.0,
+                "stddev": 12.0
+            },
+            "throughput_per_s": {
+                "median": 50.0,
+                "min": 45.0,
+                "max": 55.0,
+                "mean": 50.0
+            }
+        }
+    });
+    fs::create_dir_all(path.parent().expect("imported fixture has parent"))
+        .expect("create imported parent");
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize imported fixture"),
+    )
+    .expect("write imported fixture");
+}
+
 #[test]
 fn baseline_status_reports_missing_then_found_local_baseline() {
     let temp_dir = tempfile::tempdir().expect("create temp dir");
@@ -182,6 +232,44 @@ fn baseline_doctor_classifies_high_noise_as_advisory() {
         .stdout(predicate::str::contains("status: high_noise"))
         .stdout(predicate::str::contains("keep advisory"))
         .stdout(predicate::str::contains("perfgate paired"));
+}
+
+#[test]
+fn baseline_doctor_explains_imported_summary_evidence_limits() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    write_config(temp_dir.path());
+    write_imported_summary_fixture(
+        &temp_dir.path().join("baselines/test-benchmark.json"),
+        "test-benchmark",
+    );
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "baseline",
+            "doctor",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "test-benchmark",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "source: imported (k6_summary_json)",
+        ))
+        .stdout(predicate::str::contains("sample model: summary_only"))
+        .stdout(predicate::str::contains("host context: missing_or_partial"))
+        .stdout(predicate::str::contains(
+            "noise support: limited_summary_only",
+        ))
+        .stdout(predicate::str::contains(
+            "summary-only evidence has limited noise support",
+        ))
+        .stdout(predicate::str::contains(
+            "missing host context is not host-compatible proof",
+        ))
+        .stdout(predicate::str::contains("status: host_mismatched"));
 }
 
 #[test]

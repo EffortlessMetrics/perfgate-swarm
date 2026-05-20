@@ -11,6 +11,7 @@ use crate::baseline_doctor::{
     BaselineDoctorRow, BaselineMaturity, configured_benches, inspect_baseline,
 };
 use crate::doctor::{SignalDoctorRow, SignalRecommendation, inspect_signal, plural};
+use crate::imported_evidence::ImportedEvidenceSummary;
 use crate::{atomic_write, check_command, paired_command, read_json, resolve_configured_out_dir};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -706,6 +707,17 @@ fn render_policy_review_packet(
         "- Proof freshness: {}\n",
         proof_freshness(baseline, signal)
     ));
+    if let Some(imported) = policy_imported_evidence(baseline, signal) {
+        out.push_str(&format!(
+            "- Evidence source: `{}`\n",
+            imported.source_label()
+        ));
+        out.push_str(&format!("- Sample model: `{}`\n", imported.sample_model));
+        out.push_str(&format!("- Host context: `{}`\n", imported.host_context));
+        out.push_str(&format!("- Noise support: `{}`\n", imported.noise_support));
+    } else {
+        out.push_str("- Evidence source: `native perfgate run`\n");
+    }
 
     out.push_str("\n## Artifacts\n\n");
     push_artifact_line(&mut out, "run", &signal.run_path, signal.run_found);
@@ -784,6 +796,11 @@ fn render_policy_review_packet(
     out.push_str("- This packet does not change config, baselines, thresholds, policy, or server settings.\n");
     out.push_str("- It does not approve `required_gate`; reviewer approval is still required.\n");
     out.push_str("- It does not replace run, compare, report, comment, repair context, or decision receipts.\n");
+    if let Some(imported) = policy_imported_evidence(baseline, signal) {
+        for limit in imported.limitations() {
+            out.push_str(&format!("- {limit}.\n"));
+        }
+    }
 
     Ok(out)
 }
@@ -983,6 +1000,7 @@ fn print_policy_doctor_row(
     println!("host compatibility: {}", host_compatibility(signal));
     println!("calibration status: {}", calibration_status(signal));
     println!("proof freshness: {}", proof_freshness(baseline, signal));
+    print_policy_imported_evidence(policy_imported_evidence(baseline, signal));
     println!(
         "decision readiness: {}",
         decision_readiness(config, &baseline.bench)
@@ -1035,6 +1053,32 @@ fn print_policy_doctor_row(
         println!("  - {item}");
     }
     println!();
+}
+
+fn print_policy_imported_evidence(imported: Option<&ImportedEvidenceSummary>) {
+    let Some(imported) = imported else {
+        println!("evidence source: native perfgate run");
+        return;
+    };
+
+    println!("evidence source: {}", imported.source_label());
+    println!("sample model: {}", imported.sample_model);
+    println!("host context: {}", imported.host_context);
+    println!("noise support: {}", imported.noise_support);
+    println!("source limits:");
+    for limit in imported.limitations() {
+        println!("  - {limit}");
+    }
+}
+
+fn policy_imported_evidence<'a>(
+    baseline: &'a BaselineDoctorRow,
+    signal: &'a SignalDoctorRow,
+) -> Option<&'a ImportedEvidenceSummary> {
+    signal
+        .imported_evidence
+        .as_ref()
+        .or(baseline.imported_evidence.as_ref())
 }
 
 fn current_posture(baseline: &BaselineDoctorRow) -> PolicyPosture {
@@ -1154,6 +1198,11 @@ fn policy_reasons(
     if let Some(cv) = baseline.cv.or(signal.cv) {
         reasons.push(format!("observed CV {}", format_percent(cv)));
     }
+    if let Some(imported) = policy_imported_evidence(baseline, signal) {
+        reasons.push(format!("evidence source {}", imported.source_label()));
+        reasons.push(format!("sample model {}", imported.sample_model));
+        reasons.push(format!("noise support {}", imported.noise_support));
+    }
     match recommended {
         PolicyPosture::GateCandidate => {
             reasons.push("evidence can be reviewed for gate_candidate, not required_gate".into());
@@ -1200,6 +1249,14 @@ fn policy_missing_requirements(
         SignalRecommendation::RefreshBaseline => missing.push("baseline refresh"),
         SignalRecommendation::CheckHostMismatch => missing.push("host-compatible rerun"),
         SignalRecommendation::NoDecisionYet => missing.push("complete setup receipts"),
+    }
+    if let Some(imported) = policy_imported_evidence(baseline, signal) {
+        if imported.has_missing_host_context() {
+            missing.push("imported source host context review");
+        }
+        if imported.is_summary_only() {
+            missing.push("raw-sample or paired evidence before blocking");
+        }
     }
     if recommended == PolicyPosture::GateCandidate {
         missing.push("required-gate reviewer approval");

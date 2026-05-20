@@ -7,6 +7,7 @@ mod check_guidance;
 mod cli_parsing;
 mod decision_suggest;
 mod doctor;
+mod imported_evidence;
 mod init;
 mod ledger_doctor;
 mod policy;
