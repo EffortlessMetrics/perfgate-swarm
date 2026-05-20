@@ -35,6 +35,7 @@ Commands:
   fleet Fleet-wide dependency regression analysis across projects
   explain Provide AI-ready prompts, artifact explanations, and automated playbooks
   ingest Import benchmark results from external frameworks into perfgate format
+  adoption Show reviewable adoption packs for common repository shapes
   badge Generate an embeddable SVG status badge from a report or compare receipt
   discover Auto-detect benchmarks in a repository without manual configuration
   diff Quick "did I make it slower?" comparison against baselines
