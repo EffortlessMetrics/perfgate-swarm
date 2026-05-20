@@ -12,42 +12,10 @@ use crate::baseline_doctor::{
 };
 use crate::doctor::{SignalDoctorRow, SignalRecommendation, inspect_signal, plural};
 use crate::imported_evidence::ImportedEvidenceSummary;
+use crate::policy_profiles::{
+    PolicyProfile, PolicyProfileName, policy_profile, policy_profiles, render_policy_profiles,
+};
 use crate::{atomic_write, check_command, paired_command, read_json, resolve_configured_out_dir};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum PolicyProfileName {
-    #[value(name = "rust-cli-standard")]
-    RustCliStandard,
-    #[value(name = "rust-workspace-advisory")]
-    RustWorkspaceAdvisory,
-    #[value(name = "node-command-advisory")]
-    NodeCommandAdvisory,
-    #[value(name = "python-command-advisory")]
-    PythonCommandAdvisory,
-    #[value(name = "http-local-smoke")]
-    HttpLocalSmoke,
-    #[value(name = "generic-command-advisory")]
-    GenericCommandAdvisory,
-    #[value(name = "agent-heavy-repo")]
-    AgentHeavyRepo,
-    #[value(name = "server-ledger-optional")]
-    ServerLedgerOptional,
-}
-
-impl PolicyProfileName {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::RustCliStandard => "rust-cli-standard",
-            Self::RustWorkspaceAdvisory => "rust-workspace-advisory",
-            Self::NodeCommandAdvisory => "node-command-advisory",
-            Self::PythonCommandAdvisory => "python-command-advisory",
-            Self::HttpLocalSmoke => "http-local-smoke",
-            Self::GenericCommandAdvisory => "generic-command-advisory",
-            Self::AgentHeavyRepo => "agent-heavy-repo",
-            Self::ServerLedgerOptional => "server-ledger-optional",
-        }
-    }
-}
 
 #[derive(Debug, Subcommand)]
 pub enum PolicyAction {
@@ -358,37 +326,6 @@ const POLICY_PROFILES: &[PolicyProfile] = &[
         ],
     },
 ];
-
-pub fn policy_profiles() -> &'static [PolicyProfile] {
-    POLICY_PROFILES
-}
-
-pub fn policy_profile(name: PolicyProfileName) -> &'static PolicyProfile {
-    policy_profiles()
-        .iter()
-        .find(|profile| profile.name == name.as_str())
-        .expect("all PolicyProfileName values have catalog entries")
-}
-
-pub fn render_policy_profiles(filter: Option<PolicyProfileName>) -> String {
-    let mut out = String::new();
-    out.push_str("Policy profiles are reviewable starting points, not automatic enforcement.\n");
-    out.push_str("They do not promote baselines, loosen thresholds, or make checks blocking.\n\n");
-
-    let profiles: Vec<&PolicyProfile> = match filter {
-        Some(name) => vec![policy_profile(name)],
-        None => policy_profiles().iter().collect(),
-    };
-
-    for (idx, profile) in profiles.iter().enumerate() {
-        if idx > 0 {
-            out.push('\n');
-        }
-        render_profile(&mut out, profile);
-    }
-
-    out
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PolicyPosture {
@@ -1382,32 +1319,6 @@ fn policy_do_not(recommended: PolicyPosture) -> Vec<&'static str> {
 
 fn format_percent(value: f64) -> String {
     format!("{:.1}%", value * 100.0)
-}
-
-fn render_profile(out: &mut String, profile: &PolicyProfile) {
-    out.push_str(&format!("Profile: {}\n", profile.name));
-    out.push_str(&format!("Summary: {}\n", profile.summary));
-    out.push_str(&format!("Starting posture: {}\n", profile.starting_posture));
-    render_list(
-        out,
-        "Promotion requirements",
-        profile.promotion_requirements,
-    );
-    render_list(
-        out,
-        "Default evidence expectations",
-        profile.evidence_expectations,
-    );
-    render_list(out, "Known bad fits", profile.known_bad_fits);
-    out.push_str(&format!("Failure meaning: {}\n", profile.failure_meaning));
-    render_list(out, "Do not infer", profile.not_to_infer);
-}
-
-fn render_list(out: &mut String, label: &str, items: &[&str]) {
-    out.push_str(&format!("{label}:\n"));
-    for item in items {
-        out.push_str(&format!("  - {item}\n"));
-    }
 }
 
 pub fn execute_policy_action(action: PolicyAction) -> anyhow::Result<()> {
