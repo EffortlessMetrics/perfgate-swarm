@@ -787,6 +787,38 @@ mod tests {
         assert_eq!(classify_check_error(&err), FailureClass::SetupCommandFailed);
     }
 
+
+    #[test]
+    fn classify_check_error_prioritizes_command_failure_over_baseline_keyword() {
+        let err = anyhow::anyhow!(
+            "failed to run benchmark: baseline helper command exited with status 1"
+        );
+        assert_eq!(classify_check_error(&err), FailureClass::SetupCommandFailed);
+    }
+
+    #[test]
+    fn next_commands_quote_config_path_when_it_contains_spaces() {
+        let cfg = PathBuf::from("repo configs/perfgate config.toml");
+        let cmds = FailureClass::SetupMissingBench.next_commands(&cfg, Some("bench-a"), None);
+        assert!(
+            cmds.iter().any(|c| c.contains('"') && c.contains("repo configs/perfgate config.toml")),
+            "got: {:?}",
+            cmds
+        );
+    }
+
+    #[test]
+    fn failure_class_artifacts_with_duplicate_compare_path_remains_deduplicated() {
+        let out_dir = PathBuf::from("artifacts/perfgate");
+        let compare = out_dir.join("compare.json");
+        let arts = FailureClass::PerformanceRegression.artifacts(Some(&out_dir), Some(&compare));
+        let compare_count = arts
+            .iter()
+            .filter(|artifact| artifact.replace('\\', "/").ends_with("artifacts/perfgate/compare.json"))
+            .count();
+        assert_eq!(compare_count, 1, "got: {:?}", arts);
+    }
+
     #[test]
     fn classify_check_error_default_to_command_failure() {
         let err = anyhow::anyhow!("something weird happened");
