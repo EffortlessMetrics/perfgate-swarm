@@ -7,6 +7,22 @@ and Action surfaces.
 The foundational intake format is reviewable generic command JSON. It is
 intended for teams that already run a script and can emit a small JSON artifact.
 
+## Adoption Packs
+
+Use [`ADOPTION_PACKS.md`](ADOPTION_PACKS.md) when choosing how an existing repo
+shape should move from external benchmark output into perfgate receipts,
+maturity guidance, policy posture, review packets, and GitHub Action summaries.
+
+Adoption packs are reviewable starting points. They do not detect benchmarks
+magically, promote baselines, make checks blocking, loosen thresholds, or
+require server ledger mode.
+
+```bash
+perfgate adoption packs
+perfgate adoption packs --pack rust-cli
+perfgate adoption packs --pack python-service
+```
+
 ## Generic Command JSON
 
 Create a source artifact that names the benchmark, command, metrics, units, and

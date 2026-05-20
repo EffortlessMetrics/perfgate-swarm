@@ -69,6 +69,12 @@ pass/fail behavior, and what to commit, see
 commented benchmark candidates so benchmark choice stays reviewable; edit or
 replace them before promoting a baseline.
 
+If the repo already has Criterion, hyperfine, pytest-benchmark, k6, custom
+JSON/CSV, or script-based benchmark evidence, use
+[`docs/ADOPTION_PACKS.md`](docs/ADOPTION_PACKS.md) to choose a reviewable pack
+before wiring policy. Adoption packs keep imported evidence advisory until
+baseline, signal, and policy surfaces support promotion.
+
 `perfgate init --ci github --profile standard --suggest-benches` creates:
 
 ```text
@@ -272,6 +278,8 @@ For specific workflows:
 - [Probe Instrumentation Quickstart](docs/PROBE_QUICKSTART.md)
 - [Probe Design Patterns](docs/PROBE_DESIGN_PATTERNS.md)
 - [Signal Calibration](docs/SIGNAL_CALIBRATION.md)
+- [Adoption Packs](docs/ADOPTION_PACKS.md)
+- [Evidence Intake](docs/EVIDENCE_INTAKE.md)
 - [Platform Metric Support](docs/status/PLATFORM_SUPPORT.md)
 - [Step-by-Step Pipeline](docs/PIPELINE.md)
 - [Baseline Server](docs/GETTING_STARTED_BASELINE_SERVER.md)

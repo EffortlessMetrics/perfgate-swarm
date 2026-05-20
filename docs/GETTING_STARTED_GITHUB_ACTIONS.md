@@ -108,6 +108,12 @@ command and the resolved artifact paths to the job log and step summary. With
 `artifacts/perfgate/<bench>/` unless `out_dir` or `[defaults].out_dir`
 overrides the location.
 
+If the repo already produces Criterion, hyperfine, pytest-benchmark, k6, custom
+JSON, or custom CSV evidence, use
+[`ADOPTION_PACKS.md`](ADOPTION_PACKS.md) before wiring the workflow. Imported
+evidence workflows need an explicit install and import step before the Action
+reviews the generated perfgate artifacts.
+
 To surface structured scenario/tradeoff decisions in the job summary and PR
 comment, opt in to decision mode:
 
