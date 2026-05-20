@@ -1331,7 +1331,7 @@ pub struct IngestArgs {
     #[command(subcommand)]
     pub command: Option<IngestCommand>,
 
-    /// Input format: generic-command-json, criterion, hyperfine, gobench, k6, pytest, otel
+    /// Input format: generic-command-json, custom-json, custom-csv, criterion, hyperfine, gobench, k6, pytest, otel
     #[arg(long)]
     pub format: Option<String>,
 
@@ -1342,6 +1342,36 @@ pub struct IngestArgs {
     /// Benchmark name (default: derived from input data)
     #[arg(long)]
     pub name: Option<String>,
+
+    /// Custom JSON/CSV metric mapping, repeatable.
+    ///
+    /// Syntax: metric_name=field,unit=ms,direction=lower_is_better
+    #[arg(long = "metric")]
+    pub metric: Vec<String>,
+
+    /// Custom JSON/CSV sample identity field. Validated for every row.
+    #[arg(long = "sample-id-field")]
+    pub sample_id_field: Option<String>,
+
+    /// Custom JSON/CSV field containing host OS.
+    #[arg(long = "host-os-field")]
+    pub host_os_field: Option<String>,
+
+    /// Custom JSON/CSV field containing host architecture.
+    #[arg(long = "host-arch-field")]
+    pub host_arch_field: Option<String>,
+
+    /// Custom JSON/CSV field containing host CPU count.
+    #[arg(long = "host-cpu-count-field")]
+    pub host_cpu_count_field: Option<String>,
+
+    /// Custom JSON/CSV field containing host memory bytes.
+    #[arg(long = "host-memory-bytes-field")]
+    pub host_memory_bytes_field: Option<String>,
+
+    /// Custom JSON/CSV field containing a pre-hashed hostname.
+    #[arg(long = "host-hostname-hash-field")]
+    pub host_hostname_hash_field: Option<String>,
 
     /// Include span names when ingesting OTel JSON (exact match, repeatable).
     #[arg(long = "include-span")]
@@ -3137,6 +3167,13 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 format,
                 input,
                 name,
+                metric,
+                sample_id_field,
+                host_os_field,
+                host_arch_field,
+                host_cpu_count_field,
+                host_memory_bytes_field,
+                host_hostname_hash_field,
                 include_span,
                 exclude_span,
                 out,
@@ -3158,10 +3195,45 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
             let format = IngestFormat::parse(&format).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "unknown ingest format '{}'; supported: generic-command-json, criterion, hyperfine, gobench, k6, pytest, otel",
+                    "unknown ingest format '{}'; supported: generic-command-json, custom-json, custom-csv, criterion, hyperfine, gobench, k6, pytest, otel",
                     format
                 )
             })?;
+
+            let uses_custom_mapping =
+                matches!(format, IngestFormat::CustomCsv | IngestFormat::CustomJson);
+            let has_custom_mapping_args = !metric.is_empty()
+                || sample_id_field.is_some()
+                || host_os_field.is_some()
+                || host_arch_field.is_some()
+                || host_cpu_count_field.is_some()
+                || host_memory_bytes_field.is_some()
+                || host_hostname_hash_field.is_some();
+            if has_custom_mapping_args && !uses_custom_mapping {
+                anyhow::bail!(
+                    "custom mapping arguments require --format custom-json or --format custom-csv"
+                );
+            }
+
+            let custom = if uses_custom_mapping {
+                let metrics = metric
+                    .iter()
+                    .map(|raw| ingest::parse_custom_metric_mapping_spec(raw))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                Some(ingest::CustomMappingOptions {
+                    metrics,
+                    sample_id_field,
+                    host: ingest::CustomHostMapping {
+                        os_field: host_os_field,
+                        arch_field: host_arch_field,
+                        cpu_count_field: host_cpu_count_field,
+                        memory_bytes_field: host_memory_bytes_field,
+                        hostname_hash_field: host_hostname_hash_field,
+                    },
+                })
+            } else {
+                None
+            };
 
             let content = fs::read_to_string(&input)
                 .with_context(|| format!("read input file {}", input.display()))?;
@@ -3172,6 +3244,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 name,
                 include_spans: include_span,
                 exclude_spans: exclude_span,
+                custom,
             };
 
             let receipt = ingest::ingest(&request)?;
@@ -3193,6 +3266,26 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 }
                 eprintln!(
                     "Non-inferences: imported evidence remains advisory; no baseline was promoted; policy posture still requires policy doctor or review-packet output."
+                );
+            } else if matches!(format, IngestFormat::CustomCsv | IngestFormat::CustomJson) {
+                let source_kind = if format == IngestFormat::CustomJson {
+                    "custom_json"
+                } else {
+                    "custom_csv"
+                };
+                eprintln!(
+                    "Evidence source: {source_kind}; metrics were mapped only from explicit --metric field, unit, and direction declarations."
+                );
+                eprintln!(
+                    "Sample model: row-based samples; sample identity uses --sample-id-field when provided or row order otherwise."
+                );
+                if receipt.run.host.os == "unknown" || receipt.run.host.arch == "unknown" {
+                    eprintln!(
+                        "Host context: unknown or partial; do not infer host compatibility from this import."
+                    );
+                }
+                eprintln!(
+                    "Non-inferences: custom imports do not infer metric meaning, promote baselines, loosen thresholds, or make evidence blocking without maturity and policy review."
                 );
             } else if format == IngestFormat::Hyperfine {
                 eprintln!(
