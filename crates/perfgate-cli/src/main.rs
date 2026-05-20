@@ -1331,7 +1331,7 @@ pub struct IngestArgs {
     #[command(subcommand)]
     pub command: Option<IngestCommand>,
 
-    /// Input format: generic-command-json, criterion, hyperfine, gobench, pytest, otel
+    /// Input format: generic-command-json, criterion, hyperfine, gobench, k6, pytest, otel
     #[arg(long)]
     pub format: Option<String>,
 
@@ -3158,7 +3158,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
 
             let format = IngestFormat::parse(&format).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "unknown ingest format '{}'; supported: generic-command-json, criterion, hyperfine, gobench, pytest, otel",
+                    "unknown ingest format '{}'; supported: generic-command-json, criterion, hyperfine, gobench, k6, pytest, otel",
                     format
                 )
             })?;
@@ -3231,6 +3231,24 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 }
                 eprintln!(
                     "Non-inferences: Criterion statistics are not perfgate maturity policy; imported evidence remains advisory until baseline, signal, and policy surfaces support promotion."
+                );
+            } else if format == IngestFormat::K6SummaryJson {
+                eprintln!(
+                    "Evidence source: k6_summary_json; HTTP latency summaries were mapped to lower-is-better wall_ms and request rate was mapped to higher-is-better throughput_per_s when present."
+                );
+                eprintln!(
+                    "Sample model: summary-only HTTP/load-test evidence; k6 summary JSON does not provide raw per-request samples to perfgate.run.v1."
+                );
+                if receipt.run.host.os == "unknown" || receipt.run.host.arch == "unknown" {
+                    eprintln!(
+                        "Host context: unknown; do not infer host compatibility from this import."
+                    );
+                }
+                eprintln!(
+                    "Policy posture: imported k6 evidence can support smoke, advisory, or candidate policy review, but local/shared-runner output is not production capacity proof."
+                );
+                eprintln!(
+                    "Non-inferences: successful import does not promote a baseline, prove production capacity, or make load evidence blocking without maturity and policy review."
                 );
             } else if format == IngestFormat::PytestBenchmark {
                 eprintln!(
