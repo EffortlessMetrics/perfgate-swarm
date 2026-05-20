@@ -3248,7 +3248,8 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
                 custom,
             };
 
-            let receipt = ingest::ingest(&request)?;
+            let mut receipt = ingest::ingest(&request)?;
+            annotate_ingest_receipt(&mut receipt, format, &input);
             write_json(&out, &receipt, pretty)?;
             eprintln!("Ingested {} -> {}", input.display(), out.display());
             if format == IngestFormat::GenericCommandJson {
@@ -3438,6 +3439,40 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         Command::Comment(args) => execute_comment(*args),
         Command::Trend(args) => execute_trend(*args),
     }
+}
+
+fn annotate_ingest_receipt(receipt: &mut RunReceipt, format: IngestFormat, input_path: &Path) {
+    push_receipt_metadata(
+        &mut receipt.bench.command,
+        format!("source_kind={}", ingest_source_kind(format)),
+    );
+    push_receipt_metadata(
+        &mut receipt.bench.command,
+        format!("source_path={}", input_path.display()),
+    );
+}
+
+fn ingest_source_kind(format: IngestFormat) -> &'static str {
+    match format {
+        IngestFormat::Criterion => "criterion",
+        IngestFormat::CustomCsv => "custom_csv",
+        IngestFormat::CustomJson => "custom_json",
+        IngestFormat::GenericCommandJson => "generic_command_json",
+        IngestFormat::Hyperfine => "hyperfine_json",
+        IngestFormat::GoBench => "gobench",
+        IngestFormat::K6SummaryJson => "k6_summary_json",
+        IngestFormat::PytestBenchmark => "pytest_benchmark_json",
+        IngestFormat::Otel => "otel",
+    }
+}
+
+fn push_receipt_metadata(command: &mut Vec<String>, metadata: String) {
+    let key = metadata.split_once('=').map(|(key, _)| key).unwrap_or("");
+    let prefix = format!("{key}=");
+    if !key.is_empty() && command.iter().any(|arg| arg.starts_with(&prefix)) {
+        return;
+    }
+    command.push(metadata);
 }
 
 fn execute_ingest_probes(args: IngestProbesArgs) -> anyhow::Result<()> {

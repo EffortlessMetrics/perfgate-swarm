@@ -124,6 +124,10 @@ fn write_imported_summary_receipt(path: &Path, bench: &str) {
             "name": bench,
             "command": [
                 "(ingested k6 summary JSON)",
+                "source_kind=k6_summary_json",
+                "source_path=artifacts/k6-summary.json",
+                "latency_metric=http_req_duration",
+                "throughput_metric=http_reqs",
                 "sample_model=summary_only",
                 "capacity_proof=not_production"
             ],
@@ -639,6 +643,33 @@ fn policy_review_packet_can_write_markdown_artifact_for_setup_state() {
     assert!(packet.contains("- Recommended posture: `advisory`"));
     assert!(packet.contains("baseline promotion after workload review"));
     assert!(packet.contains("do not loosen thresholds or promote baselines"));
+}
+
+#[test]
+fn policy_review_packet_explains_imported_source_mapping_and_limits() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_imported_summary_receipt(
+        &dir.path().join("baselines/policy-bench.json"),
+        "policy-bench",
+    );
+    write_imported_summary_receipt(
+        &dir.path().join("artifacts/perfgate/policy-bench/run.json"),
+        "policy-bench",
+    );
+
+    let packet = policy_review_packet_stdout(dir.path());
+
+    assert!(packet.contains("## Imported Evidence"));
+    assert!(packet.contains("- Evidence source: `imported (k6_summary_json)`"));
+    assert!(packet.contains("- Source kind: `k6_summary_json`"));
+    assert!(packet.contains("- Source path: `artifacts/k6-summary.json`"));
+    assert!(packet.contains("- Metric mapping:"));
+    assert!(packet.contains("`wall_ms <= http_req_duration"));
+    assert!(packet.contains("`throughput_per_s <= http_reqs.rate"));
+    assert!(packet.contains("summary-only evidence has limited noise support"));
+    assert!(packet.contains("raw-sample or paired evidence before blocking"));
+    assert!(packet.contains("do not make advisory evidence blocking by default"));
 }
 
 fn policy_review_packet_stdout(dir: &Path) -> String {
