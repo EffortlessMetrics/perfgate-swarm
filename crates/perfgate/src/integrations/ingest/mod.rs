@@ -4,12 +4,14 @@
 //! - **Criterion** (`target/criterion/**/new/estimates.json`)
 //! - **hyperfine** (`--export-json` output)
 //! - **Go benchmark** (`go test -bench . -benchmem` text output)
+//! - **k6** (`--summary-export` or `handleSummary()` summary JSON)
 //! - **pytest-benchmark** (`.benchmarks/*.json`)
 
 mod criterion;
 mod generic_command_json;
 mod gobench;
 mod hyperfine;
+mod k6;
 mod otel;
 mod probes;
 mod pytest;
@@ -25,6 +27,7 @@ pub use criterion::parse_criterion;
 pub use generic_command_json::parse_generic_command_json;
 pub use gobench::parse_gobench;
 pub use hyperfine::parse_hyperfine;
+pub use k6::parse_k6_summary_json;
 pub use otel::parse_otel_json;
 pub use probes::{ProbeIngestRequest, ingest_probes_jsonl};
 pub use pytest::parse_pytest_benchmark;
@@ -36,6 +39,7 @@ pub enum IngestFormat {
     GenericCommandJson,
     Hyperfine,
     GoBench,
+    K6SummaryJson,
     PytestBenchmark,
     Otel,
 }
@@ -50,6 +54,9 @@ impl IngestFormat {
             }
             "hyperfine" => Some(Self::Hyperfine),
             "gobench" | "go" => Some(Self::GoBench),
+            "k6" | "k6-summary-json" | "k6_summary_json" | "k6-summary" | "k6_summary" => {
+                Some(Self::K6SummaryJson)
+            }
             "pytest" | "pytest-benchmark" | "pytest_benchmark" => Some(Self::PytestBenchmark),
             "otel" | "opentelemetry" => Some(Self::Otel),
             _ => None,
@@ -80,6 +87,9 @@ pub fn ingest(request: &IngestRequest) -> anyhow::Result<RunReceipt> {
         }
         IngestFormat::Hyperfine => parse_hyperfine(&request.input, request.name.as_deref()),
         IngestFormat::GoBench => parse_gobench(&request.input, request.name.as_deref()),
+        IngestFormat::K6SummaryJson => {
+            parse_k6_summary_json(&request.input, request.name.as_deref())
+        }
         IngestFormat::PytestBenchmark => {
             parse_pytest_benchmark(&request.input, request.name.as_deref())
         }
@@ -245,6 +255,15 @@ mod tests {
         );
         assert_eq!(IngestFormat::parse("gobench"), Some(IngestFormat::GoBench));
         assert_eq!(IngestFormat::parse("go"), Some(IngestFormat::GoBench));
+        assert_eq!(IngestFormat::parse("k6"), Some(IngestFormat::K6SummaryJson));
+        assert_eq!(
+            IngestFormat::parse("k6-summary-json"),
+            Some(IngestFormat::K6SummaryJson)
+        );
+        assert_eq!(
+            IngestFormat::parse("k6_summary_json"),
+            Some(IngestFormat::K6SummaryJson)
+        );
         assert_eq!(
             IngestFormat::parse("pytest"),
             Some(IngestFormat::PytestBenchmark)

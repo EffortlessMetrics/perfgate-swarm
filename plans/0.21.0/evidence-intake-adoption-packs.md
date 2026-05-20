@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-19
 Milestone: 0.21.0
-Current PR: TBD
+Current PR: ingest/k6-summary-json-adapter
 Linked proposal: [`PERFGATE-PROP-0008-evidence-intake-adoption-packs`](../../docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md)
 Linked specs: [`PERFGATE-SPEC-0013-evidence-source-contract`](../../docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -73,7 +73,7 @@ schema-compat proof.
 | 585 | hyperfine JSON adapter | merged | hyperfine fixtures, unit/direction/sample mapping |
 | 591 | Criterion adapter | merged | Criterion fixtures and non-inference docs |
 | 597 | pytest-benchmark JSON adapter | merged | Python benchmark fixtures and environment limits |
-| TBD | k6 summary JSON adapter | pending | HTTP/load-test fixtures and capacity non-inferences |
+| TBD | k6 summary JSON adapter | in progress | HTTP/load-test fixtures and capacity non-inferences |
 | TBD | Custom JSON/CSV mapping | pending | explicit field mapping and fail-closed errors |
 | TBD | Imported evidence maturity integration | pending | baseline doctor, signal doctor, calibration/policy surfaces |
 | TBD | Review packet and Action posture | pending | report/comment/action-check coverage |
@@ -272,7 +272,7 @@ git diff --check
 
 ## Work item: k6-summary-json-adapter
 
-Status: pending
+Status: in progress
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: http-adoption-pack, external-non-rust-canary
