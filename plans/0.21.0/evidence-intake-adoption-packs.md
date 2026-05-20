@@ -1,10 +1,10 @@
 # perfgate 0.21.0 Evidence Intake and Adoption Packs Plan
 
-Status: active
+Status: implemented
 Owner: perfgate maintainers
 Created: 2026-05-19
 Milestone: 0.21.0
-Current PR: dogfood/non-rust-intake-canary
+Current PR: docs/evidence-intake-closeout
 Linked proposal: [`PERFGATE-PROP-0008-evidence-intake-adoption-packs`](../../docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md)
 Linked specs: [`PERFGATE-SPEC-0013-evidence-source-contract`](../../docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -81,8 +81,8 @@ schema-compat proof.
 | 20 | Adoption pack docs | merged | user-facing intake and anti-pattern guidance |
 | 22 | Product claims and canary freshness | merged | `docs/status/PRODUCT_CLAIMS.md`, `docs/status/CANARY_MATRIX.md` |
 | 24 | External Rust canary | merged | existing benchmark repo import-to-review path |
-| TBD | External non-Rust canary | in progress | command/HTTP/import-to-review path |
-| TBD | Final closeout | pending | handoff and archived active goal |
+| 25 | External non-Rust canary | merged | command/HTTP/import-to-review path |
+| TBD | Final closeout | merged | handoff and archived active goal |
 
 ## Work item: implementation-plan
 
@@ -508,7 +508,7 @@ scope, confusion/fixes, proof, non-inferences, and freshness.
 
 ## Work item: external-non-rust-canary
 
-Status: in progress
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: final-closeout
@@ -526,7 +526,7 @@ which non-Rust assumptions remain unproven.
 
 ## Work item: final-closeout
 
-Status: pending
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks:

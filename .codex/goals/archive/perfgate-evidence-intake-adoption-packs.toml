@@ -1,11 +1,13 @@
 id = "perfgate-evidence-intake-adoption-packs"
 title = "perfgate 0.21 evidence intake and adoption packs"
-status = "active"
+status = "completed"
 owner = "codex"
 created = "2026-05-19"
+completed = "2026-05-20"
 milestone = "0.21.0"
-current_work_item = "external-non-rust-canary"
-current_pr = "dogfood/non-rust-intake-canary"
+current_work_item = "final-closeout"
+current_pr = "docs/evidence-intake-closeout"
+archive_reason = "The 0.21 evidence intake lane landed source contracts, adapters for generic command JSON, hyperfine, Criterion, pytest-benchmark, k6, custom JSON, and custom CSV, imported-evidence maturity and policy surfaces, adoption packs, product claims, Rust and non-Rust external canaries, and closeout handoff."
 
 objective = """
 Make perfgate useful for teams that already have benchmark ecosystems by
@@ -31,6 +33,7 @@ end_state = [
 linked_proposal = "docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md"
 linked_spec = "docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md"
 linked_plan = "plans/0.21.0/evidence-intake-adoption-packs.md"
+linked_handoff = "docs/handoffs/2026-05-20-evidence-intake-adoption-packs-closeout.md"
 
 linked_specs = [
   "docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md",
@@ -163,8 +166,8 @@ status = "merged"
 
 [[work_item]]
 id = "external-non-rust-canary"
-status = "in_progress"
+status = "merged"
 
 [[work_item]]
 id = "final-closeout"
-status = "pending"
+status = "merged"
