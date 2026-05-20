@@ -53,11 +53,12 @@ jobs:
           fi
 
           if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "target=github" >> "$GITHUB_OUTPUT"
+            echo "::error::EM_RUNNER_READ_TOKEN is missing for ${REPO}; perfgate-swarm must prove routed self-hosted CI or explicit busy-runner fallback."
+            echo "target=unconfigured" >> "$GITHUB_OUTPUT"
             echo "reason=missing_runner_token" >> "$GITHUB_OUTPUT"
-            echo "router_target=github"
+            echo "router_target=unconfigured"
             echo "router_reason=missing_runner_token"
-            exit 0
+            exit 1
           fi
 
           api="https://api.github.com/orgs/${GITHUB_REPOSITORY_OWNER}/actions/runners?per_page=100"
@@ -66,11 +67,12 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "$api")"; then
-            echo "target=github" >> "$GITHUB_OUTPUT"
+            echo "::error::Unable to read org runners; cannot prove CX43/CX53 routing."
+            echo "target=unconfigured" >> "$GITHUB_OUTPUT"
             echo "reason=runner_api_failed" >> "$GITHUB_OUTPUT"
-            echo "router_target=github"
+            echo "router_target=unconfigured"
             echo "router_reason=runner_api_failed"
-            exit 0
+            exit 1
           fi
 
           idle_with_labels() {
