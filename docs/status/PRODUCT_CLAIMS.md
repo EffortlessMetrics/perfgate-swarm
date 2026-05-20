@@ -979,8 +979,9 @@ Known limits:
 - Successful import does not prove benchmark maturity, host compatibility, or
   baseline quality.
 - Summary-only imports have weaker noise support than raw samples.
-- Current proof includes in-repo fixtures and one source-built external Rust CLI
-  generic-command canary. Non-Rust intake canaries remain pending.
+- Current proof includes in-repo fixtures, one source-built external Rust CLI
+  generic-command canary, and one source-built external non-Rust TypeScript
+  command canary.
 
 Review after: next-evidence-intake-change
 
@@ -1064,8 +1065,9 @@ Known limits:
 - Adoption packs are starting points, not automatic benchmark selection.
 - They do not promote baselines, loosen thresholds, make checks blocking, or
   require server ledger mode.
-- One source-built Rust CLI canary has proven the generic-command intake path,
-  but non-Rust command/HTTP adoption remains unproven.
+- Source-built Rust CLI and non-Rust TypeScript command canaries have proven
+  the generic-command intake path, but HTTP/k6 adoption and public-release
+  intake proof remain unproven.
 - Source-built adoption-pack docs are not public release proof.
 
 Review after: next-evidence-intake-change
