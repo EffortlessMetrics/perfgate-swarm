@@ -712,11 +712,32 @@ fn render_policy_review_packet(
             "- Evidence source: `{}`\n",
             imported.source_label()
         ));
+        out.push_str(&format!(
+            "- Source path: `{}`\n",
+            imported.source_path.as_deref().unwrap_or("unrecorded")
+        ));
         out.push_str(&format!("- Sample model: `{}`\n", imported.sample_model));
         out.push_str(&format!("- Host context: `{}`\n", imported.host_context));
         out.push_str(&format!("- Noise support: `{}`\n", imported.noise_support));
     } else {
         out.push_str("- Evidence source: `native perfgate run`\n");
+    }
+
+    if let Some(imported) = policy_imported_evidence(baseline, signal) {
+        out.push_str("\n## Imported Evidence\n\n");
+        out.push_str(&format!("- Source kind: `{}`\n", imported.source_kind));
+        out.push_str(&format!(
+            "- Source path: `{}`\n",
+            imported.source_path.as_deref().unwrap_or("unrecorded")
+        ));
+        out.push_str("- Metric mapping:\n");
+        for mapping in &imported.metric_mappings {
+            out.push_str(&format!("  - `{mapping}`\n"));
+        }
+        out.push_str("- Maturity limits:\n");
+        for limit in imported.limitations() {
+            out.push_str(&format!("  - {limit}\n"));
+        }
     }
 
     out.push_str("\n## Artifacts\n\n");
@@ -1062,9 +1083,17 @@ fn print_policy_imported_evidence(imported: Option<&ImportedEvidenceSummary>) {
     };
 
     println!("evidence source: {}", imported.source_label());
+    println!(
+        "source path: {}",
+        imported.source_path.as_deref().unwrap_or("unrecorded")
+    );
     println!("sample model: {}", imported.sample_model);
     println!("host context: {}", imported.host_context);
     println!("noise support: {}", imported.noise_support);
+    println!("metric mappings:");
+    for mapping in &imported.metric_mappings {
+        println!("  - {mapping}");
+    }
     println!("source limits:");
     for limit in imported.limitations() {
         println!("  - {limit}");

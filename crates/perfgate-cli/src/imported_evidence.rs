@@ -9,6 +9,8 @@ use perfgate_types::RunReceipt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportedEvidenceSummary {
     pub(crate) source_kind: String,
+    pub(crate) source_path: Option<String>,
+    pub(crate) metric_mappings: Vec<String>,
     pub(crate) sample_model: &'static str,
     pub(crate) host_context: &'static str,
     pub(crate) noise_support: &'static str,
@@ -39,6 +41,8 @@ pub(crate) fn summarize_imported_receipt(receipt: &RunReceipt) -> Option<Importe
     }
 
     let source_kind = source_kind(receipt);
+    let source_path = command_metadata(receipt, "source_path");
+    let metric_mappings = metric_mappings(receipt, &source_kind);
     let sample_model = sample_model(receipt);
     let host_context = host_context(receipt);
     let noise_support = noise_support(receipt, sample_model);
@@ -59,9 +63,14 @@ pub(crate) fn summarize_imported_receipt(receipt: &RunReceipt) -> Option<Importe
             "run.v1 receipt does not record adapter source kind; review the ingest command or source artifact",
         );
     }
+    if source_path.is_none() {
+        limitations.push("run.v1 receipt does not record adapter source path");
+    }
 
     Some(ImportedEvidenceSummary {
         source_kind,
+        source_path,
+        metric_mappings,
         sample_model,
         host_context,
         noise_support,
@@ -88,9 +97,157 @@ fn source_kind(receipt: &RunReceipt) -> String {
         "(ingested Criterion benchmark)" => "criterion".to_string(),
         "(ingested pytest-benchmark JSON)" => "pytest_benchmark_json".to_string(),
         "(ingested k6 summary JSON)" => "k6_summary_json".to_string(),
+        "(ingested custom JSON)" => "custom_json".to_string(),
+        "(ingested custom CSV)" => "custom_csv".to_string(),
         "(ingested)" => "ingested_run_v1".to_string(),
         _ => "unrecorded_ingest_source".to_string(),
     }
+}
+
+fn command_metadata(receipt: &RunReceipt, key: &str) -> Option<String> {
+    let prefix = format!("{key}=");
+    receipt
+        .bench
+        .command
+        .iter()
+        .find_map(|arg| arg.strip_prefix(&prefix))
+        .map(str::to_string)
+}
+
+fn command_metadata_all(receipt: &RunReceipt, key: &str) -> Vec<String> {
+    let prefix = format!("{key}=");
+    receipt
+        .bench
+        .command
+        .iter()
+        .filter_map(|arg| arg.strip_prefix(&prefix))
+        .map(str::to_string)
+        .collect()
+}
+
+fn metric_mappings(receipt: &RunReceipt, source_kind: &str) -> Vec<String> {
+    let explicit = command_metadata_all(receipt, "metric_mapping");
+    if !explicit.is_empty() {
+        return explicit
+            .into_iter()
+            .map(|mapping| format_custom_mapping(&mapping))
+            .collect();
+    }
+
+    match source_kind {
+        "k6_summary_json" => k6_metric_mappings(receipt),
+        "hyperfine_json" => hyperfine_metric_mappings(receipt),
+        "criterion" => criterion_metric_mappings(receipt),
+        "pytest_benchmark_json" => pytest_metric_mappings(receipt),
+        "generic_command_json" => generic_metric_mappings(receipt),
+        _ => fallback_metric_mappings(receipt),
+    }
+}
+
+fn format_custom_mapping(mapping: &str) -> String {
+    let parts: Vec<&str> = mapping.split(':').collect();
+    if parts.len() == 4 {
+        format!("{} <= {} ({}, {})", parts[0], parts[1], parts[2], parts[3])
+    } else {
+        mapping.to_string()
+    }
+}
+
+fn k6_metric_mappings(receipt: &RunReceipt) -> Vec<String> {
+    let mut mappings = Vec::new();
+    let latency = command_metadata(receipt, "latency_metric")
+        .unwrap_or_else(|| "http_req_duration".to_string());
+    let time_unit = command_metadata(receipt, "summary_time_unit").unwrap_or_else(|| "ms".into());
+    mappings.push(format!(
+        "wall_ms <= {latency} ({time_unit}->ms, lower_is_better)"
+    ));
+    if let Some(throughput) = command_metadata(receipt, "throughput_metric") {
+        mappings.push(format!(
+            "throughput_per_s <= {throughput}.rate (requests/s, higher_is_better)"
+        ));
+    }
+    mappings
+}
+
+fn hyperfine_metric_mappings(receipt: &RunReceipt) -> Vec<String> {
+    let mut mappings =
+        vec!["wall_ms <= hyperfine times (seconds->ms, lower_is_better)".to_string()];
+    if receipt.stats.cpu_ms.is_some() {
+        mappings.push("cpu_ms <= hyperfine user+system (seconds->ms, lower_is_better)".to_string());
+    }
+    mappings
+}
+
+fn criterion_metric_mappings(receipt: &RunReceipt) -> Vec<String> {
+    let mut mappings =
+        vec!["wall_ms <= Criterion wall-time (ns/us/ms/s->ms, lower_is_better)".to_string()];
+    if receipt.bench.work_units.is_some() {
+        mappings.push("bench.work_units <= Criterion throughput per_iteration".to_string());
+    }
+    mappings
+}
+
+fn pytest_metric_mappings(receipt: &RunReceipt) -> Vec<String> {
+    let mut mappings =
+        vec!["wall_ms <= pytest-benchmark seconds (seconds->ms, lower_is_better)".to_string()];
+    if receipt.stats.throughput_per_s.is_some() {
+        mappings
+            .push("throughput_per_s <= pytest-benchmark ops (ops/s, higher_is_better)".to_string());
+    }
+    mappings
+}
+
+fn generic_metric_mappings(receipt: &RunReceipt) -> Vec<String> {
+    fallback_metric_mappings(receipt)
+        .into_iter()
+        .map(|mapping| format!("{mapping}; source declared explicit unit and direction"))
+        .collect()
+}
+
+fn fallback_metric_mappings(receipt: &RunReceipt) -> Vec<String> {
+    let mut mappings = vec!["wall_ms <= source wall-time metric (ms, lower_is_better)".to_string()];
+    if receipt.stats.cpu_ms.is_some() {
+        mappings.push("cpu_ms <= source cpu metric (ms, lower_is_better)".to_string());
+    }
+    if receipt.stats.page_faults.is_some() {
+        mappings
+            .push("page_faults <= source page-fault metric (count, lower_is_better)".to_string());
+    }
+    if receipt.stats.ctx_switches.is_some() {
+        mappings.push(
+            "ctx_switches <= source context-switch metric (count, lower_is_better)".to_string(),
+        );
+    }
+    if receipt.stats.max_rss_kb.is_some() {
+        mappings.push("max_rss_kb <= source memory metric (KiB, lower_is_better)".to_string());
+    }
+    if receipt.stats.io_read_bytes.is_some() {
+        mappings
+            .push("io_read_bytes <= source I/O read metric (bytes, lower_is_better)".to_string());
+    }
+    if receipt.stats.io_write_bytes.is_some() {
+        mappings
+            .push("io_write_bytes <= source I/O write metric (bytes, lower_is_better)".to_string());
+    }
+    if receipt.stats.network_packets.is_some() {
+        mappings.push(
+            "network_packets <= source network packet metric (count, lower_is_better)".to_string(),
+        );
+    }
+    if receipt.stats.energy_uj.is_some() {
+        mappings.push("energy_uj <= source energy metric (uJ, lower_is_better)".to_string());
+    }
+    if receipt.stats.binary_bytes.is_some() {
+        mappings
+            .push("binary_bytes <= source binary-size metric (bytes, lower_is_better)".to_string());
+    }
+    if receipt.stats.throughput_per_s.is_some() {
+        mappings.push(
+            "throughput_per_s <= source throughput metric (per-second, higher_is_better)"
+                .to_string(),
+        );
+    }
+    mappings
 }
 
 fn sample_model(receipt: &RunReceipt) -> &'static str {
@@ -215,6 +372,7 @@ mod tests {
             vec![
                 "(ingested k6 summary JSON)".to_string(),
                 "sample_model=summary_only".to_string(),
+                "source_path=artifacts/k6-summary.json".to_string(),
             ],
             0,
             "unknown",
@@ -224,11 +382,47 @@ mod tests {
         let summary = summarize_imported_receipt(&receipt).expect("imported summary");
 
         assert_eq!(summary.source_kind, "k6_summary_json");
+        assert_eq!(
+            summary.source_path.as_deref(),
+            Some("artifacts/k6-summary.json")
+        );
         assert_eq!(summary.sample_model, "summary_only");
         assert_eq!(summary.host_context, "missing_or_partial");
         assert_eq!(summary.noise_support, "limited_summary_only");
+        assert!(
+            summary
+                .metric_mappings
+                .iter()
+                .any(|mapping| mapping.contains("wall_ms <= http_req_duration"))
+        );
         assert!(summary.is_summary_only());
         assert!(summary.has_missing_host_context());
+    }
+
+    #[test]
+    fn formats_custom_metric_metadata() {
+        let receipt = imported_receipt(
+            vec![
+                "(ingested custom JSON)".to_string(),
+                "source_kind=custom_json".to_string(),
+                "metric_mapping=wall_ms:duration_ms:ms:lower_is_better".to_string(),
+                "metric_mapping=throughput_per_s:rps:rps:higher_is_better".to_string(),
+            ],
+            2,
+            "linux",
+            "x86_64",
+        );
+
+        let summary = summarize_imported_receipt(&receipt).expect("imported summary");
+
+        assert_eq!(summary.source_kind, "custom_json");
+        assert_eq!(
+            summary.metric_mappings,
+            vec![
+                "wall_ms <= duration_ms (ms, lower_is_better)".to_string(),
+                "throughput_per_s <= rps (rps, higher_is_better)".to_string(),
+            ]
+        );
     }
 
     #[test]
