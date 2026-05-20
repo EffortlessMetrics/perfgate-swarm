@@ -750,6 +750,190 @@ fn test_ingest_k6_summary_json_missing_latency_fails_actionably() {
 }
 
 #[test]
+fn test_ingest_custom_json_writes_run_receipt() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("custom.json");
+    let output_path = temp_dir.path().join("run.json");
+
+    fs::write(
+        &input_path,
+        r#"{
+  "benchmark": {"name": "api-smoke"},
+  "host": {"os": "linux", "arch": "x86_64", "cpu_count": "8"},
+  "samples": [
+    {"sample_id": "a", "duration_ms": 101.0, "rps": 40.0},
+    {"sample_id": "b", "duration_ms": 99.0, "rps": 42.0},
+    {"sample_id": "c", "duration_ms": 105.0, "rps": 39.0}
+  ]
+}"#,
+    )
+    .expect("failed to write custom JSON input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("custom-json")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--metric")
+        .arg("wall_ms=duration_ms,unit=ms,direction=lower_is_better")
+        .arg("--metric")
+        .arg("throughput_per_s=rps,unit=requests/s,direction=higher_is_better")
+        .arg("--sample-id-field")
+        .arg("sample_id")
+        .arg("--host-os-field")
+        .arg("host.os")
+        .arg("--host-arch-field")
+        .arg("host.arch")
+        .arg("--host-cpu-count-field")
+        .arg("host.cpu_count")
+        .arg("--out")
+        .arg(&output_path);
+
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Evidence source: custom_json"))
+        .stderr(predicate::str::contains("explicit --metric"))
+        .stderr(predicate::str::contains("row-based samples"));
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read ingest output"),
+    )
+    .expect("ingest output should be JSON");
+
+    assert_eq!(receipt["schema"], "perfgate.run.v1");
+    assert_eq!(receipt["bench"]["name"], "api-smoke");
+    assert_eq!(receipt["bench"]["repeat"], 3);
+    assert_eq!(receipt["run"]["host"]["os"], "linux");
+    assert_eq!(receipt["run"]["host"]["arch"], "x86_64");
+    assert_eq!(receipt["run"]["host"]["cpu_count"], 8);
+    assert_eq!(receipt["samples"].as_array().map(Vec::len), Some(3));
+    assert_eq!(receipt["stats"]["wall_ms"]["median"], 101);
+    assert_eq!(receipt["stats"]["throughput_per_s"]["median"], 40.0);
+    assert!(
+        receipt["bench"]["command"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry == "sample_identity_field=sample_id")
+    );
+}
+
+#[test]
+fn test_ingest_custom_csv_writes_run_receipt() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("custom.csv");
+    let output_path = temp_dir.path().join("run.json");
+
+    fs::write(
+        &input_path,
+        "duration_ms,rss_bytes\n120,1048576\n118,2097152\n",
+    )
+    .expect("failed to write custom CSV input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("custom-csv")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--name")
+        .arg("csv-smoke")
+        .arg("--metric")
+        .arg("wall_ms=duration_ms,unit=ms,direction=lower_is_better")
+        .arg("--metric")
+        .arg("max_rss_kb=rss_bytes,unit=bytes,direction=lower_is_better")
+        .arg("--out")
+        .arg(&output_path);
+
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Evidence source: custom_csv"))
+        .stderr(predicate::str::contains("Host context: unknown or partial"));
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read ingest output"),
+    )
+    .expect("ingest output should be JSON");
+
+    assert_eq!(receipt["bench"]["name"], "csv-smoke");
+    assert_eq!(receipt["samples"].as_array().map(Vec::len), Some(2));
+    assert_eq!(receipt["stats"]["wall_ms"]["median"], 119);
+    assert_eq!(receipt["samples"][0]["max_rss_kb"], 1024);
+}
+
+#[test]
+fn test_ingest_custom_json_missing_wall_mapping_fails_actionably() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("custom-missing-wall.json");
+
+    fs::write(&input_path, r#"[{"rps": 10.0}]"#).expect("failed to write custom JSON input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("custom-json")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--name")
+        .arg("bad")
+        .arg("--metric")
+        .arg("throughput_per_s=rps,unit=rps,direction=higher_is_better");
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "requires a wall_ms metric mapping",
+    ));
+}
+
+#[test]
+fn test_ingest_custom_json_ambiguous_unit_fails_actionably() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("custom-ambiguous-unit.json");
+
+    fs::write(&input_path, r#"[{"duration": 10.0}]"#).expect("failed to write custom JSON input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("custom-json")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--name")
+        .arg("bad")
+        .arg("--metric")
+        .arg("wall_ms=duration,unit=duration,direction=lower_is_better");
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("unsupported or ambiguous unit"));
+}
+
+#[test]
+fn test_ingest_custom_csv_parse_error_is_actionable() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("custom-bad.csv");
+
+    fs::write(&input_path, "duration_ms,rps\n100,10\n200\n")
+        .expect("failed to write custom CSV input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("custom-csv")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--name")
+        .arg("bad")
+        .arg("--metric")
+        .arg("wall_ms=duration_ms,unit=ms,direction=lower_is_better");
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("custom CSV line 3"))
+        .stderr(predicate::str::contains("duration_ms,rps").not());
+}
+
+#[test]
 fn test_ingest_probes_writes_probe_receipt() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let input_path = temp_dir.path().join("probes.jsonl");
