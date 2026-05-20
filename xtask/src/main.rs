@@ -1112,6 +1112,8 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
         line == "echo \"Blocking behavior: this action preserves existing perfgate exit-code behavior; maturity guidance is advisory unless your config already makes it blocking.\""
     }) || !policy_summary_lines.iter().any(|line| {
         line == "echo \"Advisory signal: missing baselines remain setup guidance unless this workflow enables required-baseline mode.\""
+    }) || !policy_summary_lines.iter().any(|line| {
+        line == "echo \"Imported evidence: policy doctor output includes source kind, source path, metric mapping, maturity limits, and advisory boundaries when receipts expose them.\""
     }) || !policy_summary_lines
         .iter()
         .any(|line| line == "echo \"Blocking gate: required-baseline mode is enabled.\"")
@@ -6817,6 +6819,7 @@ runs:
           echo "Blocking behavior: this action preserves existing perfgate exit-code behavior; maturity guidance is advisory unless your config already makes it blocking."
           echo "Advisory signal: missing baselines remain setup guidance unless this workflow enables required-baseline mode."
           echo "Blocking gate: required-baseline mode is enabled."
+          echo "Imported evidence: policy doctor output includes source kind, source path, metric mapping, maturity limits, and advisory boundaries when receipts expose them."
           echo "Policy review required: ${review_reason}"
           printf '%s\n' '```bash'
           printf '%s\n' '```text'

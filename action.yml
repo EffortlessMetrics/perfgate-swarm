@@ -502,6 +502,7 @@ runs:
           else
             echo "Advisory signal: missing baselines remain setup guidance unless this workflow enables required-baseline mode."
           fi
+          echo "Imported evidence: policy doctor output includes source kind, source path, metric mapping, maturity limits, and advisory boundaries when receipts expose them."
           if [[ -n "${verdict}" ]]; then
             echo "Gate verdict: \`${verdict}\` (check exit code \`${exit_code}\`)."
           else

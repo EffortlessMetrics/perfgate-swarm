@@ -75,8 +75,8 @@ schema-compat proof.
 | 597 | pytest-benchmark JSON adapter | merged | Python benchmark fixtures and environment limits |
 | 4 | k6 summary JSON adapter | merged | HTTP/load-test fixtures and capacity non-inferences |
 | 6 | Custom JSON/CSV mapping | merged | explicit field mapping and fail-closed errors |
-| TBD | Imported evidence maturity integration | in progress | baseline doctor, signal doctor, calibration/policy surfaces |
-| TBD | Review packet and Action posture | pending | report/comment/action-check coverage |
+| 8 | Imported evidence maturity integration | merged | baseline doctor, signal doctor, calibration/policy surfaces |
+| TBD | Review packet and Action posture | in progress | report/comment/action-check coverage |
 | TBD | Adoption pack catalog | pending | Rust CLI, Rust workspace, Python, Node, HTTP, generic command packs |
 | TBD | Adoption pack docs | pending | user-facing intake and anti-pattern guidance |
 | TBD | Product claims and canary freshness | pending | `docs/status/PRODUCT_CLAIMS.md`, `docs/status/CANARY_MATRIX.md` |
@@ -360,7 +360,7 @@ git diff --check
 
 ## Work item: review-packet-action-posture
 
-Status: pending
+Status: in progress
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: external canaries

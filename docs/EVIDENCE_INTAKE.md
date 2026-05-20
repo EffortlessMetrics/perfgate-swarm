@@ -389,6 +389,25 @@ perfgate policy doctor --config perfgate.toml --bench api-smoke
 perfgate policy review-packet --config perfgate.toml --bench api-smoke --out artifacts/perfgate/review-packet.md
 ```
 
+Review packets and GitHub Action posture summaries keep imported evidence
+advisory and reviewable. When the receipt records adapter metadata, these
+surfaces name:
+
+```text
+source kind
+source path
+metric mapping
+sample model
+host context
+noise support
+maturity limits
+```
+
+If a source path or mapping is missing, the packet says so instead of treating
+the import as native proof. The Action summary keeps the existing check verdict
+and reproduction commands; imported evidence is surfaced through policy doctor
+output and the review-packet command.
+
 Do not infer:
 
 - field names alone define metric meaning;
