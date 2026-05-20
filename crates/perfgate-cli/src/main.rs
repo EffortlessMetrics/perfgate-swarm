@@ -1,5 +1,6 @@
 //! perfgate CLI - entry point for all workflows.
 
+mod adoption_packs;
 mod artifact_explain;
 mod baseline;
 mod baseline_doctor;
@@ -20,6 +21,7 @@ use storage::{
     read_json_from_location, with_tokio_runtime, write_json, write_json_to_location,
 };
 
+use adoption_packs::{AdoptionAction, execute_adoption_action};
 use anyhow::Context;
 use artifact_explain::execute_explain_action;
 use baseline::{BaselineSelector, parse_baseline_selector};
@@ -416,6 +418,12 @@ enum Command {
     /// and probe JSONL. Produces standard perfgate.run.v1 or perfgate.probe.v1
     /// receipts.
     Ingest(Box<IngestArgs>),
+
+    /// Show reviewable adoption packs for common repository shapes.
+    Adoption {
+        #[command(subcommand)]
+        action: AdoptionAction,
+    },
 
     /// Generate an embeddable SVG status badge from a report or compare receipt.
     ///
@@ -3369,6 +3377,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Command::Adoption { action } => execute_adoption_action(action),
         Command::Badge(args) => execute_badge(*args),
 
         Command::Discover { path, json } => {

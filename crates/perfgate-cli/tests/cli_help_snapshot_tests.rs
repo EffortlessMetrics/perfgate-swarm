@@ -24,6 +24,7 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("ledger"))
         .stdout(predicate::str::contains("policy"))
+        .stdout(predicate::str::contains("adoption"))
         .stdout(predicate::str::contains("paired"))
         .stdout(predicate::str::contains("audit"))
         .stdout(predicate::str::contains("probe"))
