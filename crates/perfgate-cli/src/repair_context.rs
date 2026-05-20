@@ -249,6 +249,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_changed_files_summary_handles_copy_two_path_entries() {
+        // Copy status is parsed like rename and should use the destination path.
+        let input = b"C  src/template.rs src/copied.rs ";
+        let summary = parse_changed_files_summary(input);
+        assert_eq!(summary.file_count, 1);
+        assert_eq!(summary.files, vec!["src/copied.rs"]);
+        assert_eq!(summary.file_count_by_top_level["src"], 1);
+    }
+
+    #[test]
+    fn parse_changed_files_summary_ignores_rename_without_destination_path() {
+        // If git output is truncated and destination path is missing, parser should skip it.
+        let input = b"R  src/old.rs ";
+        let summary = parse_changed_files_summary(input);
+        assert_eq!(summary.file_count, 0);
+        assert!(summary.files.is_empty());
+        assert!(summary.file_count_by_top_level.is_empty());
+    }
+    #[test]
     fn parse_changed_files_summary_skips_short_entries() {
         // Entries with status header only (no path) must be ignored without panicking.
         let input = b"M \0 M src/ok.rs\0";
