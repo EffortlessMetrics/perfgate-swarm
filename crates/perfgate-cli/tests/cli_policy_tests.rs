@@ -106,6 +106,55 @@ fn write_run_receipt_with_age(
     .expect("write receipt");
 }
 
+fn write_imported_summary_receipt(path: &Path, bench: &str) {
+    let started_at = chrono::Utc::now() - chrono::Duration::days(1);
+    let receipt = serde_json::json!({
+        "schema": "perfgate.run.v1",
+        "tool": { "name": "perfgate-ingest", "version": "0.21.0" },
+        "run": {
+            "id": format!("{bench}-imported"),
+            "started_at": started_at.to_rfc3339(),
+            "ended_at": (started_at + chrono::Duration::seconds(1)).to_rfc3339(),
+            "host": {
+                "os": std::env::consts::OS,
+                "arch": std::env::consts::ARCH
+            }
+        },
+        "bench": {
+            "name": bench,
+            "command": [
+                "(ingested k6 summary JSON)",
+                "sample_model=summary_only",
+                "capacity_proof=not_production"
+            ],
+            "repeat": 0,
+            "warmup": 0
+        },
+        "samples": [],
+        "stats": {
+            "wall_ms": {
+                "median": 120,
+                "min": 100,
+                "max": 150,
+                "mean": 122.0,
+                "stddev": 12.0
+            },
+            "throughput_per_s": {
+                "median": 50.0,
+                "min": 45.0,
+                "max": 55.0,
+                "mean": 50.0
+            }
+        }
+    });
+    fs::create_dir_all(path.parent().expect("receipt parent")).expect("create receipt parent");
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&receipt).expect("serialize receipt"),
+    )
+    .expect("write receipt");
+}
+
 fn write_compare_receipt(path: &Path, bench: &str, cv: f64) {
     write_compare_receipt_with_status(path, bench, cv, "pass", 0.01);
 }
@@ -314,6 +363,85 @@ fn policy_doctor_keeps_noisy_signal_advisory_with_paired_guidance() {
         .stdout(predicate::str::contains("perfgate paired"))
         .stdout(predicate::str::contains(
             "do not make advisory evidence blocking by default",
+        ));
+}
+
+#[test]
+fn policy_doctor_keeps_imported_summary_evidence_advisory() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_imported_summary_receipt(
+        &dir.path().join("baselines/policy-bench.json"),
+        "policy-bench",
+    );
+    write_imported_summary_receipt(
+        &dir.path().join("artifacts/perfgate/policy-bench/run.json"),
+        "policy-bench",
+    );
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args(["policy", "doctor", "--config", "perfgate.toml"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("recommended posture: advisory"))
+        .stdout(predicate::str::contains(
+            "evidence source: imported (k6_summary_json)",
+        ))
+        .stdout(predicate::str::contains("sample model: summary_only"))
+        .stdout(predicate::str::contains(
+            "noise support: limited_summary_only",
+        ))
+        .stdout(predicate::str::contains(
+            "raw-sample or paired evidence before blocking",
+        ))
+        .stdout(predicate::str::contains(
+            "do not make advisory evidence blocking by default",
+        ));
+}
+
+#[test]
+fn policy_emit_patch_names_imported_evidence_limits() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_imported_summary_receipt(
+        &dir.path().join("baselines/policy-bench.json"),
+        "policy-bench",
+    );
+    write_imported_summary_receipt(
+        &dir.path().join("artifacts/perfgate/policy-bench/run.json"),
+        "policy-bench",
+    );
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args([
+            "policy",
+            "emit-patch",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "policy-bench",
+            "--to",
+            "gate_candidate",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "evidence source imported (k6_summary_json)",
+        ))
+        .stdout(predicate::str::contains("sample model summary_only"))
+        .stdout(predicate::str::contains(
+            "noise support limited_summary_only",
+        ))
+        .stdout(predicate::str::contains(
+            "raw-sample or paired evidence before blocking",
+        ))
+        .stdout(predicate::str::contains(
+            "gate_candidate is review-ready evidence, not blocking policy",
+        ))
+        .stdout(predicate::str::contains(
+            "Advisory only: no config, baseline, threshold, policy, or server setting was changed.",
         ));
 }
 

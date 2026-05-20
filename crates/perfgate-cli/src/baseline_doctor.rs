@@ -9,6 +9,7 @@ use perfgate_types::{ConfigFile, RunReceipt};
 use std::path::Path;
 
 use crate::doctor::plural;
+use crate::imported_evidence::{ImportedEvidenceSummary, summarize_imported_receipt};
 use crate::storage::read_json_from_location;
 
 const NEW_SAMPLE_LIMIT: usize = 3;
@@ -60,6 +61,7 @@ pub(crate) struct BaselineDoctorRow {
     pub(crate) bench: String,
     pub(crate) path: String,
     pub(crate) maturity: BaselineMaturity,
+    pub(crate) imported_evidence: Option<ImportedEvidenceSummary>,
     pub(crate) samples: Option<usize>,
     pub(crate) cv: Option<f64>,
     pub(crate) host: Option<String>,
@@ -197,7 +199,24 @@ fn print_row(row: &BaselineDoctorRow) {
             .map(|days| format!("{days} day{}", plural(days as usize)))
             .unwrap_or_else(|| "unknown".to_string())
     );
+    print_imported_evidence(row.imported_evidence.as_ref());
     println!("recommendation: {}", row.maturity.recommendation());
+}
+
+fn print_imported_evidence(imported: Option<&ImportedEvidenceSummary>) {
+    let Some(imported) = imported else {
+        println!("source: native perfgate run");
+        return;
+    };
+
+    println!("source: {}", imported.source_label());
+    println!("sample model: {}", imported.sample_model);
+    println!("host context: {}", imported.host_context);
+    println!("noise support: {}", imported.noise_support);
+    println!("source limits:");
+    for limit in imported.limitations() {
+        println!("  - {limit}");
+    }
 }
 
 pub(crate) fn inspect_baseline(
@@ -211,6 +230,7 @@ pub(crate) fn inspect_baseline(
             bench: bench_name.to_string(),
             path: path_text,
             maturity: BaselineMaturity::Remote,
+            imported_evidence: None,
             samples: None,
             cv: None,
             host: None,
@@ -223,6 +243,7 @@ pub(crate) fn inspect_baseline(
             bench: bench_name.to_string(),
             path: path.display().to_string(),
             maturity: BaselineMaturity::Missing,
+            imported_evidence: None,
             samples: None,
             cv: None,
             host: None,
@@ -236,12 +257,14 @@ pub(crate) fn inspect_baseline(
     let cv = receipt.stats.wall_ms.cv();
     let host = host_class(&receipt);
     let age_days = baseline_age_days(&receipt);
+    let imported_evidence = summarize_imported_receipt(&receipt);
     let maturity = classify_baseline(samples, cv, &host, age_days);
 
     Ok(BaselineDoctorRow {
         bench: bench_name.to_string(),
         path: path.display().to_string(),
         maturity,
+        imported_evidence,
         samples: Some(samples),
         cv,
         host: Some(host),

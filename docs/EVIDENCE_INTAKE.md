@@ -99,6 +99,33 @@ Do not infer:
 Use `perfgate policy emit-patch` only after reviewing maturity and promotion
 guidance.
 
+## Imported Evidence In Maturity Surfaces
+
+Receipts produced by `perfgate ingest` keep using `perfgate.run.v1`. The
+maturity and policy commands derive advisory source metadata from the receipt
+instead of adding a new schema field.
+
+These commands now surface imported-evidence limits when a run or baseline was
+created by an ingest adapter:
+
+```bash
+perfgate baseline doctor --config perfgate.toml --bench parser-smoke
+perfgate doctor signal --config perfgate.toml --bench parser-smoke
+perfgate calibrate --config perfgate.toml --bench parser-smoke --emit-patch
+perfgate policy doctor --config perfgate.toml --bench parser-smoke
+perfgate policy emit-patch --config perfgate.toml --bench parser-smoke --to gate_candidate
+perfgate policy review-packet --config perfgate.toml --bench parser-smoke
+```
+
+The output names the imported source where the receipt records enough metadata,
+the sample model (`raw_samples` or `summary_only`), host-context coverage, noise
+support, and non-inferences that must stay visible during review.
+
+Imported summary-only evidence can still be useful for smoke and advisory
+review. It should not become blocking policy until reviewers have enough raw
+sample, paired, host-compatible, or calibration evidence to make that promotion
+boring.
+
 ## hyperfine JSON
 
 hyperfine remains the measurement tool. perfgate imports its JSON as command
