@@ -979,8 +979,8 @@ Known limits:
 - Successful import does not prove benchmark maturity, host compatibility, or
   baseline quality.
 - Summary-only imports have weaker noise support than raw samples.
-- Current proof is in-repo/source proof. External Rust and non-Rust intake
-  canaries remain pending.
+- Current proof includes in-repo fixtures and one source-built external Rust CLI
+  generic-command canary. Non-Rust intake canaries remain pending.
 
 Review after: next-evidence-intake-change
 
@@ -1064,8 +1064,8 @@ Known limits:
 - Adoption packs are starting points, not automatic benchmark selection.
 - They do not promote baselines, loosen thresholds, make checks blocking, or
   require server ledger mode.
-- External canaries have not yet proven the 0.21 adoption-pack path in a Rust
-  existing-benchmark repo or a non-Rust command/HTTP repo.
+- One source-built Rust CLI canary has proven the generic-command intake path,
+  but non-Rust command/HTTP adoption remains unproven.
 - Source-built adoption-pack docs are not public release proof.
 
 Review after: next-evidence-intake-change

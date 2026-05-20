@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-19"
 milestone = "0.21.0"
-current_work_item = "product-claims-canary-freshness"
-current_pr = "status/evidence-intake-claims"
+current_work_item = "external-rust-canary"
+current_pr = "dogfood/rust-intake-canary"
 
 objective = """
 Make perfgate useful for teams that already have benchmark ecosystems by
@@ -155,11 +155,11 @@ status = "merged"
 
 [[work_item]]
 id = "product-claims-canary-freshness"
-status = "in_progress"
+status = "merged"
 
 [[work_item]]
 id = "external-rust-canary"
-status = "pending"
+status = "in_progress"
 
 [[work_item]]
 id = "external-non-rust-canary"
