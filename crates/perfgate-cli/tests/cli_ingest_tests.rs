@@ -624,6 +624,132 @@ fn test_ingest_generic_command_json_ambiguous_direction_fails_actionably() {
 }
 
 #[test]
+fn test_ingest_k6_summary_json_writes_run_receipt() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("k6-summary.json");
+    let output_path = temp_dir.path().join("run.json");
+
+    fs::write(
+        &input_path,
+        r#"{
+  "metrics": {
+    "http_req_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 118.42,
+        "min": 90.10,
+        "med": 112.70,
+        "max": 180.30,
+        "p(90)": 160.00,
+        "p(95)": 170.00
+      }
+    },
+    "http_req_duration{scenario:checkout}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {"avg": 120.0, "min": 100.0, "med": 110.0, "max": 190.0}
+    },
+    "http_reqs": {
+      "type": "counter",
+      "contains": "default",
+      "values": {"count": 34, "rate": 4.25}
+    },
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {"rate": 0.0294117647, "passes": 33, "fails": 1}
+    }
+  },
+  "state": {"testRunDurationMs": 8000}
+}"#,
+    )
+    .expect("failed to write k6 summary input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("k6")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--name")
+        .arg("checkout-http")
+        .arg("--out")
+        .arg(&output_path);
+
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Evidence source: k6_summary_json"))
+        .stderr(predicate::str::contains(
+            "summary-only HTTP/load-test evidence",
+        ))
+        .stderr(predicate::str::contains("not production capacity proof"))
+        .stderr(predicate::str::contains(
+            "smoke, advisory, or candidate policy review",
+        ));
+
+    let receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&output_path).expect("failed to read ingest output"),
+    )
+    .expect("ingest output should be JSON");
+
+    assert_eq!(receipt["schema"], "perfgate.run.v1");
+    assert_eq!(receipt["bench"]["name"], "checkout-http");
+    assert_eq!(receipt["bench"]["command"][0], "(ingested k6 summary JSON)");
+    assert_eq!(receipt["bench"]["repeat"], 34);
+    assert_eq!(receipt["bench"]["work_units"], 34);
+    assert_eq!(receipt["run"]["host"]["os"], "unknown");
+    assert_eq!(receipt["samples"].as_array().map(Vec::len), Some(0));
+    assert_eq!(receipt["stats"]["wall_ms"]["median"], 113);
+    assert_eq!(receipt["stats"]["wall_ms"]["mean"], 118.42);
+    assert_eq!(receipt["stats"]["throughput_per_s"]["median"], 4.25);
+    assert!(
+        receipt["bench"]["command"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry == "http_req_failed_rate=0.029412")
+    );
+    assert!(
+        receipt["bench"]["command"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry == "scenario=checkout")
+    );
+}
+
+#[test]
+fn test_ingest_k6_summary_json_missing_latency_fails_actionably() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let input_path = temp_dir.path().join("k6-missing-latency.json");
+
+    fs::write(
+        &input_path,
+        r#"{
+  "metrics": {
+    "http_reqs": {
+      "type": "counter",
+      "values": {"count": 10, "rate": 2.0}
+    }
+  }
+}"#,
+    )
+    .expect("failed to write k6 summary input");
+
+    let mut cmd = perfgate_cmd();
+    cmd.arg("ingest")
+        .arg("--format")
+        .arg("k6-summary-json")
+        .arg("--input")
+        .arg(&input_path);
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("requires http_req_duration"));
+}
+
+#[test]
 fn test_ingest_probes_writes_probe_receipt() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let input_path = temp_dir.path().join("probes.jsonl");

@@ -251,3 +251,55 @@ Do not infer:
 - missing host fields prove host compatibility;
 - the first imported result should become a baseline; or
 - successful import means the benchmark should block CI.
+
+## k6 Summary JSON
+
+k6 remains the HTTP/load-test runner. perfgate imports k6 end-of-test summary
+JSON as summary-only evidence so the same maturity and policy surfaces can
+review it:
+
+```bash
+k6 run --summary-export artifacts/k6-summary.json script.js
+perfgate ingest --format k6 --input artifacts/k6-summary.json --name http-smoke --out artifacts/perfgate/run.json
+```
+
+Then run the same maturity and policy surfaces:
+
+```bash
+perfgate baseline doctor --config perfgate.toml
+perfgate doctor signal --config perfgate.toml
+perfgate policy doctor --config perfgate.toml --bench http-smoke
+perfgate policy review-packet --config perfgate.toml --bench http-smoke --out artifacts/perfgate/review-packet.md
+```
+
+Mapping:
+
+```text
+k6 source kind             -> k6_summary_json
+http_req_duration values   -> wall_ms summary fields
+http_reqs.rate             -> throughput_per_s point summary when present
+http_reqs.count            -> bench.repeat and bench.work_units when present
+http_req_failed rate/passes/fails -> bench.command metadata
+scenario tags              -> bench.command metadata where available
+host                       -> unknown
+samples                    -> none; summary-only source
+```
+
+If `http_req_duration` is missing, perfgate falls back to
+`iteration_duration`. k6 trend values are treated as milliseconds by default;
+when the summary declares `summaryTimeUnit` as `s` or `us`, perfgate converts
+those timing values to `wall_ms`.
+
+k6 is useful for HTTP smoke, advisory load evidence, and candidate policy review
+when the environment is controlled enough to trust. A local or shared-runner k6
+summary is not production capacity proof.
+
+Do not infer:
+
+- k6 summary JSON contains raw per-request samples;
+- summary-only load evidence has full noise/maturity support;
+- a local or shared-runner run proves production capacity;
+- missing host context proves host compatibility;
+- error-rate metadata has a dedicated `perfgate.run.v1` metric field;
+- the first imported result should become a baseline; or
+- successful import means the benchmark should block CI.
