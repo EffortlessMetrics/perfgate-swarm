@@ -45,6 +45,7 @@ Codex execution state stay reviewable.
 - Adoption levels: [`ADOPTION_LEVELS.md`](ADOPTION_LEVELS.md)
 - Policy rollout profiles: [`POLICY_ROLLOUT.md`](POLICY_ROLLOUT.md)
 - Evidence intake: [`EVIDENCE_INTAKE.md`](EVIDENCE_INTAKE.md)
+- Adoption packs: [`ADOPTION_PACKS.md`](ADOPTION_PACKS.md)
 - Performance decisions: [`PERFORMANCE_DECISIONS.md`](PERFORMANCE_DECISIONS.md)
 - Decision outcome gallery:
   [`examples/decision-outcomes.md`](examples/decision-outcomes.md)

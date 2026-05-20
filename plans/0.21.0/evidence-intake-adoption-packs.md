@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-19
 Milestone: 0.21.0
-Current PR: ingest/adoption-pack-catalog
+Current PR: ingest/adoption-pack-docs
 Linked proposal: [`PERFGATE-PROP-0008-evidence-intake-adoption-packs`](../../docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md)
 Linked specs: [`PERFGATE-SPEC-0013-evidence-source-contract`](../../docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -77,8 +77,8 @@ schema-compat proof.
 | 6 | Custom JSON/CSV mapping | merged | explicit field mapping and fail-closed errors |
 | 8 | Imported evidence maturity integration | merged | baseline doctor, signal doctor, calibration/policy surfaces |
 | 11 | Review packet and Action posture | merged | report/comment/action-check coverage |
-| TBD | Adoption pack catalog | in progress | Rust CLI, Rust workspace, Python, Node, HTTP, generic command packs |
-| TBD | Adoption pack docs | pending | user-facing intake and anti-pattern guidance |
+| 17 | Adoption pack catalog | merged | Rust CLI, Rust workspace, Python, Node, HTTP, generic command packs |
+| TBD | Adoption pack docs | in progress | user-facing intake and anti-pattern guidance |
 | TBD | Product claims and canary freshness | pending | `docs/status/PRODUCT_CLAIMS.md`, `docs/status/CANARY_MATRIX.md` |
 | TBD | External Rust canary | pending | existing benchmark repo import-to-review path |
 | TBD | External non-Rust canary | pending | command/HTTP/import-to-review path |
@@ -390,7 +390,7 @@ git diff --check
 
 ## Work item: adoption-pack-catalog
 
-Status: in progress
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: adoption-pack-docs, external canaries
@@ -429,7 +429,7 @@ git diff --check
 
 ## Work item: adoption-pack-docs
 
-Status: pending
+Status: in progress
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: product-claims-canary-freshness
