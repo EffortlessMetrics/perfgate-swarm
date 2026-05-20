@@ -12,6 +12,7 @@ mod imported_evidence;
 mod init;
 mod ledger_doctor;
 mod policy;
+mod policy_profiles;
 mod probe_templates;
 mod repair_context;
 mod storage;
