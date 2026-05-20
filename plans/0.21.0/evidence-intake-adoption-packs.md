@@ -4,7 +4,7 @@ Status: active
 Owner: perfgate maintainers
 Created: 2026-05-19
 Milestone: 0.21.0
-Current PR: dogfood/rust-intake-canary
+Current PR: dogfood/non-rust-intake-canary
 Linked proposal: [`PERFGATE-PROP-0008-evidence-intake-adoption-packs`](../../docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md)
 Linked specs: [`PERFGATE-SPEC-0013-evidence-source-contract`](../../docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md)
 Linked ADRs: [`PERFGATE-ADR-0002-receipts-first-performance-decisions`](../../docs/adr/PERFGATE-ADR-0002-receipts-first-performance-decisions.md)
@@ -80,8 +80,8 @@ schema-compat proof.
 | 17 | Adoption pack catalog | merged | Rust CLI, Rust workspace, Python, Node, HTTP, generic command packs |
 | 20 | Adoption pack docs | merged | user-facing intake and anti-pattern guidance |
 | 22 | Product claims and canary freshness | merged | `docs/status/PRODUCT_CLAIMS.md`, `docs/status/CANARY_MATRIX.md` |
-| TBD | External Rust canary | in progress | existing benchmark repo import-to-review path |
-| TBD | External non-Rust canary | pending | command/HTTP/import-to-review path |
+| 24 | External Rust canary | merged | existing benchmark repo import-to-review path |
+| TBD | External non-Rust canary | in progress | command/HTTP/import-to-review path |
 | TBD | Final closeout | pending | handoff and archived active goal |
 
 ## Work item: implementation-plan
@@ -488,7 +488,7 @@ git diff --check
 
 ## Work item: external-rust-canary
 
-Status: in progress
+Status: merged
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: final-closeout
@@ -508,7 +508,7 @@ scope, confusion/fixes, proof, non-inferences, and freshness.
 
 ## Work item: external-non-rust-canary
 
-Status: pending
+Status: in progress
 Linked proposal: docs/proposals/PERFGATE-PROP-0008-evidence-intake-adoption-packs.md
 Linked spec: docs/specs/PERFGATE-SPEC-0013-evidence-source-contract.md
 Blocks: final-closeout
