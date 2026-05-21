@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-21"
 milestone = "0.22.0"
-current_work_item = "adoption-recommend"
-current_pr = "adoption-recommend"
+current_work_item = "adoption-apply-dry-run"
+current_pr = "adoption-apply-dry-run"
 
 objective = """
 Turn perfgate's evidence-intake and maturity substrate into one coherent
@@ -88,6 +88,13 @@ plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
 
 [[work_item]]
 id = "adoption-recommend"
+status = "merged"
+proposal = ".rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md"
+spec = ".rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md"
+plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+
+[[work_item]]
+id = "adoption-apply-dry-run"
 status = "active"
 proposal = ".rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md"
 spec = ".rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md"

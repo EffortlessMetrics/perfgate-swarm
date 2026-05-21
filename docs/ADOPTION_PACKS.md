@@ -26,6 +26,23 @@ why it matched, which markers were inspected, what was not inspected, known bad
 fits, and the next command. It does not inspect runtime behavior, baseline
 maturity, signal noise, host compatibility, or write any setup files.
 
+Emit reviewable setup artifacts without changing repository setup files:
+
+```bash
+perfgate adoption apply --pack rust-cli --ci github --dry-run
+```
+
+The dry-run writes review artifacts under `target/perfgate-adoption/`:
+
+- `perfgate.toml.patch`
+- `github-workflow.yml`
+- `local-commands.md`
+- `non-inferences.md`
+
+It does not write `perfgate.toml`, `.github/workflows/perfgate.yml`,
+`baselines/.gitkeep`, `.perfgate/README.md`, thresholds, required gates, or
+server ledger settings.
+
 Show one pack:
 
 ```bash
