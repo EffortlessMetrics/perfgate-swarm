@@ -101,6 +101,134 @@ struct ProbeEvidence {
     found: bool,
 }
 
+mod readiness {
+    use super::{ConfigFile, DecisionReadiness, DecisionReadinessEvidence};
+
+    pub(super) fn classify(
+        config: &ConfigFile,
+        evidence: &DecisionReadinessEvidence,
+    ) -> DecisionReadiness {
+        if evidence.decision_index_exists {
+            return DecisionReadiness::ReadyToBundle;
+        }
+        if evidence.compare_found == 0 {
+            return DecisionReadiness::RunLocalGateFirst;
+        }
+        if evidence.high_noise {
+            return DecisionReadiness::PairedModeRecommended;
+        }
+        if !config.scenarios.is_empty() && !config.tradeoffs.is_empty() {
+            return DecisionReadiness::StructuredDecisionReady;
+        }
+        if evidence.has_regression || evidence.has_improvement {
+            return DecisionReadiness::StructuredDecisionCandidate;
+        }
+        DecisionReadiness::SimpleGateEnough
+    }
+
+    pub(super) fn gaps(
+        config: &ConfigFile,
+        evidence: &DecisionReadinessEvidence,
+    ) -> Vec<&'static str> {
+        let mut gaps = Vec::new();
+        if evidence.compare_found == 0 {
+            gaps.push("no compare receipts found; run `perfgate check` first");
+        }
+        if config.scenarios.is_empty() {
+            gaps.push("no scenario weights configured");
+        }
+        if config.tradeoffs.is_empty() {
+            gaps.push("no tradeoff rules configured");
+        }
+        if !evidence.has_probe_config {
+            gaps.push("no probe evidence configured");
+        } else if evidence.probe_receipts_found == 0 {
+            gaps.push("configured probe evidence was not found on disk");
+        }
+        gaps
+    }
+}
+
+mod render {
+    use super::{
+        ConfigFile, DecisionReadiness, DecisionReadinessEvidence, Path,
+        decision_readiness_next_commands, decision_readiness_reasons, plural,
+        print_decision_artifacts,
+    };
+
+    pub(super) fn summary(
+        config: &ConfigFile,
+        evidence: &DecisionReadinessEvidence,
+        readiness: DecisionReadiness,
+        gaps: &[&str],
+        config_path: &Path,
+        out_dir: &Path,
+    ) {
+        println!("perfgate decision suggest");
+        println!();
+        println!("Status: {}", readiness.status());
+        println!("Meaning: {}", readiness.meaning());
+        println!();
+        print_evidence(config, evidence, out_dir);
+        println!();
+        println!("Why:");
+        for reason in decision_readiness_reasons(readiness, config, evidence, out_dir) {
+            println!("  - {reason}");
+        }
+        println!();
+        println!("Artifacts:");
+        print_decision_artifacts(evidence, out_dir);
+        println!();
+        println!("Structured decisions may help if:");
+        println!("  - one benchmark regressed while another improved");
+        println!("  - reviewers need to accept a bounded tradeoff");
+        println!("  - probe or scenario evidence explains where work moved");
+        if !gaps.is_empty() {
+            println!();
+            println!("Not ready yet:");
+            for gap in gaps {
+                println!("  - {gap}");
+            }
+        }
+        println!();
+        println!("Next:");
+        for command in decision_readiness_next_commands(readiness, config_path, out_dir) {
+            println!("  {command}");
+        }
+        println!("Do not:");
+        println!("  do not make structured decisions mandatory for simple local gates");
+    }
+
+    fn print_evidence(config: &ConfigFile, evidence: &DecisionReadinessEvidence, out_dir: &Path) {
+        println!("Evidence:");
+        println!("  benches: {}", config.benches.len());
+        println!("  compare receipts found: {}", evidence.compare_found);
+        println!("  compare receipts missing: {}", evidence.compare_missing);
+        println!("  scenarios: {}", config.scenarios.len());
+        println!("  tradeoff rules: {}", config.tradeoffs.len());
+        println!(
+            "  probe evidence: {}",
+            if evidence.has_probe_config {
+                format!(
+                    "configured, {} receipt{}",
+                    evidence.probe_receipts_found,
+                    plural(evidence.probe_receipts_found)
+                )
+            } else {
+                "not configured".to_string()
+            }
+        );
+        println!(
+            "  decision index: {}",
+            if evidence.decision_index_exists {
+                out_dir.join("decision.index.json").display().to_string()
+            } else {
+                "missing".to_string()
+            }
+        );
+    }
+}
+
 pub(crate) fn execute_decision_suggest(args: DecisionSuggestArgs) -> anyhow::Result<()> {
     let config = load_validated_config(&args.config)?;
     let out_dir = args
@@ -108,67 +236,10 @@ pub(crate) fn execute_decision_suggest(args: DecisionSuggestArgs) -> anyhow::Res
         .clone()
         .unwrap_or_else(|| resolve_configured_out_dir(None, Some(&config)));
     let evidence = collect_decision_readiness_evidence(&config, &out_dir)?;
-    let readiness = classify_decision_readiness(&config, &evidence);
-    let gaps = decision_readiness_gaps(&config, &evidence);
+    let readiness = readiness::classify(&config, &evidence);
+    let gaps = readiness::gaps(&config, &evidence);
 
-    println!("perfgate decision suggest");
-    println!();
-    println!("Status: {}", readiness.status());
-    println!("Meaning: {}", readiness.meaning());
-    println!();
-    println!("Evidence:");
-    println!("  benches: {}", config.benches.len());
-    println!("  compare receipts found: {}", evidence.compare_found);
-    println!("  compare receipts missing: {}", evidence.compare_missing);
-    println!("  scenarios: {}", config.scenarios.len());
-    println!("  tradeoff rules: {}", config.tradeoffs.len());
-    println!(
-        "  probe evidence: {}",
-        if evidence.has_probe_config {
-            format!(
-                "configured, {} receipt{}",
-                evidence.probe_receipts_found,
-                plural(evidence.probe_receipts_found)
-            )
-        } else {
-            "not configured".to_string()
-        }
-    );
-    println!(
-        "  decision index: {}",
-        if evidence.decision_index_exists {
-            out_dir.join("decision.index.json").display().to_string()
-        } else {
-            "missing".to_string()
-        }
-    );
-    println!();
-    println!("Why:");
-    for reason in decision_readiness_reasons(readiness, &config, &evidence, &out_dir) {
-        println!("  - {reason}");
-    }
-    println!();
-    println!("Artifacts:");
-    print_decision_artifacts(&evidence, &out_dir);
-    println!();
-    println!("Structured decisions may help if:");
-    println!("  - one benchmark regressed while another improved");
-    println!("  - reviewers need to accept a bounded tradeoff");
-    println!("  - probe or scenario evidence explains where work moved");
-    if !gaps.is_empty() {
-        println!();
-        println!("Not ready yet:");
-        for gap in &gaps {
-            println!("  - {gap}");
-        }
-    }
-    println!();
-    println!("Next:");
-    for command in decision_readiness_next_commands(readiness, &args.config, &out_dir) {
-        println!("  {command}");
-    }
-    println!("Do not:");
-    println!("  do not make structured decisions mandatory for simple local gates");
+    render::summary(&config, &evidence, readiness, &gaps, &args.config, &out_dir);
 
     Ok(())
 }
@@ -289,50 +360,6 @@ fn configured_decision_probe_paths(config: &ConfigFile) -> Vec<PathBuf> {
         .flatten()
         .map(PathBuf::from)
         .collect()
-}
-
-fn classify_decision_readiness(
-    config: &ConfigFile,
-    evidence: &DecisionReadinessEvidence,
-) -> DecisionReadiness {
-    if evidence.decision_index_exists {
-        return DecisionReadiness::ReadyToBundle;
-    }
-    if evidence.compare_found == 0 {
-        return DecisionReadiness::RunLocalGateFirst;
-    }
-    if evidence.high_noise {
-        return DecisionReadiness::PairedModeRecommended;
-    }
-    if !config.scenarios.is_empty() && !config.tradeoffs.is_empty() {
-        return DecisionReadiness::StructuredDecisionReady;
-    }
-    if evidence.has_regression || evidence.has_improvement {
-        return DecisionReadiness::StructuredDecisionCandidate;
-    }
-    DecisionReadiness::SimpleGateEnough
-}
-
-fn decision_readiness_gaps(
-    config: &ConfigFile,
-    evidence: &DecisionReadinessEvidence,
-) -> Vec<&'static str> {
-    let mut gaps = Vec::new();
-    if evidence.compare_found == 0 {
-        gaps.push("no compare receipts found; run `perfgate check` first");
-    }
-    if config.scenarios.is_empty() {
-        gaps.push("no scenario weights configured");
-    }
-    if config.tradeoffs.is_empty() {
-        gaps.push("no tradeoff rules configured");
-    }
-    if !evidence.has_probe_config {
-        gaps.push("no probe evidence configured");
-    } else if evidence.probe_receipts_found == 0 {
-        gaps.push("configured probe evidence was not found on disk");
-    }
-    gaps
 }
 
 fn decision_readiness_next_commands(
@@ -765,7 +792,7 @@ mod tests {
             decision_index_exists: false,
         };
         assert_eq!(
-            decision_readiness_gaps(&config, &evidence),
+            readiness::gaps(&config, &evidence),
             vec![
                 "no compare receipts found; run `perfgate check` first",
                 "no scenario weights configured",
@@ -809,7 +836,7 @@ mod tests {
             decision_index_exists: false,
         };
         assert_eq!(
-            decision_readiness_gaps(&config, &configured_only),
+            readiness::gaps(&config, &configured_only),
             vec!["configured probe evidence was not found on disk"]
         );
     }
@@ -849,14 +876,14 @@ mod tests {
         });
 
         assert_eq!(
-            classify_decision_readiness(&config, &evidence),
+            readiness::classify(&config, &evidence),
             DecisionReadiness::PairedModeRecommended
         );
 
         let mut bundled = evidence;
         bundled.decision_index_exists = true;
         assert_eq!(
-            classify_decision_readiness(&config, &bundled),
+            readiness::classify(&config, &bundled),
             DecisionReadiness::ReadyToBundle
         );
         bundled.decision_index_exists = false;
@@ -865,7 +892,7 @@ mod tests {
         still_no_index.has_improvement = false;
         still_no_index.high_noise = false;
         assert_eq!(
-            classify_decision_readiness(&config, &still_no_index),
+            readiness::classify(&config, &still_no_index),
             DecisionReadiness::StructuredDecisionReady
         );
     }
