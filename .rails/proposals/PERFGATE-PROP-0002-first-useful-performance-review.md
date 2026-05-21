@@ -1,12 +1,12 @@
 # PERFGATE-PROP-0002: First useful performance review
 
-Status: proposed
+Status: accepted
 Owner: product-platform
 Created: 2026-05-21
 Target milestone: 0.22
-Linked specs: planned
+Linked specs: PERFGATE-SPEC-0002
 Linked ADRs: none
-Linked lanes: planned
+Linked lanes: first-useful-performance-review
 
 ## Problem
 

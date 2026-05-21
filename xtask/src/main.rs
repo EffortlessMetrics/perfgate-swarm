@@ -5297,7 +5297,7 @@ fn validate_linked_path(
 
 fn source_doc_path_regex() -> Regex {
     Regex::new(
-        r"(?:\.codex|\.github|docs|plans|policy|schemas|fixtures|examples|crates|xtask)/[A-Za-z0-9_./*{}-]+",
+        r"(?:\.codex|\.github|\.rails|docs|plans|policy|schemas|fixtures|examples|crates|xtask)/[A-Za-z0-9_./*{}-]+",
     )
     .expect("source doc path regex should compile")
 }

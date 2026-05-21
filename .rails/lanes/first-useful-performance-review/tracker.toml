@@ -1,0 +1,148 @@
+schema_version = "1.0"
+
+id = "first-useful-performance-review"
+name = "First useful performance review"
+status = "active"
+owner = "product-platform"
+
+objective = """
+Make perfgate produce one coherent, reviewable first-use performance answer from
+native or imported evidence, while preserving advisory boundaries and human
+review for policy changes.
+"""
+
+end_state = [
+  "perfgate can recommend reviewable adoption packs from repository shape.",
+  "adoption apply can emit non-mutating setup patches and local commands.",
+  "review explain composes evidence source, baseline health, signal maturity, policy posture, non-inferences, and next commands.",
+  "review packets and Action summaries include a benchmark passport.",
+  "repair context includes agent-safe commands, forbidden changes, and human-review requirements.",
+  "baseline and policy promotion plans are non-mutating and reviewable.",
+  "product claims cite proof without overstating canary or release status.",
+]
+
+[[work_item]]
+id = "lane-plan"
+status = "active"
+proposal = "PERFGATE-PROP-0002"
+spec = "PERFGATE-SPEC-0002"
+adr = ""
+implementation_plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+blocks = []
+blocked_by = []
+proof = [
+  "cargo +1.95.0 run -p xtask -- rails check",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "adoption-recommend"
+status = "ready"
+proposal = "PERFGATE-PROP-0002"
+spec = "PERFGATE-SPEC-0002"
+adr = ""
+implementation_plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+blocks = []
+blocked_by = ["lane-plan"]
+proof = [
+  "cargo +1.95.0 fmt --all -- --check",
+  "cargo +1.95.0 clippy -p perfgate-cli --all-targets --all-features -- -D warnings",
+  "cargo +1.95.0 test -p perfgate-cli --all-features adoption",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "adoption-apply-dry-run"
+status = "planned"
+proposal = "PERFGATE-PROP-0002"
+spec = "PERFGATE-SPEC-0002"
+adr = ""
+implementation_plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+blocks = []
+blocked_by = ["adoption-recommend"]
+proof = [
+  "cargo +1.95.0 test -p perfgate-cli --all-features adoption",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "review-explain"
+status = "planned"
+proposal = "PERFGATE-PROP-0002"
+spec = "PERFGATE-SPEC-0002"
+adr = ""
+implementation_plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+blocks = []
+blocked_by = ["adoption-apply-dry-run"]
+proof = [
+  "cargo +1.95.0 test -p perfgate-cli --all-features review",
+  "cargo +1.95.0 test -p perfgate-cli --all-features policy",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "benchmark-passport"
+status = "planned"
+proposal = "PERFGATE-PROP-0002"
+spec = "PERFGATE-SPEC-0002"
+adr = ""
+implementation_plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+blocks = []
+blocked_by = ["review-explain"]
+proof = [
+  "cargo +1.95.0 test -p perfgate-cli --all-features review",
+  "cargo +1.95.0 run -p xtask -- action-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "agent-repair-context"
+status = "planned"
+proposal = "PERFGATE-PROP-0002"
+spec = "PERFGATE-SPEC-0002"
+adr = ""
+implementation_plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+blocks = []
+blocked_by = ["benchmark-passport"]
+proof = [
+  "cargo +1.95.0 test -p perfgate-cli --all-features repair",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "promotion-plans"
+status = "planned"
+proposal = "PERFGATE-PROP-0002"
+spec = "PERFGATE-SPEC-0002"
+adr = ""
+implementation_plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+blocks = []
+blocked_by = ["agent-repair-context"]
+proof = [
+  "cargo +1.95.0 test -p perfgate-cli --all-features baseline",
+  "cargo +1.95.0 test -p perfgate-cli --all-features policy",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "canaries-docs-claims-closeout"
+status = "planned"
+proposal = "PERFGATE-PROP-0002"
+spec = "PERFGATE-SPEC-0002"
+adr = ""
+implementation_plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+blocks = []
+blocked_by = ["promotion-plans"]
+proof = [
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
