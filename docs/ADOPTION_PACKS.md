@@ -14,6 +14,18 @@ List the catalog:
 perfgate adoption packs
 ```
 
+Recommend a pack from the current repository shape:
+
+```bash
+perfgate adoption recommend
+perfgate adoption recommend --json
+```
+
+The recommendation is review guidance. It reports the chosen pack, confidence,
+why it matched, which markers were inspected, what was not inspected, known bad
+fits, and the next command. It does not inspect runtime behavior, baseline
+maturity, signal noise, host compatibility, or write any setup files.
+
 Show one pack:
 
 ```bash
