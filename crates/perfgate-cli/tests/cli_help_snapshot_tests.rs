@@ -187,6 +187,7 @@ fn cli_help_baseline() {
         .stdout(predicate::str::contains("init"))
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("promote"))
+        .stdout(predicate::str::contains("promote-plan"))
         .stdout(predicate::str::contains("list"))
         .stdout(predicate::str::contains("download"));
 }
