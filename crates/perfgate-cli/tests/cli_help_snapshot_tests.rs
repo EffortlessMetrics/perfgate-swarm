@@ -25,6 +25,7 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("ledger"))
         .stdout(predicate::str::contains("policy"))
         .stdout(predicate::str::contains("adoption"))
+        .stdout(predicate::str::contains("review"))
         .stdout(predicate::str::contains("paired"))
         .stdout(predicate::str::contains("audit"))
         .stdout(predicate::str::contains("probe"))
@@ -511,6 +512,33 @@ fn cli_help_policy_review_packet() {
 }
 
 #[test]
+fn cli_help_review() {
+    perfgate_cmd()
+        .args(["review", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Explain first-use performance posture",
+        ))
+        .stdout(predicate::str::contains("explain"));
+}
+
+#[test]
+fn cli_help_review_explain() {
+    perfgate_cmd()
+        .args(["review", "explain", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Explain first-use performance posture",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--json"));
+}
+
+#[test]
 fn cli_help_probe() {
     perfgate_cmd()
         .args(["probe", "--help"])
@@ -768,6 +796,19 @@ fn snapshot_help_policy_review_packet() {
     insta::assert_snapshot!(
         "help_policy_review_packet",
         help_output(&["policy", "review-packet", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_review() {
+    insta::assert_snapshot!("help_review", help_output(&["review", "--help"]));
+}
+
+#[test]
+fn snapshot_help_review_explain() {
+    insta::assert_snapshot!(
+        "help_review_explain",
+        help_output(&["review", "explain", "--help"])
     );
 }
 

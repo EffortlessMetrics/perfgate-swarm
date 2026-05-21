@@ -14,6 +14,7 @@ mod ledger_doctor;
 mod policy;
 mod probe_templates;
 mod repair_context;
+mod review;
 mod storage;
 
 use storage::{
@@ -88,6 +89,7 @@ use regex::Regex;
 #[cfg(test)]
 use repair_context::parse_changed_files_summary;
 use repair_context::{git_metadata, maybe_write_repair_context, run_git_capture};
+use review::{ReviewAction, execute_review_action};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -423,6 +425,12 @@ enum Command {
     Adoption {
         #[command(subcommand)]
         action: AdoptionAction,
+    },
+
+    /// Explain first-use performance posture from existing receipts.
+    Review {
+        #[command(subcommand)]
+        action: ReviewAction,
     },
 
     /// Generate an embeddable SVG status badge from a report or compare receipt.
@@ -3378,6 +3386,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             Ok(())
         }
         Command::Adoption { action } => execute_adoption_action(action),
+        Command::Review { action } => execute_review_action(action),
         Command::Badge(args) => execute_badge(*args),
 
         Command::Discover { path, json } => {
