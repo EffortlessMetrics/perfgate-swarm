@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+id = "rails-adoption"
+name = "Rails adoption"
+status = "active"
+owner = "docs-platform"
+
+objective = """
+Adopt .rails/ as the durable framework root and establish the initial artifact graph.
+"""
+
+end_state = [
+  ".rails/ footprint and docs are in place.",
+  "Foundational proposal/spec/ADR are linked in index.",
+]
+
+[[work_item]]
+id = "rails-adoption-foundation"
+status = "ready"
+proposal = "PERFGATE-PROP-0001"
+spec = "PERFGATE-SPEC-0001"
+adr = "PERFGATE-ADR-0001"
+implementation_plan = ".rails/lanes/rails-adoption/implementation-plan.md"
+blocks = []
+blocked_by = []
+proof = [
+  "git diff --check",
+]
