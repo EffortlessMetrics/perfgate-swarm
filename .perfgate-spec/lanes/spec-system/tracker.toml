@@ -1,0 +1,40 @@
+schema_version = "1.0"
+
+id = "spec-system"
+name = "Repo-native spec system"
+status = "active"
+owner = "repo-architecture"
+
+objective = """
+Install durable repo-native spec rails under .perfgate-spec and keep tool-owned
+agent/session directories awareness-only for this lane.
+"""
+
+end_state = [
+  "Durable artifacts are indexed and linked from .perfgate-spec/index.toml.",
+  "Proposal/spec/ADR/lane templates exist.",
+  "Contributors are guided through docs/spec-style.md and docs/contributing/spec-rails.md.",
+]
+
+[[work_item]]
+id = "namespace-doctrine"
+status = "done"
+proposal = "PERFGATE-PROP-0001"
+spec = "PERFGATE-SPEC-0001"
+proof = ["git diff --check"]
+
+[[work_item]]
+id = "seed-artifacts"
+status = "done"
+proposal = "PERFGATE-PROP-0001"
+spec = "PERFGATE-SPEC-0001"
+proof = ["git diff --check"]
+
+[[work_item]]
+id = "xtask-validation"
+status = "ready"
+proposal = "PERFGATE-PROP-0001"
+spec = "PERFGATE-SPEC-0001"
+blocks = []
+blocked_by = []
+proof = ["cargo run -p xtask -- check-repo-spec", "cargo run -p xtask -- check-repo-spec-lanes"]

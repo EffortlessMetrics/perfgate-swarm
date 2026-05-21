@@ -1,0 +1,8 @@
+schema_version = "1.0"
+
+[[ledger]]
+id = "workflow-allowlist"
+path = "policy/workflow-allowlist.toml"
+kind = "ci_workflow_policy"
+owned_by = "repo-architecture"
+linked_specs = ["PERFGATE-SPEC-0001"]

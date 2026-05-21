@@ -1,0 +1,46 @@
+schema_version = "1.0"
+
+repo = "perfgate"
+namespace = ".perfgate-spec"
+
+[conventions]
+proposal_prefix = "PERFGATE-PROP"
+spec_prefix = "PERFGATE-SPEC"
+adr_prefix = "PERFGATE-ADR"
+lane_prefix = "PERFGATE-LANE"
+
+[external_namespaces]
+codex = ".codex"
+speckit = ".spec"
+claude = ".claude"
+jules = ".jules"
+
+[[artifact]]
+id = "PERFGATE-PROP-0001"
+kind = "proposal"
+path = ".perfgate-spec/proposals/PERFGATE-PROP-0001-repo-native-spec-knowledge-base.md"
+status = "accepted"
+owner = "spec-system"
+
+[[artifact]]
+id = "PERFGATE-SPEC-0001"
+kind = "spec"
+path = ".perfgate-spec/specs/PERFGATE-SPEC-0001-repo-native-spec-rails.md"
+status = "accepted"
+owner = "spec-system"
+linked_proposal = "PERFGATE-PROP-0001"
+
+[[artifact]]
+id = "PERFGATE-ADR-0001"
+kind = "adr"
+path = ".perfgate-spec/adr/PERFGATE-ADR-0001-repo-owned-spec-namespace.md"
+status = "accepted"
+owner = "spec-system"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[lane]]
+id = "spec-system"
+name = "Repo-native spec system"
+path = ".perfgate-spec/lanes/spec-system/tracker.toml"
+status = "active"
+owner = "repo-architecture"

@@ -1,0 +1,7 @@
+schema_version = "1.0"
+id = "lane-id"
+name = "Lane name"
+status = "active"
+owner = "owner"
+objective = """objective"""
+end_state = ["state"]
