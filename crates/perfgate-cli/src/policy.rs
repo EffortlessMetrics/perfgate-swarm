@@ -978,30 +978,57 @@ fn target_review_notes(
     target: PolicyRolloutState,
     recommended: PolicyPosture,
 ) -> Vec<&'static str> {
-    let mut notes = Vec::new();
-    match target {
-        PolicyRolloutState::RequiredGate => {
-            notes.push("required_gate needs explicit reviewer approval");
-            notes.push("blocking CI must preserve local reproduction and artifact links");
-        }
-        PolicyRolloutState::GateCandidate => {
-            notes.push("gate_candidate is review-ready evidence, not blocking policy");
-        }
-        PolicyRolloutState::Quarantined => {
-            notes.push("quarantine should name the evidence that became untrustworthy");
-        }
-        PolicyRolloutState::Retired => {
-            notes
-                .push("retirement should preserve useful history without affecting current policy");
-        }
-        PolicyRolloutState::Smoke | PolicyRolloutState::Advisory => {
-            notes.push("advisory posture should continue surfacing evidence without blocking");
-        }
-    }
-    if target == PolicyRolloutState::RequiredGate && recommended != PolicyPosture::GateCandidate {
-        notes.push("requested target exceeds current evidence recommendation");
-    }
+    let mut notes = review_notes::notes_for_rollout_state(target);
+    review_notes::push_recommendation_gap_note(&mut notes, target, recommended);
     notes
+}
+
+mod review_notes {
+    use super::{PolicyPosture, PolicyRolloutState};
+
+    pub(super) fn notes_for_rollout_state(target: PolicyRolloutState) -> Vec<&'static str> {
+        match target {
+            PolicyRolloutState::RequiredGate => required_gate_notes(),
+            PolicyRolloutState::GateCandidate => gate_candidate_notes(),
+            PolicyRolloutState::Quarantined => quarantine_notes(),
+            PolicyRolloutState::Retired => retired_notes(),
+            PolicyRolloutState::Smoke | PolicyRolloutState::Advisory => advisory_notes(),
+        }
+    }
+
+    pub(super) fn push_recommendation_gap_note(
+        notes: &mut Vec<&'static str>,
+        target: PolicyRolloutState,
+        recommended: PolicyPosture,
+    ) {
+        if target == PolicyRolloutState::RequiredGate && recommended != PolicyPosture::GateCandidate
+        {
+            notes.push("requested target exceeds current evidence recommendation");
+        }
+    }
+
+    fn required_gate_notes() -> Vec<&'static str> {
+        vec![
+            "required_gate needs explicit reviewer approval",
+            "blocking CI must preserve local reproduction and artifact links",
+        ]
+    }
+
+    fn gate_candidate_notes() -> Vec<&'static str> {
+        vec!["gate_candidate is review-ready evidence, not blocking policy"]
+    }
+
+    fn quarantine_notes() -> Vec<&'static str> {
+        vec!["quarantine should name the evidence that became untrustworthy"]
+    }
+
+    fn retired_notes() -> Vec<&'static str> {
+        vec!["retirement should preserve useful history without affecting current policy"]
+    }
+
+    fn advisory_notes() -> Vec<&'static str> {
+        vec!["advisory posture should continue surfacing evidence without blocking"]
+    }
 }
 
 fn print_policy_doctor_row(
