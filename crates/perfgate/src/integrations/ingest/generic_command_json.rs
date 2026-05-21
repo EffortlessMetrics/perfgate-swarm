@@ -132,57 +132,14 @@ pub fn parse_generic_command_json(input: &str, name: Option<&str>) -> anyhow::Re
         .context("generic command JSON requires a 'wall_ms' metric with samples or summary")?;
     validate_metric_mapping(Metric::WallMs, wall_metric)?;
 
-    let wall_values = metric_sample_values(Metric::WallMs, wall_metric)?;
-    let mut samples = wall_samples(wall_metric, &wall_values)?;
-    let wall_stats = u64_summary_from_metric(Metric::WallMs, wall_metric, &wall_values)?;
-
-    let mut stats = Stats {
-        wall_ms: wall_stats,
-        cpu_ms: None,
-        page_faults: None,
-        ctx_switches: None,
-        max_rss_kb: None,
-        io_read_bytes: None,
-        io_write_bytes: None,
-        network_packets: None,
-        energy_uj: None,
-        binary_bytes: None,
-        throughput_per_s: None,
-    };
-
-    for (metric_name, metric_input) in &input.metrics {
-        let Some(metric) = Metric::parse_key(metric_name) else {
-            bail!(
-                "unsupported metric '{}' in generic command JSON; use a known perfgate metric or wait for custom JSON/CSV mapping",
-                metric_name
-            );
-        };
-        if metric == Metric::WallMs {
-            continue;
-        }
-
-        validate_metric_mapping(metric, metric_input)?;
-
-        if metric == Metric::ThroughputPerS {
-            let values = metric_sample_values(metric, metric_input)?;
-            stats.throughput_per_s = Some(f64_summary_from_metric(metric_input, &values)?);
-            continue;
-        }
-
-        let values = metric_sample_values(metric, metric_input)?;
-        let summary = u64_summary_from_metric(metric, metric_input, &values)?;
-        assign_u64_summary(&mut stats, metric, summary)?;
-        apply_u64_sample_values(&mut samples, metric, &values)?;
-    }
+    let (samples, stats) = build_samples_and_stats(&input.metrics, wall_metric)?;
 
     let now = OffsetDateTime::now_utc();
     let timestamp = now
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
 
-    let repeat = bench
-        .and_then(|bench| bench.repeat)
-        .unwrap_or_else(|| inferred_repeat(&samples, wall_metric));
+    let repeat = inferred_or_declared_repeat(bench, &samples, wall_metric);
 
     Ok(RunReceipt {
         schema: RUN_SCHEMA_V1.to_string(),
@@ -196,20 +153,96 @@ pub fn parse_generic_command_json(input: &str, name: Option<&str>) -> anyhow::Re
             ended_at: timestamp,
             host: host_info(input.host),
         },
-        bench: BenchMeta {
-            name: bench_name,
-            cwd: bench.and_then(|bench| bench.cwd.clone()),
-            command: bench
-                .and_then(|bench| bench.command.clone())
-                .unwrap_or_else(|| vec!["(ingested generic command JSON)".to_string()]),
-            repeat,
-            warmup: bench.and_then(|bench| bench.warmup).unwrap_or(0),
-            work_units: bench.and_then(|bench| bench.work_units),
-            timeout_ms: bench.and_then(|bench| bench.timeout_ms),
-        },
+        bench: build_bench_meta(bench_name, bench, repeat),
         samples,
         stats,
     })
+}
+
+fn build_samples_and_stats(
+    metrics: &BTreeMap<String, GenericMetric>,
+    wall_metric: &GenericMetric,
+) -> anyhow::Result<(Vec<Sample>, Stats)> {
+    let wall_values = metric_sample_values(Metric::WallMs, wall_metric)?;
+    let mut samples = wall_samples(wall_metric, &wall_values)?;
+    let wall_stats = u64_summary_from_metric(Metric::WallMs, wall_metric, &wall_values)?;
+    let mut stats = base_stats(wall_stats);
+
+    for (metric_name, metric_input) in metrics {
+        process_non_wall_metric(metric_name, metric_input, &mut samples, &mut stats)?;
+    }
+
+    Ok((samples, stats))
+}
+
+fn base_stats(wall_ms: U64Summary) -> Stats {
+    Stats {
+        wall_ms,
+        cpu_ms: None,
+        page_faults: None,
+        ctx_switches: None,
+        max_rss_kb: None,
+        io_read_bytes: None,
+        io_write_bytes: None,
+        network_packets: None,
+        energy_uj: None,
+        binary_bytes: None,
+        throughput_per_s: None,
+    }
+}
+
+fn process_non_wall_metric(
+    metric_name: &str,
+    metric_input: &GenericMetric,
+    samples: &mut [Sample],
+    stats: &mut Stats,
+) -> anyhow::Result<()> {
+    let Some(metric) = Metric::parse_key(metric_name) else {
+        bail!(
+            "unsupported metric '{}' in generic command JSON; use a known perfgate metric or wait for custom JSON/CSV mapping",
+            metric_name
+        );
+    };
+    if metric == Metric::WallMs {
+        return Ok(());
+    }
+
+    validate_metric_mapping(metric, metric_input)?;
+    let values = metric_sample_values(metric, metric_input)?;
+
+    if metric == Metric::ThroughputPerS {
+        stats.throughput_per_s = Some(f64_summary_from_metric(metric_input, &values)?);
+        return Ok(());
+    }
+
+    let summary = u64_summary_from_metric(metric, metric_input, &values)?;
+    assign_u64_summary(stats, metric, summary)?;
+    apply_u64_sample_values(samples, metric, &values)?;
+    Ok(())
+}
+
+fn inferred_or_declared_repeat(
+    bench: Option<&GenericBenchmark>,
+    samples: &[Sample],
+    wall_metric: &GenericMetric,
+) -> u32 {
+    bench
+        .and_then(|benchmark| benchmark.repeat)
+        .unwrap_or_else(|| inferred_repeat(samples, wall_metric))
+}
+
+fn build_bench_meta(name: String, bench: Option<&GenericBenchmark>, repeat: u32) -> BenchMeta {
+    BenchMeta {
+        name,
+        cwd: bench.and_then(|benchmark| benchmark.cwd.clone()),
+        command: bench
+            .and_then(|benchmark| benchmark.command.clone())
+            .unwrap_or_else(|| vec!["(ingested generic command JSON)".to_string()]),
+        repeat,
+        warmup: bench.and_then(|benchmark| benchmark.warmup).unwrap_or(0),
+        work_units: bench.and_then(|benchmark| benchmark.work_units),
+        timeout_ms: bench.and_then(|benchmark| benchmark.timeout_ms),
+    }
 }
 
 fn validate_source_kind(source_kind: Option<&str>) -> anyhow::Result<()> {
