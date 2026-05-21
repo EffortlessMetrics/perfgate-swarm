@@ -44,65 +44,8 @@ impl ReportUseCase {
     /// - Output is deterministic (same input -> same output)
     pub fn execute(req: ReportRequest) -> ReportResult {
         let domain_report = derive_report(&req.compare);
-
-        // Convert domain findings to types findings
-        let findings: Vec<ReportFinding> = domain_report
-            .findings
-            .into_iter()
-            .map(|f| {
-                let severity = if f.code == FINDING_CODE_METRIC_FAIL {
-                    Severity::Fail
-                } else {
-                    Severity::Warn
-                };
-
-                let direction = req
-                    .compare
-                    .budgets
-                    .iter()
-                    .find(|(metric, _)| metric_to_string(**metric) == f.data.metric_name)
-                    .map(|(_, budget)| budget.direction)
-                    .unwrap_or(Direction::Lower);
-
-                let message = format!(
-                    "{} for {}: {:.2}% regression (threshold: {:.2}%)",
-                    if severity == Severity::Fail {
-                        "Performance regression exceeded threshold"
-                    } else {
-                        "Performance regression near threshold"
-                    },
-                    f.data.metric_name,
-                    f.data.regression_pct * 100.0,
-                    f.data.threshold * 100.0
-                );
-
-                ReportFinding {
-                    check_id: f.check_id,
-                    code: f.code,
-                    severity,
-                    message,
-                    data: Some(FindingData {
-                        metric_name: f.data.metric_name,
-                        baseline: f.data.baseline,
-                        current: f.data.current,
-                        regression_pct: f.data.regression_pct,
-                        threshold: f.data.threshold,
-                        direction,
-                    }),
-                }
-            })
-            .collect();
-
-        let summary = ReportSummary {
-            pass_count: req.compare.verdict.counts.pass,
-            warn_count: req.compare.verdict.counts.warn,
-            fail_count: req.compare.verdict.counts.fail,
-            skip_count: req.compare.verdict.counts.skip,
-            total_count: req.compare.verdict.counts.pass
-                + req.compare.verdict.counts.warn
-                + req.compare.verdict.counts.fail
-                + req.compare.verdict.counts.skip,
-        };
+        let findings = build_findings(&req.compare, domain_report.findings);
+        let summary = build_summary(&req.compare);
 
         let report = PerfgateReport {
             report_type: REPORT_SCHEMA_V1.to_string(),
@@ -115,6 +58,93 @@ impl ReportUseCase {
         };
 
         ReportResult { report }
+    }
+}
+
+fn build_findings(
+    compare: &CompareReceipt,
+    findings: Vec<crate::domain::Finding>,
+) -> Vec<ReportFinding> {
+    findings
+        .into_iter()
+        .map(|finding| build_finding(compare, finding))
+        .collect()
+}
+
+fn build_finding(compare: &CompareReceipt, finding: crate::domain::Finding) -> ReportFinding {
+    let severity = severity_from_code(&finding.code);
+    let direction = resolve_direction(compare, &finding.data.metric_name);
+    let message = finding_message(
+        severity,
+        &finding.data.metric_name,
+        finding.data.regression_pct,
+        finding.data.threshold,
+    );
+
+    ReportFinding {
+        check_id: finding.check_id,
+        code: finding.code,
+        severity,
+        message,
+        data: Some(FindingData {
+            metric_name: finding.data.metric_name,
+            baseline: finding.data.baseline,
+            current: finding.data.current,
+            regression_pct: finding.data.regression_pct,
+            threshold: finding.data.threshold,
+            direction,
+        }),
+    }
+}
+
+fn severity_from_code(code: &str) -> Severity {
+    if code == FINDING_CODE_METRIC_FAIL {
+        Severity::Fail
+    } else {
+        Severity::Warn
+    }
+}
+
+fn resolve_direction(compare: &CompareReceipt, metric_name: &str) -> Direction {
+    compare
+        .budgets
+        .iter()
+        .find(|(metric, _)| metric_to_string(**metric) == metric_name)
+        .map(|(_, budget)| budget.direction)
+        .unwrap_or(Direction::Lower)
+}
+
+fn finding_message(
+    severity: Severity,
+    metric_name: &str,
+    regression_pct: f64,
+    threshold: f64,
+) -> String {
+    let label = if severity == Severity::Fail {
+        "Performance regression exceeded threshold"
+    } else {
+        "Performance regression near threshold"
+    };
+
+    format!(
+        "{} for {}: {:.2}% regression (threshold: {:.2}%)",
+        label,
+        metric_name,
+        regression_pct * 100.0,
+        threshold * 100.0
+    )
+}
+
+fn build_summary(compare: &CompareReceipt) -> ReportSummary {
+    ReportSummary {
+        pass_count: compare.verdict.counts.pass,
+        warn_count: compare.verdict.counts.warn,
+        fail_count: compare.verdict.counts.fail,
+        skip_count: compare.verdict.counts.skip,
+        total_count: compare.verdict.counts.pass
+            + compare.verdict.counts.warn
+            + compare.verdict.counts.fail
+            + compare.verdict.counts.skip,
     }
 }
 
