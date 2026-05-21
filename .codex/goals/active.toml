@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-21"
 milestone = "0.22.0"
-current_work_item = "agent-repair-context"
-current_pr = "agent-repair-context"
+current_work_item = "promotion-plans"
+current_pr = "promotion-plans"
 
 objective = """
 Turn perfgate's evidence-intake and maturity substrate into one coherent
@@ -116,6 +116,13 @@ plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
 
 [[work_item]]
 id = "agent-repair-context"
+status = "merged"
+proposal = ".rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md"
+spec = ".rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md"
+plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+
+[[work_item]]
+id = "promotion-plans"
 status = "active"
 proposal = ".rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md"
 spec = ".rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md"
