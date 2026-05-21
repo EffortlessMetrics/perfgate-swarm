@@ -57,7 +57,7 @@ proof = [
 
 [[work_item]]
 id = "adoption-apply-dry-run"
-status = "active"
+status = "implemented"
 proposal = "PERFGATE-PROP-0002"
 spec = "PERFGATE-SPEC-0002"
 adr = ""
@@ -72,7 +72,7 @@ proof = [
 
 [[work_item]]
 id = "review-explain"
-status = "planned"
+status = "active"
 proposal = "PERFGATE-PROP-0002"
 spec = "PERFGATE-SPEC-0002"
 adr = ""
