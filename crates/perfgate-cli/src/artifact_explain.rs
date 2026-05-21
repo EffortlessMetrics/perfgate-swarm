@@ -132,30 +132,61 @@ fn known_artifact_role(file_name: &str) -> Option<&'static str> {
 }
 
 fn artifact_next_commands(known: &[(PathBuf, &'static str)]) -> Vec<String> {
-    let has = |name: &str| {
+    next_commands::build(known)
+}
+
+mod next_commands {
+    use std::path::PathBuf;
+
+    use crate::COMPARE_RECEIPT_FILE;
+
+    pub(super) fn build(known: &[(PathBuf, &'static str)]) -> Vec<String> {
+        let mut commands = Vec::new();
+        push_comment_hint(known, &mut commands);
+        push_repair_hint(known, &mut commands);
+        push_decision_bundle_hint(known, &mut commands);
+        push_require_baseline_hint(known, &mut commands);
+        push_default_when_empty(&mut commands);
+        commands
+    }
+
+    fn has_file(known: &[(PathBuf, &'static str)], name: &str) -> bool {
         known
             .iter()
             .any(|(path, _)| path.file_name().and_then(|file| file.to_str()) == Some(name))
-    };
+    }
 
-    let mut commands = Vec::new();
-    if has("comment.md") {
-        commands.push("inspect artifacts/perfgate/comment.md or the per-bench comment.md".into());
+    fn push_comment_hint(known: &[(PathBuf, &'static str)], commands: &mut Vec<String>) {
+        if has_file(known, "comment.md") {
+            commands.push("inspect artifacts/perfgate/comment.md or the per-bench comment.md".into());
+        }
     }
-    if has("repair_context.json") {
-        commands.push("inspect repair_context.json for local reproduction and repair hints".into());
+
+    fn push_repair_hint(known: &[(PathBuf, &'static str)], commands: &mut Vec<String>) {
+        if has_file(known, "repair_context.json") {
+            commands.push("inspect repair_context.json for local reproduction and repair hints".into());
+        }
     }
-    if has("decision.index.json") {
-        commands
-            .push("perfgate decision bundle --index artifacts/perfgate/decision.index.json".into());
+
+    fn push_decision_bundle_hint(known: &[(PathBuf, &'static str)], commands: &mut Vec<String>) {
+        if has_file(known, "decision.index.json") {
+            commands.push(
+                "perfgate decision bundle --index artifacts/perfgate/decision.index.json".into(),
+            );
+        }
     }
-    if has(COMPARE_RECEIPT_FILE) {
-        commands.push("perfgate check --config perfgate.toml --all --require-baseline".into());
+
+    fn push_require_baseline_hint(known: &[(PathBuf, &'static str)], commands: &mut Vec<String>) {
+        if has_file(known, COMPARE_RECEIPT_FILE) {
+            commands.push("perfgate check --config perfgate.toml --all --require-baseline".into());
+        }
     }
-    if commands.is_empty() {
-        commands.push("perfgate check --config perfgate.toml --all".into());
+
+    fn push_default_when_empty(commands: &mut Vec<String>) {
+        if commands.is_empty() {
+            commands.push("perfgate check --config perfgate.toml --all".into());
+        }
     }
-    commands
 }
 
 #[cfg(test)]
