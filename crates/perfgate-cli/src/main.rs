@@ -8085,21 +8085,65 @@ mod tests {
         }
     }
 
-    fn create_compare_receipt_json(verdict_status: &str, metric_status: &str) -> String {
-        format!(
-            r#"{{
+    mod compare_receipt_fixture {
+        pub(super) fn create_compare_receipt_json(verdict_status: &str, metric_status: &str) -> String {
+            format!(
+                r#"{{
   "schema": "perfgate.compare.v1",
-  "tool": {{"name": "perfgate", "version": "0.1.0"}},
-  "bench": {{"name": "test-bench", "cwd": null, "command": ["true"], "repeat": 1, "warmup": 0}},
-  "baseline_ref": {{"path": "baseline.json", "run_id": "b123"}},
-  "current_ref": {{"path": "current.json", "run_id": "c456"}},
-  "budgets": {{"wall_ms": {{"threshold": 0.2, "warn_threshold": 0.18, "direction": "lower"}}}},
-  "deltas": {{"wall_ms": {{"baseline": 100.0, "current": 150.0, "ratio": 1.5, "pct": 0.5, "regression": 0.5, "status": "{}"}}}},
-  "verdict": {{"status": "{}", "counts": {{"pass": 0, "warn": 0, "fail": 1, "skip": 0}}, "reasons": ["wall_ms_fail"]}}
+  "tool": {},
+  "bench": {},
+  "baseline_ref": {},
+  "current_ref": {},
+  "budgets": {},
+  "deltas": {},
+  "verdict": {}
 }}"#,
-            metric_status, verdict_status
-        )
+                tool_json(),
+                bench_json(),
+                baseline_ref_json(),
+                current_ref_json(),
+                budgets_json(),
+                deltas_json(metric_status),
+                verdict_json(verdict_status)
+            )
+        }
+
+        fn tool_json() -> &'static str {
+            r#"{"name": "perfgate", "version": "0.1.0"}"#
+        }
+
+        fn bench_json() -> &'static str {
+            r#"{"name": "test-bench", "cwd": null, "command": ["true"], "repeat": 1, "warmup": 0}"#
+        }
+
+        fn baseline_ref_json() -> &'static str {
+            r#"{"path": "baseline.json", "run_id": "b123"}"#
+        }
+
+        fn current_ref_json() -> &'static str {
+            r#"{"path": "current.json", "run_id": "c456"}"#
+        }
+
+        fn budgets_json() -> &'static str {
+            r#"{"wall_ms": {"threshold": 0.2, "warn_threshold": 0.18, "direction": "lower"}}"#
+        }
+
+        fn deltas_json(metric_status: &str) -> String {
+            format!(
+                r#"{{"wall_ms": {{"baseline": 100.0, "current": 150.0, "ratio": 1.5, "pct": 0.5, "regression": 0.5, "status": "{}"}}}}"#,
+                metric_status
+            )
+        }
+
+        fn verdict_json(verdict_status: &str) -> String {
+            format!(
+                r#"{{"status": "{}", "counts": {{"pass": 0, "warn": 0, "fail": 1, "skip": 0}}, "reasons": ["wall_ms_fail"]}}"#,
+                verdict_status
+            )
+        }
     }
+
+    use compare_receipt_fixture::create_compare_receipt_json;
 
     #[test]
     fn parse_duration_accepts_humantime() {
