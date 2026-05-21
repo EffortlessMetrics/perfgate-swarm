@@ -97,70 +97,98 @@ struct CustomRow {
 /// metric_name=field.path,unit=ms,direction=lower_is_better
 /// ```
 pub fn parse_custom_metric_mapping_spec(raw: &str) -> anyhow::Result<CustomMetricMapping> {
-    let mut parts = raw.split(',');
-    let metric_part = parts
-        .next()
-        .context("custom metric mapping requires metric=field")?;
-    let (metric_name, field) = split_key_value(metric_part)
-        .with_context(|| format!("custom metric mapping '{raw}' requires metric=field"))?;
-    let metric = Metric::parse_key(metric_name).with_context(|| {
-        format!("custom metric mapping uses unsupported perfgate metric '{metric_name}'")
-    })?;
-    if field.trim().is_empty() {
-        bail!(
-            "custom metric mapping for '{}' requires a non-empty field",
-            metric.as_str()
-        );
+    metric_mapping_parser::parse(raw)
+}
+
+mod metric_mapping_parser {
+    use super::*;
+
+    pub(super) fn parse(raw: &str) -> anyhow::Result<CustomMetricMapping> {
+        let mut parts = raw.split(',');
+        let (metric, field) = parse_metric_and_field(raw, &mut parts)?;
+        let parsed_options = parse_options(raw, parts)?;
+        validate_unit(metric, &parsed_options.unit)?;
+        let direction = parse_and_validate_direction(metric, &parsed_options.direction)?;
+
+        Ok(CustomMetricMapping {
+            metric,
+            field,
+            unit: parsed_options.unit,
+            direction,
+        })
     }
 
-    let mut unit = None;
-    let mut direction = None;
-    for part in parts {
-        let (key, value) = split_key_value(part).with_context(|| {
-            format!("custom metric mapping '{raw}' has invalid segment '{part}'")
+    fn parse_metric_and_field<'a>(
+        raw: &str,
+        parts: &mut impl Iterator<Item = &'a str>,
+    ) -> anyhow::Result<(Metric, String)> {
+        let metric_part = parts
+            .next()
+            .context("custom metric mapping requires metric=field")?;
+        let (metric_name, field) = split_key_value(metric_part)
+            .with_context(|| format!("custom metric mapping '{raw}' requires metric=field"))?;
+        let metric = Metric::parse_key(metric_name).with_context(|| {
+            format!("custom metric mapping uses unsupported perfgate metric '{metric_name}'")
         })?;
-        match normalize_label(key).as_str() {
-            "unit" => unit = Some(value.trim().to_string()),
-            "direction" => direction = Some(value.trim().to_string()),
-            other => bail!("custom metric mapping '{raw}' has unsupported option '{other}'"),
+        if field.trim().is_empty() {
+            bail!(
+                "custom metric mapping for '{}' requires a non-empty field",
+                metric.as_str()
+            );
         }
+        Ok((metric, field.trim().to_string()))
     }
 
-    let unit = unit.with_context(|| {
-        format!(
-            "custom metric mapping for '{}' requires unit=...",
-            metric.as_str()
-        )
-    })?;
-    validate_unit(metric, &unit)?;
-
-    let direction = direction.with_context(|| {
-        format!(
-            "custom metric mapping for '{}' requires direction=lower_is_better or direction=higher_is_better",
-            metric.as_str()
-        )
-    })?;
-    let direction = parse_direction(&direction).with_context(|| {
-        format!(
-            "custom metric mapping for '{}' has ambiguous direction; use lower_is_better or higher_is_better",
-            metric.as_str()
-        )
-    })?;
-    if direction != metric.default_direction() {
-        bail!(
-            "custom metric mapping for '{}' declares direction '{}' but perfgate expects '{}'",
-            metric.as_str(),
-            direction_label(direction),
-            direction_label(metric.default_direction())
-        );
+    struct ParsedOptions {
+        unit: String,
+        direction: String,
     }
 
-    Ok(CustomMetricMapping {
-        metric,
-        field: field.trim().to_string(),
-        unit,
-        direction,
-    })
+    fn parse_options<'a>(
+        raw: &str,
+        parts: impl Iterator<Item = &'a str>,
+    ) -> anyhow::Result<ParsedOptions> {
+        let mut unit = None;
+        let mut direction = None;
+        for part in parts {
+            let (key, value) = split_key_value(part).with_context(|| {
+                format!("custom metric mapping '{raw}' has invalid segment '{part}'")
+            })?;
+            match normalize_label(key).as_str() {
+                "unit" => unit = Some(value.trim().to_string()),
+                "direction" => direction = Some(value.trim().to_string()),
+                other => bail!("custom metric mapping '{raw}' has unsupported option '{other}'"),
+            }
+        }
+
+        Ok(ParsedOptions {
+            unit: unit.context("custom metric mapping requires unit=...")?,
+            direction: direction.context(
+                "custom metric mapping requires direction=lower_is_better or direction=higher_is_better",
+            )?,
+        })
+    }
+
+    fn parse_and_validate_direction(
+        metric: Metric,
+        raw_direction: &str,
+    ) -> anyhow::Result<Direction> {
+        let direction = parse_direction(raw_direction).with_context(|| {
+            format!(
+                "custom metric mapping for '{}' has ambiguous direction; use lower_is_better or higher_is_better",
+                metric.as_str()
+            )
+        })?;
+        if direction != metric.default_direction() {
+            bail!(
+                "custom metric mapping for '{}' declares direction '{}' but perfgate expects '{}'",
+                metric.as_str(),
+                direction_label(direction),
+                direction_label(metric.default_direction())
+            );
+        }
+        Ok(direction)
+    }
 }
 
 /// Parse mapped custom JSON into a `RunReceipt`.
