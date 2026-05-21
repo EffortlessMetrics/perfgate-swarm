@@ -92,35 +92,72 @@ fn build_repair_context(
 }
 
 fn recommended_next_commands(outcome: &CheckOutcome, baseline_path: Option<&Path>) -> Vec<String> {
-    let mut cmds = Vec::new();
-    let rerun_cmd = redact_command_for_diagnostics(&outcome.run_receipt.bench.command).join(" ");
-    if !rerun_cmd.is_empty() {
-        cmds.push(format!("rerun current command: {rerun_cmd}"));
+    next_commands::build(outcome, baseline_path)
+}
+
+mod next_commands {
+    use super::*;
+
+    pub(super) fn build(outcome: &CheckOutcome, baseline_path: Option<&Path>) -> Vec<String> {
+        let mut commands = Vec::new();
+        push_rerun_command(&mut commands, outcome);
+        push_explain_command(&mut commands, outcome);
+        push_paired_command(&mut commands, outcome);
+        push_recompare_command(&mut commands, outcome, baseline_path);
+        push_bisect_command(&mut commands);
+        commands
     }
-    if let Some(compare_path) = &outcome.compare_path {
-        cmds.push(format!(
-            "perfgate explain --compare {}",
-            compare_path.display()
+
+    fn push_rerun_command(commands: &mut Vec<String>, outcome: &CheckOutcome) {
+        let rerun_cmd =
+            redact_command_for_diagnostics(&outcome.run_receipt.bench.command).join(" ");
+        if !rerun_cmd.is_empty() {
+            commands.push(format!("rerun current command: {rerun_cmd}"));
+        }
+    }
+
+    fn push_explain_command(commands: &mut Vec<String>, outcome: &CheckOutcome) {
+        if let Some(compare_path) = &outcome.compare_path {
+            commands.push(format!(
+                "perfgate explain --compare {}",
+                compare_path.display()
+            ));
+        }
+    }
+
+    fn push_paired_command(commands: &mut Vec<String>, outcome: &CheckOutcome) {
+        commands.push(format!(
+            "perfgate paired --name {} --baseline-cmd \"<baseline-cmd>\" --current-cmd \"<current-cmd>\" --repeat {} --out {}/paired.json",
+            outcome.run_receipt.bench.name,
+            outcome.run_receipt.bench.repeat.max(10),
+            output_dir(outcome).display()
         ));
     }
-    cmds.push(format!(
-        "perfgate paired --name {} --baseline-cmd \"<baseline-cmd>\" --current-cmd \"<current-cmd>\" --repeat {} --out {}/paired.json",
-        outcome.run_receipt.bench.name,
-        outcome.run_receipt.bench.repeat.max(10),
-        outcome.run_path.parent().unwrap_or(Path::new("")).display()
-    ));
-    if let Some(base) = baseline_path {
-        cmds.push(format!(
-            "perfgate compare --baseline {} --current {} --out {}/recompare.json",
-            base.display(),
-            outcome.run_path.display(),
-            outcome.run_path.parent().unwrap_or(Path::new("")).display()
-        ));
+
+    fn push_recompare_command(
+        commands: &mut Vec<String>,
+        outcome: &CheckOutcome,
+        baseline_path: Option<&Path>,
+    ) {
+        if let Some(base) = baseline_path {
+            commands.push(format!(
+                "perfgate compare --baseline {} --current {} --out {}/recompare.json",
+                base.display(),
+                outcome.run_path.display(),
+                output_dir(outcome).display()
+            ));
+        }
     }
-    cmds.push(
-        "perfgate bisect --good <good-ref> --bad HEAD --executable <bench-binary>".to_string(),
-    );
-    cmds
+
+    fn push_bisect_command(commands: &mut Vec<String>) {
+        commands.push(
+            "perfgate bisect --good <good-ref> --bad HEAD --executable <bench-binary>".to_string(),
+        );
+    }
+
+    fn output_dir(outcome: &CheckOutcome) -> &Path {
+        outcome.run_path.parent().unwrap_or(Path::new(""))
+    }
 }
 
 fn otel_span_from_env() -> Option<OtelSpanIdentifiers> {
