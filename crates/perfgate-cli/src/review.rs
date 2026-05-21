@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use crate::baseline_doctor::{
     BaselineDoctorRow, BaselineMaturity, configured_benches, inspect_baseline,
 };
+use crate::benchmark_passport::BenchmarkPassport;
 use crate::doctor::{SignalDoctorRow, SignalRecommendation, inspect_signal, plural};
 use crate::imported_evidence::ImportedEvidenceSummary;
 use crate::{check_command, paired_command, read_json, resolve_configured_out_dir};
@@ -48,6 +49,7 @@ struct ReviewExplainOutput {
     baseline: BaselineSummary,
     signal: SignalSummary,
     policy: PolicySummary,
+    benchmark_passport: BenchmarkPassport,
     evidence_source: EvidenceSourceSummary,
     artifacts: Vec<ArtifactSummary>,
     next_commands: Vec<String>,
@@ -202,6 +204,19 @@ fn build_review_explain_output(
     let human_review_required =
         human_review_required(baseline, signal, recommended_posture, &evidence_source);
     let next_commands = next_commands(config_path, baseline, signal, recommended_posture);
+    let next_safe_action = next_commands
+        .first()
+        .cloned()
+        .unwrap_or_else(|| check_command(config_path, Some(&baseline.bench), false));
+    let proof_freshness = proof_freshness(baseline, signal);
+    let benchmark_passport = BenchmarkPassport::from_rows(
+        baseline,
+        signal,
+        recommended_posture.as_str(),
+        proof_freshness.clone(),
+        non_inferences.clone(),
+        next_safe_action,
+    );
 
     ReviewExplainOutput {
         config: config_path.display().to_string(),
@@ -226,7 +241,7 @@ fn build_review_explain_output(
             recent_drift: signal.recent_drift.clone(),
             calibration_status: calibration_status(signal).to_string(),
             host_compatibility: host_compatibility(signal),
-            proof_freshness: proof_freshness(baseline, signal),
+            proof_freshness,
         },
         policy: PolicySummary {
             current_posture: current_posture.as_str().to_string(),
@@ -240,6 +255,7 @@ fn build_review_explain_output(
                 &evidence_source,
             ),
         },
+        benchmark_passport,
         evidence_source,
         artifacts: artifact_summaries(signal, out_dir, &baseline.bench),
         next_commands,
@@ -305,6 +321,7 @@ fn render_review_explain(output: &ReviewExplainOutput) -> String {
         "Noise support: {}\n",
         output.evidence_source.noise_support
     ));
+    output.benchmark_passport.render_terminal(&mut out);
 
     out.push_str("\nWhat this means:\n");
     for reason in &output.policy.reasons {

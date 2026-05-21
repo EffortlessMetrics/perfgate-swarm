@@ -4,6 +4,7 @@ mod adoption_packs;
 mod artifact_explain;
 mod baseline;
 mod baseline_doctor;
+mod benchmark_passport;
 mod check_guidance;
 mod cli_parsing;
 mod decision_suggest;

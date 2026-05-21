@@ -599,6 +599,13 @@ fn policy_review_packet_renders_mature_gate_candidate_without_writing_config() {
         .stdout(predicate::str::contains(
             "- Signal confidence: `safe_to_gate`",
         ))
+        .stdout(predicate::str::contains("## Benchmark Passport"))
+        .stdout(predicate::str::contains("- Source kind: `native perfgate run`"))
+        .stdout(predicate::str::contains("- Baseline status: `mature`"))
+        .stdout(predicate::str::contains("- Policy posture: `gate_candidate`"))
+        .stdout(predicate::str::contains(
+            "- Next safe action: `perfgate check --config perfgate.toml --bench policy-bench --require-baseline`",
+        ))
         .stdout(predicate::str::contains(
             "- Reproduce locally: `perfgate check --config perfgate.toml --bench policy-bench --require-baseline`",
         ))
@@ -641,6 +648,9 @@ fn policy_review_packet_can_write_markdown_artifact_for_setup_state() {
     assert!(packet.contains("- Gate verdict: `setup_incomplete_missing_baseline`"));
     assert!(packet.contains("- Current posture: `smoke`"));
     assert!(packet.contains("- Recommended posture: `advisory`"));
+    assert!(packet.contains("## Benchmark Passport"));
+    assert!(packet.contains("- Baseline status: `missing`"));
+    assert!(packet.contains("- Signal maturity: `no_decision_yet`"));
     assert!(packet.contains("baseline promotion after workload review"));
     assert!(packet.contains("do not loosen thresholds or promote baselines"));
 }
@@ -661,6 +671,11 @@ fn policy_review_packet_explains_imported_source_mapping_and_limits() {
     let packet = policy_review_packet_stdout(dir.path());
 
     assert!(packet.contains("## Imported Evidence"));
+    assert!(packet.contains("## Benchmark Passport"));
+    assert!(packet.contains("- Source kind: `imported (k6_summary_json)`"));
+    assert!(packet.contains("- Source artifact: `artifacts/k6-summary.json`"));
+    assert!(packet.contains("- Sample model: `summary_only`"));
+    assert!(packet.contains("- Known non-inferences:"));
     assert!(packet.contains("- Evidence source: `imported (k6_summary_json)`"));
     assert!(packet.contains("- Source kind: `k6_summary_json`"));
     assert!(packet.contains("- Source path: `artifacts/k6-summary.json`"));

@@ -123,6 +123,10 @@ fn review_explain_keeps_missing_baseline_as_setup_not_regression() {
         .stdout(predicate::str::contains(
             "Policy posture: current=smoke, recommended=advisory",
         ))
+        .stdout(predicate::str::contains("Benchmark passport:"))
+        .stdout(predicate::str::contains("source kind: native perfgate run"))
+        .stdout(predicate::str::contains("baseline status: missing"))
+        .stdout(predicate::str::contains("next safe action: perfgate"))
         .stdout(predicate::str::contains(
             "missing baseline is setup, not a regression",
         ))
@@ -157,6 +161,16 @@ fn review_explain_json_reports_imported_evidence_limits() {
     let value: Value = serde_json::from_slice(&output.stdout).expect("json output");
 
     assert_eq!(value["bench"], "review-bench");
+    assert_eq!(value["benchmark_passport"]["bench"], "review-bench");
+    assert_eq!(
+        value["benchmark_passport"]["source_kind"],
+        "imported (k6_summary_json)"
+    );
+    assert_eq!(
+        value["benchmark_passport"]["source_artifact"],
+        "artifacts/k6-summary.json"
+    );
+    assert_eq!(value["benchmark_passport"]["policy_posture"], "advisory");
     assert_eq!(
         value["evidence_source"]["kind"],
         "imported (k6_summary_json)"
@@ -178,5 +192,15 @@ fn review_explain_json_reports_imported_evidence_limits() {
             .expect("forbidden array")
             .iter()
             .any(|item| item.as_str() == Some("loosen thresholds"))
+    );
+    assert!(
+        value["benchmark_passport"]["known_non_inferences"]
+            .as_array()
+            .expect("passport non_inferences array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .expect("passport non_inference string")
+                .contains("summary-only evidence has limited noise support"))
     );
 }
