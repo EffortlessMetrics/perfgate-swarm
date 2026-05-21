@@ -149,44 +149,73 @@ fn changed_files_summary() -> Option<ChangedFilesSummary> {
 }
 
 pub(crate) fn parse_changed_files_summary(output: &[u8]) -> ChangedFilesSummary {
-    let mut files = Vec::new();
-    let mut by_top = BTreeMap::new();
+    let mut summary = ChangedPathAggregation::default();
+    let mut entries = parse_porcelain_entries(output);
 
-    let mut entries = output
-        .split(|byte| *byte == b'\0')
-        .filter(|entry| !entry.is_empty());
-    while let Some(entry) = entries.next() {
-        if entry.len() <= 3 {
-            continue;
+    while let Some(maybe_path) = parse_current_path_from_entry(&mut entries) {
+        if let Some(path) = maybe_path {
+            summary.add_path(path);
         }
-
-        let status = &entry[..2];
-        let current_path = if status.iter().any(|code| matches!(code, b'R' | b'C')) {
-            entries.next().unwrap_or(&[])
-        } else {
-            &entry[3..]
-        };
-
-        if current_path.is_empty() {
-            continue;
-        }
-
-        let path = String::from_utf8_lossy(current_path).into_owned();
-        files.push(path.clone());
-        let top = path
-            .split(['/', '\\'])
-            .next()
-            .filter(|s| !s.is_empty())
-            .unwrap_or(".")
-            .to_string();
-        *by_top.entry(top).or_insert(0) += 1;
     }
 
-    ChangedFilesSummary {
-        file_count: files.len() as u32,
-        files,
-        file_count_by_top_level: by_top,
+    summary.finish()
+}
+
+#[derive(Default)]
+struct ChangedPathAggregation {
+    files: Vec<String>,
+    by_top: BTreeMap<String, u32>,
+}
+
+impl ChangedPathAggregation {
+    fn add_path(&mut self, path: String) {
+        let top = top_level_bucket(&path);
+        self.files.push(path);
+        *self.by_top.entry(top).or_insert(0) += 1;
     }
+
+    fn finish(self) -> ChangedFilesSummary {
+        ChangedFilesSummary {
+            file_count: self.files.len() as u32,
+            files: self.files,
+            file_count_by_top_level: self.by_top,
+        }
+    }
+}
+
+fn parse_porcelain_entries(output: &[u8]) -> impl Iterator<Item = &[u8]> {
+    output.split(|byte| *byte == b'\0').filter(|entry| !entry.is_empty())
+}
+
+fn parse_current_path_from_entry<'a, I>(entries: &mut I) -> Option<Option<String>>
+where
+    I: Iterator<Item = &'a [u8]>,
+{
+    let entry = entries.next()?;
+    if entry.len() <= 3 {
+        return Some(None);
+    }
+
+    let status = &entry[..2];
+    let current_path = if status.iter().any(|code| matches!(code, b'R' | b'C')) {
+        entries.next().unwrap_or(&[])
+    } else {
+        &entry[3..]
+    };
+
+    if current_path.is_empty() {
+        return Some(None);
+    }
+
+    Some(Some(String::from_utf8_lossy(current_path).into_owned()))
+}
+
+fn top_level_bucket(path: &str) -> String {
+    path.split(['/', '\\'])
+        .next()
+        .filter(|segment| !segment.is_empty())
+        .unwrap_or(".")
+        .to_string()
 }
 
 pub(crate) fn run_git_capture(args: &[&str]) -> Option<String> {
