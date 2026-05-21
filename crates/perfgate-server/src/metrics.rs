@@ -77,52 +77,98 @@ pub async fn metrics_handler(
 ///
 /// Replaces dynamic path segments with placeholders to avoid high-cardinality labels.
 fn normalize_path(path: &str) -> String {
-    let segments: Vec<&str> = path.split('/').collect();
-    let mut normalized = Vec::with_capacity(segments.len());
+    path_normalization::normalize(path)
+}
 
-    let mut i = 0;
-    while i < segments.len() {
-        let seg = segments[i];
-        match seg {
-            "projects" => {
-                normalized.push("projects");
-                // Next segment is the project name -> replace with placeholder
-                if i + 1 < segments.len() {
-                    normalized.push(":project");
-                    i += 1;
-                }
-            }
-            "baselines" => {
-                normalized.push("baselines");
-                // Next segment is benchmark name -> replace with placeholder
-                if i + 1 < segments.len() && !segments[i + 1].is_empty() {
-                    let next = segments[i + 1];
-                    // Check if it's a known sub-path or a dynamic segment
-                    if next != "latest" && next != "versions" && next != "promote" {
-                        normalized.push(":benchmark");
-                        i += 1;
-                    }
-                }
-            }
-            "versions" => {
-                normalized.push("versions");
-                // Next segment is the version -> replace with placeholder
-                if i + 1 < segments.len() {
-                    normalized.push(":version");
-                    i += 1;
-                }
-            }
-            "verdicts" => {
-                normalized.push("verdicts");
-            }
-            _ => {
-                normalized.push(seg);
-            }
+mod path_normalization {
+    pub(super) fn normalize(path: &str) -> String {
+        let segments: Vec<&str> = path.split('/').collect();
+        let mut normalized: Vec<String> = Vec::with_capacity(segments.len());
+        let mut i = 0;
+
+        while i < segments.len() {
+            let seg = segments[i];
+            let consumed = normalize_segment(&segments, i, &mut normalized, seg);
+            i += consumed + 1;
         }
-        i += 1;
+
+        normalized.join("/")
     }
 
-    normalized.join("/")
+    fn normalize_segment(
+        segments: &[&str],
+        index: usize,
+        normalized: &mut Vec<String>,
+        segment: &str,
+    ) -> usize {
+        match segment {
+            "projects" => normalize_project_segment(segments, index, normalized),
+            "baselines" => normalize_baseline_segment(segments, index, normalized),
+            "versions" => normalize_version_segment(segments, index, normalized),
+            "verdicts" => {
+                normalized.push("verdicts".to_string());
+                0
+            }
+            _ => {
+                normalized.push(segment.to_string());
+                0
+            }
+        }
+    }
+
+    fn normalize_project_segment(
+        segments: &[&str],
+        index: usize,
+        normalized: &mut Vec<String>,
+    ) -> usize {
+        normalized.push("projects".to_string());
+        if has_next_segment(segments, index) {
+            normalized.push(":project".to_string());
+            1
+        } else {
+            0
+        }
+    }
+
+    fn normalize_baseline_segment(
+        segments: &[&str],
+        index: usize,
+        normalized: &mut Vec<String>,
+    ) -> usize {
+        normalized.push("baselines".to_string());
+        if should_placeholder_benchmark(segments, index) {
+            normalized.push(":benchmark".to_string());
+            1
+        } else {
+            0
+        }
+    }
+
+    fn normalize_version_segment(
+        segments: &[&str],
+        index: usize,
+        normalized: &mut Vec<String>,
+    ) -> usize {
+        normalized.push("versions".to_string());
+        if has_next_segment(segments, index) {
+            normalized.push(":version".to_string());
+            1
+        } else {
+            0
+        }
+    }
+
+    fn has_next_segment(segments: &[&str], index: usize) -> bool {
+        index + 1 < segments.len()
+    }
+
+    fn should_placeholder_benchmark(segments: &[&str], index: usize) -> bool {
+        if !has_next_segment(segments, index) {
+            return false;
+        }
+        let next = segments[index + 1];
+        !next.is_empty() && !matches!(next, "latest" | "versions" | "promote")
+    }
 }
 
 /// Middleware that records HTTP request metrics.
