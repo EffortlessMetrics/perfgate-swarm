@@ -1,11 +1,11 @@
 # PERFGATE-SPEC-0002: First useful performance review contract
 
-Status: proposed
+Status: accepted
 Owner: product-platform
 Created: 2026-05-21
 Linked proposal: PERFGATE-PROP-0002
 Linked ADRs: none
-Linked lane: planned
+Linked lane: first-useful-performance-review
 Linked issues:
 Linked PRs:
 Support-tier impact: planned product claims only after proof

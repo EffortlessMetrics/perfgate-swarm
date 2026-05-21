@@ -28,7 +28,7 @@ owner = "rails-adoption"
 id = "PERFGATE-PROP-0002"
 kind = "proposal"
 path = ".rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md"
-status = "proposed"
+status = "accepted"
 owner = "product-platform"
 
 [[artifact]]
@@ -43,7 +43,7 @@ linked_proposal = "PERFGATE-PROP-0001"
 id = "PERFGATE-SPEC-0002"
 kind = "spec"
 path = ".rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md"
-status = "proposed"
+status = "accepted"
 owner = "product-platform"
 linked_proposal = "PERFGATE-PROP-0002"
 
@@ -61,3 +61,10 @@ name = "Rails adoption"
 path = ".rails/lanes/rails-adoption/tracker.toml"
 status = "active"
 owner = "docs-platform"
+
+[[lane]]
+id = "first-useful-performance-review"
+name = "First useful performance review"
+path = ".rails/lanes/first-useful-performance-review/tracker.toml"
+status = "active"
+owner = "product-platform"
