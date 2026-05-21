@@ -306,52 +306,141 @@ pub fn analyze_trend(
         return None;
     }
 
-    let points: Vec<(f64, f64)> = values
-        .iter()
-        .enumerate()
-        .map(|(i, &v)| (i as f64, v))
-        .collect();
-
-    let (slope, intercept, r_squared) = linear_regression(&points)?;
-
-    let current_run = (values.len() - 1) as f64;
-    let current_value = slope * current_run + intercept;
-
-    let headroom_pct = compute_headroom_pct(current_value, threshold, direction_lower_is_better);
-
-    let breach_run = predict_breach_run(
-        slope,
-        intercept,
-        current_run,
+    let points = analyze_parts::build_points(values);
+    let regression = analyze_parts::regression_for_points(&points)?;
+    let timing = analyze_parts::timeline(values.len(), regression.slope, regression.intercept);
+    let headroom_pct =
+        compute_headroom_pct(timing.current_value, threshold, direction_lower_is_better);
+    let breach_run = analyze_parts::predict_breach(
+        regression.slope,
+        regression.intercept,
+        timing.current_run,
         threshold,
         direction_lower_is_better,
     );
-
-    let runs_to_breach = breach_run.map(|br| {
-        let remaining = br - current_run;
-        remaining.ceil().max(1.0) as u32
-    });
-
-    let drift = classify_drift(
-        slope,
-        r_squared,
-        current_value,
+    let runs_to_breach = analyze_parts::runs_to_breach(breach_run, timing.current_run);
+    let drift = analyze_parts::drift(
+        regression.slope,
+        regression.r_squared,
+        timing.current_value,
         threshold,
         direction_lower_is_better,
         config,
         runs_to_breach,
     );
 
-    Some(TrendAnalysis {
-        metric: metric_name.to_string(),
-        slope_per_run: slope,
-        intercept,
-        r_squared,
+    Some(analyze_parts::build_analysis(
+        metric_name,
+        values.len(),
+        regression,
         drift,
         runs_to_breach,
-        current_headroom_pct: headroom_pct,
-        sample_count: values.len(),
-    })
+        headroom_pct,
+    ))
+}
+
+mod analyze_parts {
+    use super::{classify_drift, predict_breach_run, DriftClass, TrendAnalysis, TrendConfig};
+
+    pub(super) struct Regression {
+        pub(super) slope: f64,
+        pub(super) intercept: f64,
+        pub(super) r_squared: f64,
+    }
+
+    pub(super) struct Timeline {
+        pub(super) current_run: f64,
+        pub(super) current_value: f64,
+    }
+
+    pub(super) fn build_points(values: &[f64]) -> Vec<(f64, f64)> {
+        values
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| (i as f64, v))
+            .collect()
+    }
+
+    pub(super) fn regression_for_points(points: &[(f64, f64)]) -> Option<Regression> {
+        let (slope, intercept, r_squared) = super::linear_regression(points)?;
+        Some(Regression {
+            slope,
+            intercept,
+            r_squared,
+        })
+    }
+
+    pub(super) fn timeline(sample_count: usize, slope: f64, intercept: f64) -> Timeline {
+        let current_run = (sample_count - 1) as f64;
+        let current_value = slope * current_run + intercept;
+        Timeline {
+            current_run,
+            current_value,
+        }
+    }
+
+    pub(super) fn predict_breach(
+        slope: f64,
+        intercept: f64,
+        current_run: f64,
+        threshold: f64,
+        direction_lower_is_better: bool,
+    ) -> Option<f64> {
+        predict_breach_run(
+            slope,
+            intercept,
+            current_run,
+            threshold,
+            direction_lower_is_better,
+        )
+    }
+
+    pub(super) fn runs_to_breach(breach_run: Option<f64>, current_run: f64) -> Option<u32> {
+        breach_run.map(|br| {
+            let remaining = br - current_run;
+            remaining.ceil().max(1.0) as u32
+        })
+    }
+
+    pub(super) fn drift(
+        slope: f64,
+        r_squared: f64,
+        current_value: f64,
+        threshold: f64,
+        direction_lower_is_better: bool,
+        config: &TrendConfig,
+        runs_to_breach: Option<u32>,
+    ) -> DriftClass {
+        classify_drift(
+            slope,
+            r_squared,
+            current_value,
+            threshold,
+            direction_lower_is_better,
+            config,
+            runs_to_breach,
+        )
+    }
+
+    pub(super) fn build_analysis(
+        metric_name: &str,
+        sample_count: usize,
+        regression: Regression,
+        drift: DriftClass,
+        runs_to_breach: Option<u32>,
+        headroom_pct: f64,
+    ) -> TrendAnalysis {
+        TrendAnalysis {
+            metric: metric_name.to_string(),
+            slope_per_run: regression.slope,
+            intercept: regression.intercept,
+            r_squared: regression.r_squared,
+            drift,
+            runs_to_breach,
+            current_headroom_pct: headroom_pct,
+            sample_count,
+        }
+    }
 }
 
 /// Render a mini ASCII spark chart for a series of values.
