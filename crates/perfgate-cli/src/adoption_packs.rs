@@ -1,7 +1,10 @@
 //! Reviewable adoption packs for common repository shapes.
 
+use anyhow::{Context, bail};
 use clap::{Subcommand, ValueEnum};
+use serde::Serialize;
 use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum AdoptionPackName {
@@ -34,6 +37,17 @@ impl AdoptionPackName {
 
 #[derive(Debug, Subcommand)]
 pub enum AdoptionAction {
+    /// Recommend a reviewable adoption pack from repository shape.
+    Recommend {
+        /// Repository path to inspect.
+        #[arg(long, default_value = ".")]
+        path: PathBuf,
+
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+
     /// List reviewable adoption packs without changing config.
     Packs {
         /// Show one adoption pack instead of the full catalog.
@@ -56,6 +70,17 @@ pub struct AdoptionPack {
     pub promotion_path: &'static [&'static str],
     pub known_bad_fits: &'static [&'static str],
     pub do_not_infer: &'static [&'static str],
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdoptionRecommendation {
+    pub recommended_pack: &'static str,
+    pub confidence: &'static str,
+    pub why: Vec<String>,
+    pub inspected: Vec<String>,
+    pub not_inspected: Vec<&'static str>,
+    pub known_bad_fits: Vec<&'static str>,
+    pub next_command: String,
 }
 
 const ADOPTION_PACKS: &[AdoptionPack] = &[
@@ -271,6 +296,128 @@ pub fn adoption_pack(name: AdoptionPackName) -> &'static AdoptionPack {
         .expect("all AdoptionPackName values have catalog entries")
 }
 
+pub fn recommend_adoption_pack(root: &Path) -> AdoptionRecommendation {
+    let mut inspected = Vec::new();
+
+    let cargo_toml = path_exists(root, "Cargo.toml", &mut inspected);
+    let rust_main = path_exists(root, "src/main.rs", &mut inspected);
+    let rust_lib = path_exists(root, "src/lib.rs", &mut inspected);
+    let rust_benches = path_exists(root, "benches", &mut inspected);
+    let pytest_ini = path_exists(root, "pytest.ini", &mut inspected);
+    let pyproject = path_exists(root, "pyproject.toml", &mut inspected);
+    let python_benchmarks = path_exists(root, "benchmarks", &mut inspected);
+    let package_json = path_exists(root, "package.json", &mut inspected);
+    let action_yml = path_exists(root, "action.yml", &mut inspected);
+    let action_yaml = path_exists(root, "action.yaml", &mut inspected);
+    let scripts_dir = path_exists(root, "scripts", &mut inspected);
+
+    let cargo_is_workspace = cargo_toml && file_contains(root.join("Cargo.toml"), "[workspace]");
+    if cargo_is_workspace {
+        inspected.push("Cargo.toml contains [workspace]".to_string());
+    }
+
+    let has_k6_script = scripts_dir && directory_contains_name(root.join("scripts"), "k6");
+    if has_k6_script {
+        inspected.push("scripts/ contains a k6-named file".to_string());
+    }
+
+    let has_bench_script = scripts_dir && directory_contains_name(root.join("scripts"), "bench");
+    if has_bench_script {
+        inspected.push("scripts/ contains a bench-named file".to_string());
+    }
+
+    let (pack_name, confidence, why) = if cargo_is_workspace || (cargo_toml && rust_benches) {
+        (
+            AdoptionPackName::RustWorkspace,
+            "high",
+            vec![reason(
+                "Cargo workspace or benches indicate a larger Rust workspace",
+            )],
+        )
+    } else if cargo_toml && (rust_main || rust_lib) {
+        (
+            AdoptionPackName::RustCli,
+            "high",
+            vec![reason(
+                "Cargo.toml plus src/main.rs or src/lib.rs indicate a Rust CLI/library shape",
+            )],
+        )
+    } else if (pytest_ini || pyproject) && python_benchmarks {
+        (
+            AdoptionPackName::PythonService,
+            "medium",
+            vec![reason(
+                "Python project metadata plus benchmarks/ suggests pytest-benchmark or a benchmark script",
+            )],
+        )
+    } else if package_json && (action_yml || action_yaml) {
+        (
+            AdoptionPackName::NodeToolAction,
+            "high",
+            vec![reason(
+                "package.json plus action.yml/action.yaml indicates a Node tool or GitHub Action",
+            )],
+        )
+    } else if has_k6_script {
+        (
+            AdoptionPackName::HttpLocalSmoke,
+            "medium",
+            vec![reason(
+                "scripts/ contains a k6-named file, which fits local HTTP smoke intake",
+            )],
+        )
+    } else if has_bench_script {
+        (
+            AdoptionPackName::GenericCommand,
+            "medium",
+            vec![reason(
+                "scripts/ contains a bench-named file, but the framework is not known",
+            )],
+        )
+    } else {
+        (
+            AdoptionPackName::GenericCommand,
+            "low",
+            vec![reason(
+                "no known framework markers were found; start with explicit generic command evidence",
+            )],
+        )
+    };
+
+    let pack = adoption_pack(pack_name);
+    AdoptionRecommendation {
+        recommended_pack: pack.name,
+        confidence,
+        why,
+        inspected,
+        not_inspected: vec![
+            "benchmark runtime behavior",
+            "baseline maturity",
+            "signal noise",
+            "host compatibility",
+            "whether any generated setup should be written",
+        ],
+        known_bad_fits: pack.known_bad_fits.to_vec(),
+        next_command: format!("perfgate adoption packs --pack {}", pack.name),
+    }
+}
+
+pub fn render_adoption_recommendation(recommendation: &AdoptionRecommendation) -> String {
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "Recommended adoption pack: {}",
+        recommendation.recommended_pack
+    );
+    let _ = writeln!(out, "Confidence: {}", recommendation.confidence);
+    render_owned_list(&mut out, "Why", &recommendation.why);
+    render_owned_list(&mut out, "Inspected", &recommendation.inspected);
+    render_list(&mut out, "Not inspected", &recommendation.not_inspected);
+    render_list(&mut out, "Known bad fits", &recommendation.known_bad_fits);
+    let _ = writeln!(out, "Next: {}", recommendation.next_command);
+    out
+}
+
 pub fn render_adoption_packs(filter: Option<AdoptionPackName>) -> String {
     let mut out = String::new();
     out.push_str(
@@ -317,8 +464,71 @@ fn render_list(out: &mut String, label: &str, items: &[&str]) {
     }
 }
 
+fn render_owned_list(out: &mut String, label: &str, items: &[String]) {
+    let _ = writeln!(out, "{label}:");
+    for item in items {
+        let _ = writeln!(out, "  - {item}");
+    }
+}
+
+fn path_exists(root: &Path, relative: &str, inspected: &mut Vec<String>) -> bool {
+    let exists = root.join(relative).exists();
+    inspected.push(format!(
+        "{} {}",
+        if exists { "found" } else { "missing" },
+        relative
+    ));
+    exists
+}
+
+fn file_contains(path: PathBuf, needle: &str) -> bool {
+    std::fs::read_to_string(path)
+        .map(|content| content.contains(needle))
+        .unwrap_or(false)
+}
+
+fn directory_contains_name(path: PathBuf, needle: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return false;
+    };
+
+    entries.filter_map(Result::ok).any(|entry| {
+        entry
+            .file_name()
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains(needle)
+    })
+}
+
+fn reason(value: &str) -> String {
+    value.to_string()
+}
+
 pub fn execute_adoption_action(action: AdoptionAction) -> anyhow::Result<()> {
     match action {
+        AdoptionAction::Recommend { path, json } => {
+            let root = path.canonicalize().with_context(|| {
+                format!(
+                    "failed to resolve adoption recommend path: {}",
+                    path.display()
+                )
+            })?;
+            if !root.is_dir() {
+                bail!(
+                    "adoption recommend path must be a directory: {}",
+                    root.display()
+                );
+            }
+
+            let recommendation = recommend_adoption_pack(&root);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&recommendation)?);
+            } else {
+                print!("{}", render_adoption_recommendation(&recommendation));
+            }
+            Ok(())
+        }
         AdoptionAction::Packs { pack } => {
             print!("{}", render_adoption_packs(pack));
             Ok(())
@@ -365,5 +575,61 @@ mod tests {
         assert!(rendered.contains("Pack: http-local-smoke"));
         assert!(rendered.contains("k6 summary JSON"));
         assert!(!rendered.contains("Pack: rust-cli"));
+    }
+
+    #[test]
+    fn recommendation_prefers_rust_cli_shape() {
+        let root = tempfile::tempdir().expect("temp dir");
+        std::fs::write(
+            root.path().join("Cargo.toml"),
+            "[package]\nname = \"demo\"\n",
+        )
+        .expect("write manifest");
+        std::fs::create_dir(root.path().join("src")).expect("create src");
+        std::fs::write(root.path().join("src/main.rs"), "fn main() {}\n").expect("write main");
+
+        let recommendation = recommend_adoption_pack(root.path());
+
+        assert_eq!(recommendation.recommended_pack, "rust-cli");
+        assert_eq!(recommendation.confidence, "high");
+        assert!(
+            recommendation
+                .inspected
+                .contains(&"found Cargo.toml".to_string())
+        );
+        assert!(recommendation.not_inspected.contains(&"baseline maturity"));
+    }
+
+    #[test]
+    fn recommendation_prefers_workspace_shape_over_cli() {
+        let root = tempfile::tempdir().expect("temp dir");
+        std::fs::write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/demo\"]\n",
+        )
+        .expect("write manifest");
+        std::fs::create_dir(root.path().join("src")).expect("create src");
+        std::fs::write(root.path().join("src/main.rs"), "fn main() {}\n").expect("write main");
+
+        let recommendation = recommend_adoption_pack(root.path());
+
+        assert_eq!(recommendation.recommended_pack, "rust-workspace");
+        assert_eq!(recommendation.confidence, "high");
+        assert!(
+            recommendation
+                .inspected
+                .contains(&"Cargo.toml contains [workspace]".to_string())
+        );
+    }
+
+    #[test]
+    fn recommendation_falls_back_to_generic_command() {
+        let root = tempfile::tempdir().expect("temp dir");
+
+        let recommendation = recommend_adoption_pack(root.path());
+
+        assert_eq!(recommendation.recommended_pack, "generic-command");
+        assert_eq!(recommendation.confidence, "low");
+        assert!(recommendation.next_command.contains("generic-command"));
     }
 }

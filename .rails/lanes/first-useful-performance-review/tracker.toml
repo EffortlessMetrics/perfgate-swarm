@@ -23,7 +23,7 @@ end_state = [
 
 [[work_item]]
 id = "lane-plan"
-status = "active"
+status = "implemented"
 proposal = "PERFGATE-PROP-0002"
 spec = "PERFGATE-SPEC-0002"
 adr = ""
@@ -41,7 +41,7 @@ proof = [
 
 [[work_item]]
 id = "adoption-recommend"
-status = "ready"
+status = "active"
 proposal = "PERFGATE-PROP-0002"
 spec = "PERFGATE-SPEC-0002"
 adr = ""
