@@ -75,20 +75,34 @@ pub struct DiffOutcome {
 impl DiffOutcome {
     /// Returns the worst verdict status across all benchmarks.
     pub fn worst_verdict(&self) -> VerdictStatus {
+        worst_verdict::compute(&self.bench_outcomes)
+    }
+}
+
+mod worst_verdict {
+    use super::BenchDiffOutcome;
+    use perfgate_types::VerdictStatus;
+
+    pub(super) fn compute(bench_outcomes: &[BenchDiffOutcome]) -> VerdictStatus {
         let mut worst = VerdictStatus::Pass;
-        for outcome in &self.bench_outcomes {
+        for outcome in bench_outcomes {
             if let Some(compare) = &outcome.compare_receipt {
-                match compare.verdict.status {
-                    VerdictStatus::Fail => return VerdictStatus::Fail,
-                    VerdictStatus::Warn => worst = VerdictStatus::Warn,
-                    VerdictStatus::Skip if worst == VerdictStatus::Pass => {
-                        worst = VerdictStatus::Skip;
-                    }
-                    _ => {}
+                worst = merge_worst(worst, compare.verdict.status);
+                if worst == VerdictStatus::Fail {
+                    return worst;
                 }
             }
         }
         worst
+    }
+
+    fn merge_worst(current: VerdictStatus, next: VerdictStatus) -> VerdictStatus {
+        match next {
+            VerdictStatus::Fail => VerdictStatus::Fail,
+            VerdictStatus::Warn => VerdictStatus::Warn,
+            VerdictStatus::Skip if current == VerdictStatus::Pass => VerdictStatus::Skip,
+            _ => current,
+        }
     }
 }
 
