@@ -23,8 +23,6 @@ use perfgate_types::{
     BenchMeta, HostInfo, PROBE_SCHEMA_V1, ProbeReceipt, RUN_SCHEMA_V1, RunMeta, RunReceipt, Sample,
     Stats, ToolInfo, U64Summary,
 };
-use time::OffsetDateTime;
-use uuid::Uuid;
 
 pub use criterion::parse_criterion;
 pub use custom::{
@@ -135,38 +133,11 @@ fn make_probe_receipt(
     scenario: Option<String>,
     probes: Vec<perfgate_types::ProbeObservation>,
 ) -> ProbeReceipt {
-    let now = OffsetDateTime::now_utc();
-    let timestamp = now
-        .format(&time::format_description::well_known::Rfc3339)
-        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
-
     ProbeReceipt {
         schema: PROBE_SCHEMA_V1.to_string(),
-        tool: ToolInfo {
-            name: "perfgate-ingest".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-        },
-        run: RunMeta {
-            id: Uuid::new_v4().to_string(),
-            started_at: timestamp.clone(),
-            ended_at: timestamp,
-            host: HostInfo {
-                os: std::env::consts::OS.to_string(),
-                arch: std::env::consts::ARCH.to_string(),
-                cpu_count: None,
-                memory_bytes: None,
-                hostname_hash: None,
-            },
-        },
-        bench: bench_name.map(|name| BenchMeta {
-            name: name.to_string(),
-            cwd: None,
-            command: vec!["(ingested probes)".to_string()],
-            repeat: probes.len() as u32,
-            warmup: 0,
-            work_units: None,
-            timeout_ms: None,
-        }),
+        tool: scaffold::tool_info(),
+        run: scaffold::run_meta(),
+        bench: bench_name.map(|name| scaffold::bench_meta(name, "(ingested probes)", probes.len())),
         scenario,
         probes,
         metadata: Default::default(),
@@ -175,40 +146,64 @@ fn make_probe_receipt(
 
 /// Build scaffolding for a `RunReceipt` with sensible defaults.
 fn make_receipt(name: &str, samples: Vec<Sample>, stats: Stats) -> RunReceipt {
-    let now = OffsetDateTime::now_utc();
-    let timestamp = now
-        .format(&time::format_description::well_known::Rfc3339)
-        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
-
     RunReceipt {
         schema: RUN_SCHEMA_V1.to_string(),
-        tool: ToolInfo {
+        tool: scaffold::tool_info(),
+        run: scaffold::run_meta(),
+        bench: scaffold::bench_meta(name, "(ingested)", samples.len()),
+        samples,
+        stats,
+    }
+}
+
+mod scaffold {
+    use super::{BenchMeta, HostInfo, RunMeta, ToolInfo};
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    pub(super) fn tool_info() -> ToolInfo {
+        ToolInfo {
             name: "perfgate-ingest".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-        },
-        run: RunMeta {
+        }
+    }
+
+    pub(super) fn run_meta() -> RunMeta {
+        let timestamp = now_timestamp();
+        RunMeta {
             id: Uuid::new_v4().to_string(),
             started_at: timestamp.clone(),
             ended_at: timestamp,
-            host: HostInfo {
-                os: std::env::consts::OS.to_string(),
-                arch: std::env::consts::ARCH.to_string(),
-                cpu_count: None,
-                memory_bytes: None,
-                hostname_hash: None,
-            },
-        },
-        bench: BenchMeta {
+            host: host_info(),
+        }
+    }
+
+    pub(super) fn bench_meta(name: &str, command: &str, repeat: usize) -> BenchMeta {
+        BenchMeta {
             name: name.to_string(),
             cwd: None,
-            command: vec!["(ingested)".to_string()],
-            repeat: samples.len() as u32,
+            command: vec![command.to_string()],
+            repeat: repeat as u32,
             warmup: 0,
             work_units: None,
             timeout_ms: None,
-        },
-        samples,
-        stats,
+        }
+    }
+
+    fn now_timestamp() -> String {
+        OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
+    }
+
+    fn host_info() -> HostInfo {
+        HostInfo {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            cpu_count: None,
+            memory_bytes: None,
+            hostname_hash: None,
+        }
     }
 }
 
