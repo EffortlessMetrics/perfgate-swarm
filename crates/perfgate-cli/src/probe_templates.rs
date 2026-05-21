@@ -161,39 +161,62 @@ fn probe_template(template: ProbeTemplate) -> ProbeStarterTemplate {
 }
 
 fn render_probe_template_readme(template: &ProbeStarterTemplate, out_dir: &Path) -> String {
-    let out_dir = out_dir.display();
-    format!(
-        r#"# {title}
+    let context = readme::ReadmeContext::new(template, out_dir);
 
-This starter shows a small probe set for {workload}. Review and edit the probe
-names before using them in durable decision policy.
+    [
+        readme::header(&context),
+        readme::generated_files_section(),
+        readme::next_steps_section(&context),
+        readme::do_not_section(),
+    ]
+    .join(
+        "
 
-Generated files:
-
-- `probes-baseline.jsonl`: reviewed baseline probe events
-- `probes-current.jsonl`: current-run probe events for local experimentation
-- `scenario.toml`: scenario snippet to copy into `perfgate.toml`
-- `tradeoff.toml`: tradeoff snippet to copy into `perfgate.toml`
-
-Next:
-
-```bash
-perfgate ingest probes --file {out_dir}/probes-baseline.jsonl --out baselines/probes.json
-perfgate ingest probes --file {out_dir}/probes-current.jsonl --out artifacts/perfgate/probes-current.json
-perfgate probe compare --baseline baselines/probes.json --current artifacts/perfgate/probes-current.json --out artifacts/perfgate/probe-compare.json
-perfgate decision suggest --config perfgate.toml
-```
-
-Do not:
-
-- keep probes that no reviewer can act on;
-- use generated sample values as release proof;
-- turn a temporary debugging span into a durable probe id.
-"#,
-        title = template.title,
-        workload = template.workload,
-        out_dir = out_dir
+",
     )
+}
+
+mod readme {
+    use super::ProbeStarterTemplate;
+    use std::path::Path;
+
+    pub(super) struct ReadmeContext<'a> {
+        title: &'a str,
+        workload: &'a str,
+        out_dir: String,
+    }
+
+    impl<'a> ReadmeContext<'a> {
+        pub(super) fn new(template: &'a ProbeStarterTemplate, out_dir: &Path) -> Self {
+            Self {
+                title: template.title,
+                workload: template.workload,
+                out_dir: out_dir.display().to_string(),
+            }
+        }
+    }
+
+    pub(super) fn header(context: &ReadmeContext<'_>) -> String {
+        format!(
+            "# {}\n\nThis starter shows a small probe set for {}. Review and edit the probe\nnames before using them in durable decision policy.",
+            context.title, context.workload
+        )
+    }
+
+    pub(super) fn generated_files_section() -> String {
+        "Generated files:\n\n- `probes-baseline.jsonl`: reviewed baseline probe events\n- `probes-current.jsonl`: current-run probe events for local experimentation\n- `scenario.toml`: scenario snippet to copy into `perfgate.toml`\n- `tradeoff.toml`: tradeoff snippet to copy into `perfgate.toml`".to_string()
+    }
+
+    pub(super) fn next_steps_section(context: &ReadmeContext<'_>) -> String {
+        format!(
+            "Next:\n\n```bash\nperfgate ingest probes --file {0}/probes-baseline.jsonl --out baselines/probes.json\nperfgate ingest probes --file {0}/probes-current.jsonl --out artifacts/perfgate/probes-current.json\nperfgate probe compare --baseline baselines/probes.json --current artifacts/perfgate/probes-current.json --out artifacts/perfgate/probe-compare.json\nperfgate decision suggest --config perfgate.toml\n```",
+            context.out_dir
+        )
+    }
+
+    pub(super) fn do_not_section() -> String {
+        "Do not:\n\n- keep probes that no reviewer can act on;\n- use generated sample values as release proof;\n- turn a temporary debugging span into a durable probe id.".to_string()
+    }
 }
 
 fn render_probe_template_scenario(template: &ProbeStarterTemplate) -> String {
