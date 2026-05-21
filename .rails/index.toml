@@ -40,6 +40,14 @@ owner = "rails-adoption"
 linked_proposal = "PERFGATE-PROP-0001"
 
 [[artifact]]
+id = "PERFGATE-SPEC-0002"
+kind = "spec"
+path = ".rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md"
+status = "proposed"
+owner = "product-platform"
+linked_proposal = "PERFGATE-PROP-0002"
+
+[[artifact]]
 id = "PERFGATE-ADR-0001"
 kind = "adr"
 path = ".rails/adr/PERFGATE-ADR-0001-rails-framework-footprint.md"
