@@ -20,6 +20,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+mod signal_recommendation;
+
+use signal_recommendation::{SignalRecommendationInput, decide_signal_recommendation};
+
 const SIGNAL_MATURE_SAMPLE_LIMIT: usize = 7;
 const SIGNAL_HIGH_NOISE_CV: f64 = 0.10;
 const SIGNAL_STALE_BASELINE_DAYS: i64 = 30;
@@ -908,39 +912,13 @@ pub(crate) fn inspect_signal(
     })
 }
 
-struct SignalRecommendationInput {
-    baseline_found: bool,
-    baseline_remote: bool,
-    compare_found: bool,
-    samples: usize,
-    cv: Option<f64>,
-    host_mismatch: bool,
-    baseline_age_days: Option<i64>,
-}
-
 fn signal_recommendation(input: SignalRecommendationInput) -> SignalRecommendation {
-    if !input.baseline_found && !input.baseline_remote {
-        return SignalRecommendation::NoDecisionYet;
-    }
-    if input.host_mismatch {
-        return SignalRecommendation::CheckHostMismatch;
-    }
-    if input
-        .baseline_age_days
-        .is_some_and(|days| days > SIGNAL_STALE_BASELINE_DAYS)
-    {
-        return SignalRecommendation::RefreshBaseline;
-    }
-    if input.cv.is_some_and(|cv| cv > SIGNAL_HIGH_NOISE_CV) {
-        return SignalRecommendation::UsePairedMode;
-    }
-    if input.samples < SIGNAL_MATURE_SAMPLE_LIMIT {
-        return SignalRecommendation::IncreaseSamples;
-    }
-    if !input.compare_found || input.baseline_remote {
-        return SignalRecommendation::AdvisoryOnly;
-    }
-    SignalRecommendation::SafeToGate
+    decide_signal_recommendation(
+        input,
+        SIGNAL_STALE_BASELINE_DAYS,
+        SIGNAL_HIGH_NOISE_CV,
+        SIGNAL_MATURE_SAMPLE_LIMIT,
+    )
 }
 
 fn configured_signal_benches(
