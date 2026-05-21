@@ -361,14 +361,22 @@ fn median(values: &[f64]) -> Option<f64> {
     })
 }
 
-fn evaluate_policy(inputs: &[AggregateInput], req: &AggregateRequest) -> AggregateVerdict {
+struct PolicyTally {
+    passed: u32,
+    failed: u32,
+    total: u32,
+    weighted_pass: f64,
+    weighted_total: f64,
+    outlier_runners: u32,
+}
+
+fn tally_inputs(inputs: &[AggregateInput]) -> PolicyTally {
     let passed = inputs
         .iter()
         .filter(|i| i.status == MetricStatus::Pass)
         .count() as u32;
-    let failed = inputs.len() as u32 - passed;
     let total = inputs.len() as u32;
-
+    let failed = total - passed;
     let weighted_total: f64 = inputs
         .iter()
         .map(|input| input.runner.effective_weight.unwrap_or(1.0))
@@ -383,94 +391,145 @@ fn evaluate_policy(inputs: &[AggregateInput], req: &AggregateRequest) -> Aggrega
         .filter(|input| input.runner.outlier_reason.is_some())
         .count() as u32;
 
-    let mut reasons = Vec::new();
-    let status = match req.policy {
-        AggregationPolicy::All => {
-            if failed == 0 {
-                MetricStatus::Pass
-            } else {
-                reasons.push(format!(
-                    "{failed} runner(s) failed under all-must-pass policy"
-                ));
-                MetricStatus::Fail
-            }
-        }
-        AggregationPolicy::Majority => {
-            if passed > failed {
-                MetricStatus::Pass
-            } else {
-                reasons.push(format!(
-                    "majority policy failed: pass={} fail={}",
-                    passed, failed
-                ));
-                MetricStatus::Fail
-            }
-        }
-        AggregationPolicy::Weighted => {
-            let required = req.quorum.unwrap_or(0.5).clamp(0.0, 1.0);
-            let ratio = if weighted_total == 0.0 {
-                0.0
-            } else {
-                weighted_pass / weighted_total
-            };
-            if ratio >= required {
-                MetricStatus::Pass
-            } else {
-                reasons.push(format!(
-                    "weighted policy failed: score={ratio:.3}, required={required:.3}"
-                ));
-                MetricStatus::Fail
-            }
-        }
-        AggregationPolicy::Quorum => {
-            let required = req.quorum.unwrap_or(0.5).clamp(0.0, 1.0);
-            let ratio = if total == 0 {
-                0.0
-            } else {
-                passed as f64 / total as f64
-            };
-            if ratio >= required {
-                MetricStatus::Pass
-            } else {
-                reasons.push(format!(
-                    "quorum policy failed: score={ratio:.3}, required={required:.3}"
-                ));
-                MetricStatus::Fail
-            }
-        }
-        AggregationPolicy::FailIfNOfM => {
-            let fail_if = req.fail_if.clone().unwrap_or(FailIfNOfM { n: 1, m: None });
-            let m = fail_if.m.unwrap_or(total);
-            if total < m {
-                reasons.push(format!(
-                    "insufficient receipts: expected {m}, received {total}"
-                ));
-                MetricStatus::Fail
-            } else if failed >= fail_if.n {
-                reasons.push(format!(
-                    "fail-if-n-of-m policy triggered: failed={failed} threshold={}",
-                    fail_if.n
-                ));
-                MetricStatus::Fail
-            } else {
-                MetricStatus::Pass
-            }
-        }
-    };
-
-    AggregateVerdict {
-        status,
+    PolicyTally {
         passed,
         failed,
         total,
-        weighted_pass: matches!(req.policy, AggregationPolicy::Weighted).then_some(weighted_pass),
-        weighted_total: matches!(req.policy, AggregationPolicy::Weighted).then_some(weighted_total),
+        weighted_pass,
+        weighted_total,
+        outlier_runners,
+    }
+}
+
+mod policy {
+    use super::{AggregateRequest, AggregationPolicy, FailIfNOfM, MetricStatus, PolicyTally};
+
+    pub fn resolve_status(
+        tally: &PolicyTally,
+        req: &AggregateRequest,
+        reasons: &mut Vec<String>,
+    ) -> MetricStatus {
+        match req.policy {
+            AggregationPolicy::All => all(tally, reasons),
+            AggregationPolicy::Majority => majority(tally, reasons),
+            AggregationPolicy::Weighted => weighted(tally, req, reasons),
+            AggregationPolicy::Quorum => quorum(tally, req, reasons),
+            AggregationPolicy::FailIfNOfM => fail_if_n_of_m(tally, req, reasons),
+        }
+    }
+
+    fn all(tally: &PolicyTally, reasons: &mut Vec<String>) -> MetricStatus {
+        if tally.failed == 0 {
+            MetricStatus::Pass
+        } else {
+            reasons.push(format!(
+                "{} runner(s) failed under all-must-pass policy",
+                tally.failed
+            ));
+            MetricStatus::Fail
+        }
+    }
+
+    fn majority(tally: &PolicyTally, reasons: &mut Vec<String>) -> MetricStatus {
+        if tally.passed > tally.failed {
+            MetricStatus::Pass
+        } else {
+            reasons.push(format!(
+                "majority policy failed: pass={} fail={}",
+                tally.passed, tally.failed
+            ));
+            MetricStatus::Fail
+        }
+    }
+
+    fn weighted(
+        tally: &PolicyTally,
+        req: &AggregateRequest,
+        reasons: &mut Vec<String>,
+    ) -> MetricStatus {
+        let required = req.quorum.unwrap_or(0.5).clamp(0.0, 1.0);
+        let ratio = if tally.weighted_total == 0.0 {
+            0.0
+        } else {
+            tally.weighted_pass / tally.weighted_total
+        };
+        if ratio >= required {
+            MetricStatus::Pass
+        } else {
+            reasons.push(format!(
+                "weighted policy failed: score={ratio:.3}, required={required:.3}"
+            ));
+            MetricStatus::Fail
+        }
+    }
+
+    fn quorum(
+        tally: &PolicyTally,
+        req: &AggregateRequest,
+        reasons: &mut Vec<String>,
+    ) -> MetricStatus {
+        let required = req.quorum.unwrap_or(0.5).clamp(0.0, 1.0);
+        let ratio = if tally.total == 0 {
+            0.0
+        } else {
+            tally.passed as f64 / tally.total as f64
+        };
+        if ratio >= required {
+            MetricStatus::Pass
+        } else {
+            reasons.push(format!(
+                "quorum policy failed: score={ratio:.3}, required={required:.3}"
+            ));
+            MetricStatus::Fail
+        }
+    }
+
+    fn fail_if_n_of_m(
+        tally: &PolicyTally,
+        req: &AggregateRequest,
+        reasons: &mut Vec<String>,
+    ) -> MetricStatus {
+        let fail_if = req.fail_if.clone().unwrap_or(FailIfNOfM { n: 1, m: None });
+        let m = fail_if.m.unwrap_or(tally.total);
+        if tally.total < m {
+            reasons.push(format!(
+                "insufficient receipts: expected {m}, received {}",
+                tally.total
+            ));
+            MetricStatus::Fail
+        } else if tally.failed >= fail_if.n {
+            reasons.push(format!(
+                "fail-if-n-of-m policy triggered: failed={} threshold={}",
+                tally.failed, fail_if.n
+            ));
+            MetricStatus::Fail
+        } else {
+            MetricStatus::Pass
+        }
+    }
+}
+
+fn evaluate_policy(inputs: &[AggregateInput], req: &AggregateRequest) -> AggregateVerdict {
+    let tally = tally_inputs(inputs);
+
+    let mut reasons = Vec::new();
+    let status = policy::resolve_status(&tally, req, &mut reasons);
+
+    AggregateVerdict {
+        status,
+        passed: tally.passed,
+        failed: tally.failed,
+        total: tally.total,
+        weighted_pass: matches!(req.policy, AggregationPolicy::Weighted)
+            .then_some(tally.weighted_pass),
+        weighted_total: matches!(req.policy, AggregationPolicy::Weighted)
+            .then_some(tally.weighted_total),
         required: matches!(
             req.policy,
             AggregationPolicy::Weighted | AggregationPolicy::Quorum
         )
         .then_some(req.quorum.unwrap_or(0.5)),
-        outlier_runners: (outlier_runners > 0).then_some(outlier_runners),
+        outlier_runners: (tally.outlier_runners > 0).then_some(tally.outlier_runners),
         reasons,
     }
 }
