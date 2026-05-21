@@ -31,6 +31,7 @@ use perfgate_types::{
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use workflow::{build_markdown, determine_exit_code, maybe_add_paired_suggestion};
 
 /// Request for the check use case.
 #[derive(Debug, Clone)]
@@ -261,43 +262,20 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
         let (compare_receipt, report) = apply_complexity_gate(compare_receipt, report, complexity);
 
         // 6. Generate markdown
-        let mut markdown = if let Some(compare) = &compare_receipt {
-            crate::app::render_markdown(compare)
-        } else {
-            render_no_baseline_markdown(&run_receipt, &warnings)
-        };
-        if let Some(complexity) = &report.complexity {
-            markdown.push_str(&crate::app::render_complexity_section(complexity));
-        }
+        let markdown = build_markdown(
+            &compare_receipt,
+            &run_receipt,
+            &warnings,
+            &report.complexity,
+        );
 
         let markdown_path = req.out_dir.join("comment.md");
 
         // 7. Determine exit code
-        let (failed, exit_code) = if let Some(compare) = &compare_receipt {
-            match compare.verdict.status {
-                VerdictStatus::Pass | VerdictStatus::Skip => (false, 0),
-                VerdictStatus::Warn => {
-                    if req.fail_on_warn {
-                        (true, 3)
-                    } else {
-                        (false, 0)
-                    }
-                }
-                VerdictStatus::Fail => (true, 2),
-            }
-        } else {
-            // No baseline - pass by default (unless require_baseline was set, which already bailed)
-            (false, 0)
-        };
+        let (failed, exit_code) = determine_exit_code(&compare_receipt, req.fail_on_warn);
 
         // 8. Check for high CV and suggest paired mode
-        let suggest_paired = detect_high_cv(&run_receipt);
-        if suggest_paired {
-            warnings.push(
-                "high noise detected (CV > 30%): consider using `perfgate paired` for more reliable results"
-                    .to_string(),
-            );
-        }
+        let suggest_paired = maybe_add_paired_suggestion(&run_receipt, &mut warnings);
 
         Ok(CheckOutcome {
             run_receipt,
@@ -595,6 +573,59 @@ impl<R: ProcessRunner + Clone, H: HostProbe + Clone, C: Clock + Clone> CheckUseC
             r_squared_threshold: threshold,
             message: "complexity gate passed".to_string(),
         })
+    }
+}
+
+mod workflow {
+    use super::*;
+
+    pub(super) fn build_markdown(
+        compare_receipt: &Option<CompareReceipt>,
+        run_receipt: &RunReceipt,
+        warnings: &[String],
+        complexity: &Option<ComplexityGateResult>,
+    ) -> String {
+        let mut markdown = if let Some(compare) = compare_receipt {
+            crate::app::render_markdown(compare)
+        } else {
+            render_no_baseline_markdown(run_receipt, warnings)
+        };
+
+        if let Some(complexity) = complexity {
+            markdown.push_str(&crate::app::render_complexity_section(complexity));
+        }
+        markdown
+    }
+
+    pub(super) fn determine_exit_code(
+        compare_receipt: &Option<CompareReceipt>,
+        fail_on_warn: bool,
+    ) -> (bool, i32) {
+        if let Some(compare) = compare_receipt {
+            match compare.verdict.status {
+                VerdictStatus::Pass | VerdictStatus::Skip => (false, 0),
+                VerdictStatus::Warn if fail_on_warn => (true, 3),
+                VerdictStatus::Warn => (false, 0),
+                VerdictStatus::Fail => (true, 2),
+            }
+        } else {
+            // No baseline - pass by default (unless require_baseline was set, which already bailed)
+            (false, 0)
+        }
+    }
+
+    pub(super) fn maybe_add_paired_suggestion(
+        run_receipt: &RunReceipt,
+        warnings: &mut Vec<String>,
+    ) -> bool {
+        let suggest_paired = detect_high_cv(run_receipt);
+        if suggest_paired {
+            warnings.push(
+                "high noise detected (CV > 30%): consider using `perfgate paired` for more reliable results"
+                    .to_string(),
+            );
+        }
+        suggest_paired
     }
 }
 
