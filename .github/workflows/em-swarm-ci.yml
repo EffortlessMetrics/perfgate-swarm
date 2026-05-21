@@ -31,10 +31,12 @@ jobs:
     outputs:
       target: ${{ steps.route.outputs.target }}
       reason: ${{ steps.route.outputs.reason }}
+      error: ${{ steps.route.outputs.error }}
     steps:
       - id: route
         env:
           GH_TOKEN: ${{ secrets.EM_RUNNER_READ_TOKEN }}
+          ORG: EffortlessMetrics
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
@@ -48,54 +50,83 @@ jobs:
 
           if [[ "${trusted}" != "true" ]]; then
             echo "target=github" >> "$GITHUB_OUTPUT"
-            echo "reason=fork_or_untrusted_pr" >> "$GITHUB_OUTPUT"
+            echo "reason=fork_pr" >> "$GITHUB_OUTPUT"
+            echo "error=false" >> "$GITHUB_OUTPUT"
             echo "router_target=github"
-            echo "router_reason=fork_or_untrusted_pr"
+            echo "router_reason=fork_pr"
+            echo "router_error=false"
             exit 0
           fi
 
           if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "::error::EM_RUNNER_READ_TOKEN is missing for ${REPO}; perfgate-swarm must prove routed self-hosted CI or explicit busy-runner fallback."
-            echo "target=unconfigured" >> "$GITHUB_OUTPUT"
-            echo "reason=missing_runner_token" >> "$GITHUB_OUTPUT"
-            echo "router_target=unconfigured"
-            echo "router_reason=missing_runner_token"
-            exit 1
+            echo "target=github" >> "$GITHUB_OUTPUT"
+            echo "reason=runner_token_missing" >> "$GITHUB_OUTPUT"
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            echo "router_target=github"
+            echo "router_reason=runner_token_missing"
+            echo "router_error=true"
+            exit 0
           fi
 
-          api="https://api.github.com/orgs/${GITHUB_REPOSITORY_OWNER}/actions/runners?per_page=100"
+          api="orgs/${ORG}/actions/runners?per_page=100"
 
-          if ! runners="$(curl -fsS \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$api")"; then
-            echo "::error::Unable to read org runners; cannot prove CX43/CX53 routing."
-            echo "target=unconfigured" >> "$GITHUB_OUTPUT"
-            echo "reason=runner_api_failed" >> "$GITHUB_OUTPUT"
-            echo "router_target=unconfigured"
-            echo "router_reason=runner_api_failed"
-            exit 1
+          set +e
+          runners="$(gh api "${api}" 2>route_err.log)"
+          api_status=$?
+          set -e
+          if [[ $api_status -ne 0 ]]; then
+            err="$(cat route_err.log || true)"
+            reason="runner_api_failed"
+            if grep -qi "HTTP 401" <<< "$err"; then
+              reason="runner_token_unauthorized"
+            elif grep -qi "HTTP 403" <<< "$err"; then
+              reason="runner_token_forbidden"
+            fi
+            echo "target=github" >> "$GITHUB_OUTPUT"
+            echo "reason=${reason}" >> "$GITHUB_OUTPUT"
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            echo "router_target=github"
+            echo "router_reason=${reason}"
+            echo "router_error=true"
+            exit 0
           fi
 
           idle_with_labels() {
             local label1="$1"
-            jq --arg label1 "$label1" '
+            local label2="$2"
+            local label3="$3"
+            local label4="$4"
+            jq --arg label1 "$label1" --arg label2 "$label2" --arg label3 "$label3" --arg label4 "$label4" '
               [
                 .runners[]
                 | select(.status == "online")
                 | select(.busy == false)
-                | select(([.labels[].name] | index("em-ci")) != null)
-                | select(([.labels[].name] | index("rust-small")) != null)
-                | select(([.labels[].name] | index("trusted-pr")) != null)
                 | select(([.labels[].name] | index($label1)) != null)
+                | select(([.labels[].name] | index($label2)) != null)
+                | select(([.labels[].name] | index($label3)) != null)
+                | select(([.labels[].name] | index($label4)) != null)
               ] | length
             ' <<< "$runners"
           }
 
-          idle_cx43="$(idle_with_labels cx43)"
-          idle_cx53="$(idle_with_labels cx53)"
+          if ! jq -e '.runners' <<< "$runners" >/dev/null; then
+            echo "target=github" >> "$GITHUB_OUTPUT"
+            echo "reason=parse_failed" >> "$GITHUB_OUTPUT"
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            echo "router_target=github"
+            echo "router_reason=parse_failed"
+            echo "router_error=true"
+            exit 0
+          fi
 
-          if [[ "${idle_cx43}" -gt 0 ]]; then
+          idle_cpx42="$(idle_with_labels em-ci cpx42 rust-16gb rust-medium)"
+          idle_cx43="$(idle_with_labels em-ci cx43 rust-small trusted-pr)"
+          idle_cx53="$(idle_with_labels em-ci cx53 rust-small trusted-pr)"
+
+          if [[ "${idle_cpx42}" -gt 0 ]]; then
+            target="cpx42"
+            reason="cpx42_idle"
+          elif [[ "${idle_cx43}" -gt 0 ]]; then
             target="cx43"
             reason="cx43_idle"
           elif [[ "${idle_cx53}" -gt 0 ]]; then
@@ -108,10 +139,66 @@ jobs:
 
           echo "target=${target}" >> "$GITHUB_OUTPUT"
           echo "reason=${reason}" >> "$GITHUB_OUTPUT"
+          echo "error=false" >> "$GITHUB_OUTPUT"
           echo "router_target=${target}"
           echo "router_reason=${reason}"
+          echo "router_error=false"
+          echo "idle_cpx42=${idle_cpx42}"
           echo "idle_cx43=${idle_cx43}"
           echo "idle_cx53=${idle_cx53}"
+
+  perfgate-rust-small-cpx42:
+    name: Perfgate Rust Small on CPX42
+    needs: route-perfgate-rust-small
+    if: github.repository == 'EffortlessMetrics/perfgate-swarm' && needs.route-perfgate-rust-small.outputs.target == 'cpx42'
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, linux, x64, em-ci, cpx42, rust-16gb, rust-medium, trusted-pr]
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: "7"
+      CARGO_INCREMENTAL: "0"
+      TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /mnt/ci-scratch/perfgate/${{ github.run_id }}-${{ github.run_attempt }}
+      PERFGATE_CI_TARGET_DIR: /mnt/ci-scratch/perfgate/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Prepare CPX42 scratch
+        run: |
+          set -euo pipefail
+          ci-disk-guard /mnt/ci-scratch 45
+          ci-disk-guard /mnt/ci-cache 10
+          mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR"
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Preflight disk and toolchain
+        run: |
+          set -euo pipefail
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
+          rustc --version
+          cargo --version
+          if command -v python3 >/dev/null 2>&1; then python3 --version; fi
+          if command -v sccache >/dev/null 2>&1; then sccache --show-stats || true; fi
+
+      - name: Run Rust small gate
+        run: |
+          set -euo pipefail
+          cargo run -p xtask -- gate --check
+
+      - name: Cleanup and final stats
+        if: always()
+        run: |
+          set +e
+          if command -v sccache >/dev/null 2>&1; then sccache --show-stats || true; fi
+          rm -rf "$TMPDIR" "$CARGO_TARGET_DIR"
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
 
   perfgate-rust-small-cx43:
     name: Perfgate Rust Small on CX43
@@ -336,6 +423,7 @@ jobs:
     needs:
       - cargo-deny
       - route-perfgate-rust-small
+      - perfgate-rust-small-cpx42
       - perfgate-rust-small-cx43
       - perfgate-rust-small-cx53
       - perfgate-rust-small-github
@@ -368,6 +456,9 @@ jobs:
           test_required "perfgate-server-integration" "${{ needs.perfgate-server-integration.result }}"
 
           case "${route_target}" in
+            cpx42)
+              test_required "perfgate-rust-small-cpx42" "${{ needs.perfgate-rust-small-cpx42.result }}"
+              ;;
             cx43)
               test_required "perfgate-rust-small-cx43" "${{ needs.perfgate-rust-small-cx43.result }}"
               ;;
