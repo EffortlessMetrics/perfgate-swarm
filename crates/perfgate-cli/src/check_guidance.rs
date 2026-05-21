@@ -274,8 +274,21 @@ pub(super) fn print_check_failure_guidance(
 }
 
 pub(super) fn classify_check_error(error: &anyhow::Error) -> FailureClass {
-    if let Some(err) = error.downcast_ref::<PerfgateError>() {
-        return match err {
+    error_classification::classify_check_error(error)
+}
+
+mod error_classification {
+    use super::*;
+
+    pub(super) fn classify_check_error(error: &anyhow::Error) -> FailureClass {
+        if let Some(err) = error.downcast_ref::<PerfgateError>() {
+            return classify_perfgate_error(err);
+        }
+        classify_from_message(&error.to_string().to_ascii_lowercase())
+    }
+
+    fn classify_perfgate_error(err: &PerfgateError) -> FailureClass {
+        match err {
             PerfgateError::Config(ConfigValidationError::BenchName(_)) => {
                 FailureClass::SetupMissingBench
             }
@@ -288,29 +301,36 @@ pub(super) fn classify_check_error(error: &anyhow::Error) -> FailureClass {
                 FailureClass::UnsupportedMetric
             }
             _ => FailureClass::SetupCommandFailed,
-        };
+        }
     }
 
-    let message = error.to_string().to_ascii_lowercase();
-    if message.contains("program not found")
-        || message.contains("failed to run iteration")
-        || message.contains("failed to run benchmark")
-        || message.contains("run command")
-    {
-        FailureClass::SetupCommandFailed
-    } else if message.contains("no benchmarks")
-        || message.contains("not found in config")
-        || message.contains("either --bench or --all")
-    {
-        FailureClass::SetupMissingBench
-    } else if message.contains("baseline") {
-        FailureClass::MissingBaseline
-    } else if message.contains("host mismatch") {
-        FailureClass::HostMismatch
-    } else if message.contains("not found") || message.contains("read ") {
-        FailureClass::SetupMissingConfig
-    } else {
-        FailureClass::SetupCommandFailed
+    fn classify_from_message(message: &str) -> FailureClass {
+        if is_command_failure(message) {
+            FailureClass::SetupCommandFailed
+        } else if is_missing_bench(message) {
+            FailureClass::SetupMissingBench
+        } else if message.contains("baseline") {
+            FailureClass::MissingBaseline
+        } else if message.contains("host mismatch") {
+            FailureClass::HostMismatch
+        } else if message.contains("not found") || message.contains("read ") {
+            FailureClass::SetupMissingConfig
+        } else {
+            FailureClass::SetupCommandFailed
+        }
+    }
+
+    fn is_command_failure(message: &str) -> bool {
+        message.contains("program not found")
+            || message.contains("failed to run iteration")
+            || message.contains("failed to run benchmark")
+            || message.contains("run command")
+    }
+
+    fn is_missing_bench(message: &str) -> bool {
+        message.contains("no benchmarks")
+            || message.contains("not found in config")
+            || message.contains("either --bench or --all")
     }
 }
 
