@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::baseline_doctor::{
     BaselineDoctorRow, BaselineMaturity, configured_benches, inspect_baseline,
 };
+use crate::benchmark_passport::BenchmarkPassport;
 use crate::doctor::{SignalDoctorRow, SignalRecommendation, inspect_signal, plural};
 use crate::imported_evidence::ImportedEvidenceSummary;
 use crate::{atomic_write, check_command, paired_command, read_json, resolve_configured_out_dir};
@@ -669,6 +670,14 @@ fn render_policy_review_packet(
     let report_path = artifact_path(out_dir, &baseline.bench, "report.json");
     let comment_path = artifact_path(out_dir, &baseline.bench, "comment.md");
     let repair_context_path = artifact_path(out_dir, &baseline.bench, "repair_context.json");
+    let passport = BenchmarkPassport::from_rows(
+        baseline,
+        signal,
+        recommended.as_str(),
+        proof_freshness(baseline, signal),
+        policy_non_inferences(baseline, signal),
+        local_reproduction.clone(),
+    );
 
     let mut out = String::new();
     out.push_str("# perfgate performance review packet\n\n");
@@ -722,6 +731,7 @@ fn render_policy_review_packet(
     } else {
         out.push_str("- Evidence source: `native perfgate run`\n");
     }
+    passport.render_markdown(&mut out);
 
     if let Some(imported) = policy_imported_evidence(baseline, signal) {
         out.push_str("\n## Imported Evidence\n\n");
@@ -1378,6 +1388,24 @@ fn policy_do_not(recommended: PolicyPosture) -> Vec<&'static str> {
             "do not require server ledger mode for local correctness",
         ],
     }
+}
+
+fn policy_non_inferences(baseline: &BaselineDoctorRow, signal: &SignalDoctorRow) -> Vec<String> {
+    let mut items = vec![
+        "this packet does not change config, baselines, thresholds, policy, or server settings"
+            .to_string(),
+        "this packet does not approve required_gate; reviewer approval is still required"
+            .to_string(),
+        "this packet does not replace run, compare, report, comment, repair context, or decision receipts"
+            .to_string(),
+        "server ledger history is optional team history, not local correctness".to_string(),
+    ];
+    if let Some(imported) = policy_imported_evidence(baseline, signal) {
+        for limit in imported.limitations() {
+            items.push((*limit).to_string());
+        }
+    }
+    items
 }
 
 fn format_percent(value: f64) -> String {
