@@ -75,12 +75,9 @@ pub(crate) fn execute_baseline_doctor(
     let config = load_validated_baseline_config(config_path)?;
     let benches = configured_benches(&config, bench)?;
 
-    println!("Baseline doctor ({})", config_path.display());
+    output::print_header(config_path);
     if benches.is_empty() {
-        println!("No benchmarks are configured.");
-        println!();
-        println!("Next:");
-        println!("  perfgate init --ci github --profile standard --suggest-benches");
+        output::print_empty_bench_guidance();
         return Ok(());
     }
 
@@ -88,60 +85,12 @@ pub(crate) fn execute_baseline_doctor(
     for bench_name in &benches {
         let row = inspect_baseline(&config, bench_name)?;
         counts.record(row.maturity);
-        print_row(&row);
+        output::print_row(&row);
     }
 
-    println!();
-    println!(
-        "Summary: {} mature, {} immature, {} new, {} missing, {} stale, {} host-mismatched, {} high-noise, {} remote",
-        counts.mature,
-        counts.immature,
-        counts.new,
-        counts.missing,
-        counts.stale,
-        counts.host_mismatched,
-        counts.high_noise,
-        counts.remote
-    );
-    println!();
-    println!("Next:");
-    if counts.missing > 0 {
-        println!("  perfgate check --config {} --all", config_path.display());
-        println!(
-            "  perfgate baseline promote --config {} --all",
-            config_path.display()
-        );
-    } else if counts.high_noise > 0 {
-        println!(
-            "  perfgate calibrate --config {} --bench <bench>",
-            config_path.display()
-        );
-        println!(
-            "  perfgate paired --name <bench> --baseline-cmd \"<baseline-cmd>\" --current-cmd \"<current-cmd>\" --repeat 10 --out artifacts/perfgate/<bench>/paired.json"
-        );
-    } else if counts.stale > 0 || counts.host_mismatched > 0 {
-        println!(
-            "  perfgate check --config {} --all --require-baseline",
-            config_path.display()
-        );
-        println!("  refresh stale or host-mismatched baselines after review");
-    } else if counts.immature > 0 || counts.new > 0 {
-        println!("  collect more measured samples before making these benchmarks blocking");
-        println!(
-            "  perfgate calibrate --config {} --bench <bench>",
-            config_path.display()
-        );
-    } else {
-        println!(
-            "  perfgate check --config {} --all --require-baseline",
-            config_path.display()
-        );
-    }
-    println!();
-    println!("Do not:");
-    println!(
-        "  promote baselines blindly or loosen thresholds to make maturity warnings disappear"
-    );
+    output::print_summary(&counts);
+    output::print_next_steps(config_path, &counts);
+    output::print_anti_pattern_warning();
 
     Ok(())
 }
@@ -173,49 +122,124 @@ impl BaselineDoctorCounts {
     }
 }
 
-fn print_row(row: &BaselineDoctorRow) {
-    println!();
-    println!("bench: {}", row.bench);
-    println!("status: {}", row.maturity.as_str());
-    println!("path: {}", row.path);
-    if let Some(samples) = row.samples {
-        println!("samples: {samples} measured sample{}", plural(samples));
-    } else {
-        println!("samples: unavailable");
+mod output {
+    use super::*;
+
+    pub(super) fn print_header(config_path: &Path) {
+        println!("Baseline doctor ({})", config_path.display());
     }
-    println!(
-        "cv: {}",
-        row.cv
-            .map(format_percent)
-            .unwrap_or_else(|| "unavailable".to_string())
-    );
-    println!(
-        "host: {}",
-        row.host.clone().unwrap_or_else(|| "unknown".to_string())
-    );
-    println!(
-        "age: {}",
-        row.age_days
-            .map(|days| format!("{days} day{}", plural(days as usize)))
-            .unwrap_or_else(|| "unknown".to_string())
-    );
-    print_imported_evidence(row.imported_evidence.as_ref());
-    println!("recommendation: {}", row.maturity.recommendation());
-}
 
-fn print_imported_evidence(imported: Option<&ImportedEvidenceSummary>) {
-    let Some(imported) = imported else {
-        println!("source: native perfgate run");
-        return;
-    };
+    pub(super) fn print_empty_bench_guidance() {
+        println!("No benchmarks are configured.");
+        println!();
+        println!("Next:");
+        println!("  perfgate init --ci github --profile standard --suggest-benches");
+    }
 
-    println!("source: {}", imported.source_label());
-    println!("sample model: {}", imported.sample_model);
-    println!("host context: {}", imported.host_context);
-    println!("noise support: {}", imported.noise_support);
-    println!("source limits:");
-    for limit in imported.limitations() {
-        println!("  - {limit}");
+    pub(super) fn print_row(row: &BaselineDoctorRow) {
+        println!();
+        println!("bench: {}", row.bench);
+        println!("status: {}", row.maturity.as_str());
+        println!("path: {}", row.path);
+        if let Some(samples) = row.samples {
+            println!("samples: {samples} measured sample{}", plural(samples));
+        } else {
+            println!("samples: unavailable");
+        }
+        println!(
+            "cv: {}",
+            row.cv
+                .map(format_percent)
+                .unwrap_or_else(|| "unavailable".to_string())
+        );
+        println!(
+            "host: {}",
+            row.host.clone().unwrap_or_else(|| "unknown".to_string())
+        );
+        println!(
+            "age: {}",
+            row.age_days
+                .map(|days| format!("{days} day{}", plural(days as usize)))
+                .unwrap_or_else(|| "unknown".to_string())
+        );
+        print_imported_evidence(row.imported_evidence.as_ref());
+        println!("recommendation: {}", row.maturity.recommendation());
+    }
+
+    pub(super) fn print_summary(counts: &BaselineDoctorCounts) {
+        println!();
+        println!(
+            "Summary: {} mature, {} immature, {} new, {} missing, {} stale, {} host-mismatched, {} high-noise, {} remote",
+            counts.mature,
+            counts.immature,
+            counts.new,
+            counts.missing,
+            counts.stale,
+            counts.host_mismatched,
+            counts.high_noise,
+            counts.remote
+        );
+    }
+
+    pub(super) fn print_next_steps(config_path: &Path, counts: &BaselineDoctorCounts) {
+        println!();
+        println!("Next:");
+        if counts.missing > 0 {
+            println!("  perfgate check --config {} --all", config_path.display());
+            println!(
+                "  perfgate baseline promote --config {} --all",
+                config_path.display()
+            );
+        } else if counts.high_noise > 0 {
+            println!(
+                "  perfgate calibrate --config {} --bench <bench>",
+                config_path.display()
+            );
+            println!(
+                "  perfgate paired --name <bench> --baseline-cmd \"<baseline-cmd>\" --current-cmd \"<current-cmd>\" --repeat 10 --out artifacts/perfgate/<bench>/paired.json"
+            );
+        } else if counts.stale > 0 || counts.host_mismatched > 0 {
+            println!(
+                "  perfgate check --config {} --all --require-baseline",
+                config_path.display()
+            );
+            println!("  refresh stale or host-mismatched baselines after review");
+        } else if counts.immature > 0 || counts.new > 0 {
+            println!("  collect more measured samples before making these benchmarks blocking");
+            println!(
+                "  perfgate calibrate --config {} --bench <bench>",
+                config_path.display()
+            );
+        } else {
+            println!(
+                "  perfgate check --config {} --all --require-baseline",
+                config_path.display()
+            );
+        }
+    }
+
+    pub(super) fn print_anti_pattern_warning() {
+        println!();
+        println!("Do not:");
+        println!(
+            "  promote baselines blindly or loosen thresholds to make maturity warnings disappear"
+        );
+    }
+
+    fn print_imported_evidence(imported: Option<&ImportedEvidenceSummary>) {
+        let Some(imported) = imported else {
+            println!("source: native perfgate run");
+            return;
+        };
+
+        println!("source: {}", imported.source_label());
+        println!("sample model: {}", imported.sample_model);
+        println!("host context: {}", imported.host_context);
+        println!("noise support: {}", imported.noise_support);
+        println!("source limits:");
+        for limit in imported.limitations() {
+            println!("  - {limit}");
+        }
     }
 }
 
