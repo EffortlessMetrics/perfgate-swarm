@@ -25,6 +25,13 @@ status = "accepted"
 owner = "rails-adoption"
 
 [[artifact]]
+id = "PERFGATE-PROP-0002"
+kind = "proposal"
+path = ".rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md"
+status = "proposed"
+owner = "product-platform"
+
+[[artifact]]
 id = "PERFGATE-SPEC-0001"
 kind = "spec"
 path = ".rails/specs/PERFGATE-SPEC-0001-rails-artifact-graph.md"
