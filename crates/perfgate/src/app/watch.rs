@@ -249,109 +249,16 @@ pub fn verdict_display(status: VerdictStatus) -> &'static str {
 pub fn render_watch_display(state: &WatchState, bench_name: &str, status: &str) -> Vec<String> {
     let mut lines = Vec::new();
 
-    lines.push(format!(
-        "perfgate watch | bench: {} | status: {}",
-        bench_name, status
-    ));
-    lines.push(format!(
-        "iterations: {} | pass: {} | warn: {} | fail: {}",
-        state.iteration_count, state.pass_count, state.warn_count, state.fail_count
-    ));
-
-    if let Some(last_run_time) = state.last_run_time {
-        let ago = last_run_time.elapsed();
-        lines.push(format!("last run: {}s ago", ago.as_secs()));
-    }
-
-    lines.push(String::new());
+    watch_display::append_header(&mut lines, state, bench_name, status);
 
     if let Some(result) = &state.last_result {
-        if let Some(compare) = &result.outcome.compare_receipt {
-            lines.push(format!(
-                "verdict: {} (ran in {:.1}s)",
-                verdict_display(compare.verdict.status),
-                result.elapsed.as_secs_f64()
-            ));
-            lines.push(String::new());
-
-            // Table header
-            lines.push(format!(
-                "{:<20} {:>12} {:>12} {:>10} {:>8}  {}",
-                "Metric", "Baseline", "Current", "Delta", "Status", "Trend"
-            ));
-            lines.push("-".repeat(80));
-
-            for (metric, delta) in &compare.deltas {
-                let status_str = match delta.status {
-                    MetricStatus::Pass => "pass",
-                    MetricStatus::Warn => "WARN",
-                    MetricStatus::Fail => "FAIL",
-                    MetricStatus::Skip => "skip",
-                };
-
-                let trend_str = state
-                    .trends
-                    .get(metric)
-                    .map(|t| trend_arrow(t.direction))
-                    .unwrap_or("");
-
-                lines.push(format!(
-                    "{:<20} {:>12} {:>12} {:>9}% {:>8}  {}",
-                    format_metric(*metric),
-                    format_value(*metric, delta.baseline),
-                    format_value(*metric, delta.current),
-                    format!("{:+.1}", delta.pct * 100.0),
-                    status_str,
-                    trend_str,
-                ));
-            }
-
-            if !compare.verdict.reasons.is_empty() {
-                lines.push(String::new());
-                for reason in &compare.verdict.reasons {
-                    lines.push(format!("  {}", reason));
-                }
-            }
+        if result.outcome.compare_receipt.is_some() {
+            watch_display::append_compare_result(&mut lines, state, result);
         } else {
-            lines.push(format!(
-                "no baseline (ran in {:.1}s)",
-                result.elapsed.as_secs_f64()
-            ));
-
-            // Show raw run stats
-            let receipt = &result.outcome.run_receipt;
-            lines.push(String::new());
-            lines.push(format!("{:<20} {:>12}", "Metric", "Value"));
-            lines.push("-".repeat(35));
-
-            lines.push(format!(
-                "{:<20} {:>12}",
-                "wall_ms",
-                format!("{}", receipt.stats.wall_ms.median)
-            ));
-            if let Some(cpu) = &receipt.stats.cpu_ms {
-                lines.push(format!(
-                    "{:<20} {:>12}",
-                    "cpu_ms",
-                    format!("{}", cpu.median)
-                ));
-            }
-            if let Some(rss) = &receipt.stats.max_rss_kb {
-                lines.push(format!(
-                    "{:<20} {:>12}",
-                    "max_rss_kb",
-                    format!("{}", rss.median)
-                ));
-            }
+            watch_display::append_no_baseline_result(&mut lines, result);
         }
 
-        // Show warnings from the outcome
-        if !result.outcome.warnings.is_empty() {
-            lines.push(String::new());
-            for w in &result.outcome.warnings {
-                lines.push(format!("warning: {}", w));
-            }
-        }
+        watch_display::append_warnings(&mut lines, result);
     } else {
         lines.push("waiting for first run...".to_string());
     }
@@ -360,6 +267,120 @@ pub fn render_watch_display(state: &WatchState, bench_name: &str, status: &str) 
     lines.push("press Ctrl+C to stop".to_string());
 
     lines
+}
+
+mod watch_display {
+    use super::{MetricStatus, WatchRunResult, WatchState, format_metric, format_value, trend_arrow, verdict_display};
+
+    pub(super) fn append_header(
+        lines: &mut Vec<String>,
+        state: &WatchState,
+        bench_name: &str,
+        status: &str,
+    ) {
+        lines.push(format!(
+            "perfgate watch | bench: {} | status: {}",
+            bench_name, status
+        ));
+        lines.push(format!(
+            "iterations: {} | pass: {} | warn: {} | fail: {}",
+            state.iteration_count, state.pass_count, state.warn_count, state.fail_count
+        ));
+
+        if let Some(last_run_time) = state.last_run_time {
+            let ago = last_run_time.elapsed();
+            lines.push(format!("last run: {}s ago", ago.as_secs()));
+        }
+
+        lines.push(String::new());
+    }
+
+    pub(super) fn append_compare_result(
+        lines: &mut Vec<String>,
+        state: &WatchState,
+        result: &WatchRunResult,
+    ) {
+        let compare = result
+            .outcome
+            .compare_receipt
+            .as_ref()
+            .expect("compare receipt should exist");
+
+        lines.push(format!(
+            "verdict: {} (ran in {:.1}s)",
+            verdict_display(compare.verdict.status),
+            result.elapsed.as_secs_f64()
+        ));
+        lines.push(String::new());
+        lines.push(format!(
+            "{:<20} {:>12} {:>12} {:>10} {:>8}  {}",
+            "Metric", "Baseline", "Current", "Delta", "Status", "Trend"
+        ));
+        lines.push("-".repeat(80));
+
+        for (metric, delta) in &compare.deltas {
+            let status_str = metric_status_label(delta.status);
+            let trend_str = state
+                .trends
+                .get(metric)
+                .map(|t| trend_arrow(t.direction))
+                .unwrap_or("");
+
+            lines.push(format!(
+                "{:<20} {:>12} {:>12} {:>9}% {:>8}  {}",
+                format_metric(*metric),
+                format_value(*metric, delta.baseline),
+                format_value(*metric, delta.current),
+                format!("{:+.1}", delta.pct * 100.0),
+                status_str,
+                trend_str,
+            ));
+        }
+
+        if !compare.verdict.reasons.is_empty() {
+            lines.push(String::new());
+            for reason in &compare.verdict.reasons {
+                lines.push(format!("  {}", reason));
+            }
+        }
+    }
+
+    pub(super) fn append_no_baseline_result(lines: &mut Vec<String>, result: &WatchRunResult) {
+        lines.push(format!(
+            "no baseline (ran in {:.1}s)",
+            result.elapsed.as_secs_f64()
+        ));
+
+        let receipt = &result.outcome.run_receipt;
+        lines.push(String::new());
+        lines.push(format!("{:<20} {:>12}", "Metric", "Value"));
+        lines.push("-".repeat(35));
+        lines.push(format!("{:<20} {:>12}", "wall_ms", receipt.stats.wall_ms.median));
+        if let Some(cpu) = &receipt.stats.cpu_ms {
+            lines.push(format!("{:<20} {:>12}", "cpu_ms", cpu.median));
+        }
+        if let Some(rss) = &receipt.stats.max_rss_kb {
+            lines.push(format!("{:<20} {:>12}", "max_rss_kb", rss.median));
+        }
+    }
+
+    pub(super) fn append_warnings(lines: &mut Vec<String>, result: &WatchRunResult) {
+        if !result.outcome.warnings.is_empty() {
+            lines.push(String::new());
+            for w in &result.outcome.warnings {
+                lines.push(format!("warning: {}", w));
+            }
+        }
+    }
+
+    fn metric_status_label(status: MetricStatus) -> &'static str {
+        match status {
+            MetricStatus::Pass => "pass",
+            MetricStatus::Warn => "WARN",
+            MetricStatus::Fail => "FAIL",
+            MetricStatus::Skip => "skip",
+        }
+    }
 }
 
 /// Debounce helper: tracks incoming events and determines when to trigger.
