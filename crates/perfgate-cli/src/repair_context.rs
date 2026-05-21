@@ -40,35 +40,10 @@ fn build_repair_context(
     outcome: &CheckOutcome,
     baseline_path: Option<&Path>,
 ) -> RepairContextReceipt {
-    let breached_metrics = if let Some(compare) = &outcome.compare_receipt {
-        compare
-            .deltas
-            .iter()
-            .filter_map(|(metric, delta)| {
-                if !matches!(delta.status.as_str(), "warn" | "fail" | "skip") {
-                    return None;
-                }
-                let budget = compare.budgets.get(metric)?;
-                Some(RepairMetricBreach {
-                    metric: *metric,
-                    status: delta.status.as_str().to_string(),
-                    baseline: delta.baseline,
-                    current: delta.current,
-                    regression: delta.regression,
-                    fail_threshold: budget.threshold,
-                    warn_threshold: budget.warn_threshold,
-                })
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let breached_metrics = context_builders::collect_breached_metrics(outcome);
 
-    let compare_path = outcome
-        .compare_path
-        .as_ref()
-        .map(|p| p.display().to_string());
-    let report_path = outcome.report_path.display().to_string();
+    let compare_path = context_builders::compare_path(outcome);
+    let report_path = context_builders::report_path(outcome);
     let profile_path = outcome.report.profile_path.clone();
     let otel_span = otel_span_from_env();
     let git = git_metadata();
@@ -88,6 +63,47 @@ fn build_repair_context(
         changed_files,
         otel_span,
         recommended_next_commands: suggested,
+    }
+}
+
+mod context_builders {
+    use super::*;
+
+    pub(super) fn collect_breached_metrics(outcome: &CheckOutcome) -> Vec<RepairMetricBreach> {
+        if let Some(compare) = &outcome.compare_receipt {
+            compare
+                .deltas
+                .iter()
+                .filter_map(|(metric, delta)| {
+                    if !matches!(delta.status.as_str(), "warn" | "fail" | "skip") {
+                        return None;
+                    }
+                    let budget = compare.budgets.get(metric)?;
+                    Some(RepairMetricBreach {
+                        metric: *metric,
+                        status: delta.status.as_str().to_string(),
+                        baseline: delta.baseline,
+                        current: delta.current,
+                        regression: delta.regression,
+                        fail_threshold: budget.threshold,
+                        warn_threshold: budget.warn_threshold,
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub(super) fn compare_path(outcome: &CheckOutcome) -> Option<String> {
+        outcome
+            .compare_path
+            .as_ref()
+            .map(|path| path.display().to_string())
+    }
+
+    pub(super) fn report_path(outcome: &CheckOutcome) -> String {
+        outcome.report_path.display().to_string()
     }
 }
 
