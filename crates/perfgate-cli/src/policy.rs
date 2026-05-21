@@ -1188,16 +1188,61 @@ fn proof_freshness(baseline: &BaselineDoctorRow, signal: &SignalDoctorRow) -> St
 }
 
 fn decision_readiness(config: &ConfigFile, bench_name: &str) -> &'static str {
-    let scenario_for_bench = config
-        .scenarios
-        .iter()
-        .any(|scenario| scenario.bench == bench_name);
-    match (scenario_for_bench, config.tradeoffs.is_empty()) {
-        (true, false) => "scenario and tradeoff evidence configured",
-        (true, true) => "scenario evidence configured; add tradeoff policy only for real tradeoffs",
-        (false, false) => "tradeoff policy exists; connect scenario evidence before relying on it",
-        (false, true) => {
-            "simple gate first; structured decisions are optional until a tradeoff appears"
+    decision_readiness_support::readiness_message(config, bench_name)
+}
+
+mod decision_readiness_support {
+    use super::ConfigFile;
+
+    pub(super) fn readiness_message(config: &ConfigFile, bench_name: &str) -> &'static str {
+        match collect_state(config, bench_name) {
+            DecisionReadinessState::ScenarioAndTradeoff => {
+                "scenario and tradeoff evidence configured"
+            }
+            DecisionReadinessState::ScenarioOnly => {
+                "scenario evidence configured; add tradeoff policy only for real tradeoffs"
+            }
+            DecisionReadinessState::TradeoffOnly => {
+                "tradeoff policy exists; connect scenario evidence before relying on it"
+            }
+            DecisionReadinessState::SimpleGate => {
+                "simple gate first; structured decisions are optional until a tradeoff appears"
+            }
+        }
+    }
+
+    fn collect_state(config: &ConfigFile, bench_name: &str) -> DecisionReadinessState {
+        let has_scenario = has_scenario_for_bench(config, bench_name);
+        let has_tradeoff_policy = has_tradeoff_policy(config);
+        DecisionReadinessState::from_flags(has_scenario, has_tradeoff_policy)
+    }
+
+    fn has_scenario_for_bench(config: &ConfigFile, bench_name: &str) -> bool {
+        config
+            .scenarios
+            .iter()
+            .any(|scenario| scenario.bench == bench_name)
+    }
+
+    fn has_tradeoff_policy(config: &ConfigFile) -> bool {
+        !config.tradeoffs.is_empty()
+    }
+
+    enum DecisionReadinessState {
+        ScenarioAndTradeoff,
+        ScenarioOnly,
+        TradeoffOnly,
+        SimpleGate,
+    }
+
+    impl DecisionReadinessState {
+        fn from_flags(has_scenario: bool, has_tradeoff_policy: bool) -> Self {
+            match (has_scenario, has_tradeoff_policy) {
+                (true, true) => Self::ScenarioAndTradeoff,
+                (true, false) => Self::ScenarioOnly,
+                (false, true) => Self::TradeoffOnly,
+                (false, false) => Self::SimpleGate,
+            }
         }
     }
 }
