@@ -138,3 +138,99 @@ fn adoption_recommend_rejects_missing_path() {
             "failed to resolve adoption recommend path",
         ));
 }
+
+#[test]
+fn adoption_apply_dry_run_writes_review_artifacts_without_setup_mutation() {
+    let repo = tempfile::tempdir().expect("temp repo");
+
+    perfgate_cmd()
+        .current_dir(repo.path())
+        .args([
+            "adoption",
+            "apply",
+            "--pack",
+            "rust-cli",
+            "--ci",
+            "github",
+            "--dry-run",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Dry-run adoption artifacts written to target/perfgate-adoption",
+        ))
+        .stdout(predicate::str::contains("perfgate.toml.patch"))
+        .stdout(predicate::str::contains("github-workflow.yml"))
+        .stdout(predicate::str::contains("local-commands.md"))
+        .stdout(predicate::str::contains("non-inferences.md"))
+        .stdout(predicate::str::contains(
+            "No perfgate.toml, workflow, baselines, thresholds, required gates, or server ledger settings were changed.",
+        ));
+
+    assert!(
+        !repo.path().join("perfgate.toml").exists(),
+        "dry-run must not write perfgate.toml"
+    );
+    assert!(
+        !repo
+            .path()
+            .join(".github")
+            .join("workflows")
+            .join("perfgate.yml")
+            .exists(),
+        "dry-run must not write workflow"
+    );
+    assert!(
+        !repo.path().join("baselines").join(".gitkeep").exists(),
+        "dry-run must not write baselines"
+    );
+    assert!(
+        !repo.path().join(".perfgate").join("README.md").exists(),
+        "dry-run must not write onboarding README"
+    );
+
+    let out_dir = repo.path().join("target").join("perfgate-adoption");
+    let config_patch =
+        std::fs::read_to_string(out_dir.join("perfgate.toml.patch")).expect("config patch");
+    let workflow = std::fs::read_to_string(out_dir.join("github-workflow.yml")).expect("workflow");
+    let local_commands =
+        std::fs::read_to_string(out_dir.join("local-commands.md")).expect("local commands");
+    let non_inferences =
+        std::fs::read_to_string(out_dir.join("non-inferences.md")).expect("non-inferences");
+
+    assert!(config_patch.contains("# Pack: rust-cli"));
+    assert!(config_patch.contains("name = \"cli-help\""));
+    assert!(config_patch.contains("command = [\"cargo\", \"run\", \"-q\", \"--\", \"--help\"]"));
+    assert!(workflow.contains("EffortlessMetrics/perfgate@v0"));
+    assert!(workflow.contains("require_baseline: \"false\""));
+    assert!(local_commands.contains("perfgate check --config perfgate.toml --all"));
+    assert!(local_commands.contains("perfgate policy review-packet"));
+    assert!(non_inferences.contains("policy should become required_gate"));
+    assert!(non_inferences.contains("server ledger history is required for correctness"));
+}
+
+#[test]
+fn adoption_apply_requires_dry_run() {
+    perfgate_cmd()
+        .args(["adoption", "apply", "--pack", "rust-cli", "--ci", "github"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("rerun with --dry-run"));
+}
+
+#[test]
+fn adoption_apply_rejects_unknown_ci_platform() {
+    perfgate_cmd()
+        .args([
+            "adoption",
+            "apply",
+            "--pack",
+            "rust-cli",
+            "--ci",
+            "gitlab",
+            "--dry-run",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value"));
+}
