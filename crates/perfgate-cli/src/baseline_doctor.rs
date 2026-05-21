@@ -75,22 +75,45 @@ pub(crate) fn execute_baseline_doctor(
     let config = load_validated_baseline_config(config_path)?;
     let benches = configured_benches(&config, bench)?;
 
-    println!("Baseline doctor ({})", config_path.display());
+    print_baseline_doctor_header(config_path);
     if benches.is_empty() {
-        println!("No benchmarks are configured.");
-        println!();
-        println!("Next:");
-        println!("  perfgate init --ci github --profile standard --suggest-benches");
+        print_no_benchmarks_guidance();
         return Ok(());
     }
 
+    let counts = inspect_and_print_bench_rows(&config, &benches)?;
+    print_summary(&counts);
+    print_next_steps(config_path, &counts);
+    print_do_not_guidance();
+
+    Ok(())
+}
+
+fn print_baseline_doctor_header(config_path: &Path) {
+    println!("Baseline doctor ({})", config_path.display());
+}
+
+fn print_no_benchmarks_guidance() {
+    println!("No benchmarks are configured.");
+    println!();
+    println!("Next:");
+    println!("  perfgate init --ci github --profile standard --suggest-benches");
+}
+
+fn inspect_and_print_bench_rows(
+    config: &ConfigFile,
+    benches: &[String],
+) -> anyhow::Result<BaselineDoctorCounts> {
     let mut counts = BaselineDoctorCounts::default();
-    for bench_name in &benches {
-        let row = inspect_baseline(&config, bench_name)?;
+    for bench_name in benches {
+        let row = inspect_baseline(config, bench_name)?;
         counts.record(row.maturity);
         print_row(&row);
     }
+    Ok(counts)
+}
 
+fn print_summary(counts: &BaselineDoctorCounts) {
     println!();
     println!(
         "Summary: {} mature, {} immature, {} new, {} missing, {} stale, {} host-mismatched, {} high-noise, {} remote",
@@ -103,6 +126,9 @@ pub(crate) fn execute_baseline_doctor(
         counts.high_noise,
         counts.remote
     );
+}
+
+fn print_next_steps(config_path: &Path, counts: &BaselineDoctorCounts) {
     println!();
     println!("Next:");
     if counts.missing > 0 {
@@ -137,13 +163,14 @@ pub(crate) fn execute_baseline_doctor(
             config_path.display()
         );
     }
+}
+
+fn print_do_not_guidance() {
     println!();
     println!("Do not:");
     println!(
         "  promote baselines blindly or loosen thresholds to make maturity warnings disappear"
     );
-
-    Ok(())
 }
 
 #[derive(Default)]
