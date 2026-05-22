@@ -44,6 +44,10 @@ freshness definitions live in [`PROOF_FRESHNESS.md`](PROOF_FRESHNESS.md).
 | PG-CLAIM-0031 | perfgate imports existing benchmark outputs into receipts with explicit units, directions, sample model, and non-inferences. | supported | CLI, receipts, docs | next-evidence-intake-change |
 | PG-CLAIM-0032 | perfgate surfaces imported-evidence limits in maturity, policy, review packet, and Action posture output. | supported | CLI, action, artifacts | next-evidence-intake-change |
 | PG-CLAIM-0033 | perfgate provides reviewable adoption packs for common repo shapes without automatic policy changes. | supported | CLI, docs | next-evidence-intake-change |
+| PG-CLAIM-0034 | perfgate can recommend and dry-run a first-use setup without mutating repository policy. | supported | CLI, docs, artifacts | next-first-useful-review-change |
+| PG-CLAIM-0035 | perfgate can explain a first-use performance review with a benchmark passport and explicit non-inferences. | supported | CLI, docs, artifacts | next-first-useful-review-change |
+| PG-CLAIM-0036 | perfgate emits agent-safe repair context and review guardrails without making agents policy authorities. | advisory | CLI, artifacts, tests | next-agent-repair-contract-change |
+| PG-CLAIM-0037 | perfgate emits non-mutating baseline and policy promotion plans for reviewed graduation. | advisory | CLI, config guidance, tests | next-policy-promotion-change |
 
 ## PG-CLAIM-0001: Reviewable performance decisions
 
@@ -984,6 +988,163 @@ Known limits:
   command canary.
 
 Review after: next-evidence-intake-change
+
+## PG-CLAIM-0034: First-use setup recommendation and dry-run
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, docs, artifacts
+Linked docs: [`FIRST_USEFUL_PERFORMANCE_REVIEW.md`](../FIRST_USEFUL_PERFORMANCE_REVIEW.md), [`ADOPTION_PACKS.md`](../ADOPTION_PACKS.md), [`PERFGATE-PROP-0002-first-useful-performance-review`](../../.rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md), [`PERFGATE-SPEC-0002-first-useful-performance-review`](../../.rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features adoption
+cargo +1.95.0 run -p xtask -- docs-check
+cargo +1.95.0 run -p xtask -- doc-test
+```
+
+Linked tests:
+
+- [`cli_adoption_tests.rs`](../../crates/perfgate-cli/tests/cli_adoption_tests.rs)
+- [`adoption.rs`](../../crates/perfgate-cli/src/adoption.rs)
+- [`adoption_packs.rs`](../../crates/perfgate-cli/src/adoption_packs.rs)
+
+Artifacts:
+
+- `perfgate adoption recommend`
+- `perfgate adoption recommend --json`
+- `perfgate adoption apply --pack <pack> --ci github --dry-run`
+- `target/perfgate-adoption/perfgate.toml.patch`
+- `target/perfgate-adoption/github-workflow.yml`
+- `target/perfgate-adoption/local-commands.md`
+- `target/perfgate-adoption/non-inferences.md`
+
+Known limits:
+
+- Recommendations are reviewable heuristics, not automatic benchmark
+  selection.
+- Dry-run apply does not write repo files unless a future explicit write path
+  is reviewed separately.
+- Dry-run setup does not promote baselines, loosen thresholds, make gates
+  blocking, or require server ledger mode.
+- Current proof is source-built and fixture-backed; it is not public release
+  proof for the next shipped version.
+
+Review after: next-first-useful-review-change
+
+## PG-CLAIM-0035: First-use review explain and benchmark passport
+
+Tier: supported
+Proof freshness: current
+Surface: CLI, docs, artifacts
+Linked docs: [`FIRST_USEFUL_PERFORMANCE_REVIEW.md`](../FIRST_USEFUL_PERFORMANCE_REVIEW.md), [`PERFORMANCE_REVIEW_FAILURE_GALLERY.md`](../PERFORMANCE_REVIEW_FAILURE_GALLERY.md), [`PERFGATE-SPEC-0002-first-useful-performance-review`](../../.rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md), [`CANARY_MATRIX.md`](CANARY_MATRIX.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features review
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+cargo +1.95.0 run -p xtask -- action-check
+```
+
+Linked tests:
+
+- [`cli_review_tests.rs`](../../crates/perfgate-cli/tests/cli_review_tests.rs)
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`benchmark_passport.rs`](../../crates/perfgate-cli/src/benchmark_passport.rs)
+- [`review.rs`](../../crates/perfgate-cli/src/review.rs)
+
+Artifacts:
+
+- `perfgate review explain --config perfgate.toml --bench <bench>`
+- `perfgate review explain --config perfgate.toml --bench <bench> --json`
+- `perfgate policy review-packet --config perfgate.toml --bench <bench>`
+- benchmark passport in review and Action summary surfaces
+
+Known limits:
+
+- Review explain and packets summarize receipts; receipts remain the source of
+  truth.
+- The benchmark passport does not make advisory evidence blocking.
+- Action summary rendering preserves configured exit-code behavior.
+- Current proof is in-repo and source-built; hosted first-useful-review Action
+  canaries and public-release proof remain explicit canary gaps.
+
+Review after: next-first-useful-review-change
+
+## PG-CLAIM-0036: Agent-safe repair context and guardrails
+
+Tier: advisory
+Proof freshness: current
+Surface: CLI, artifacts, tests
+Linked docs: [`FIRST_USEFUL_PERFORMANCE_REVIEW.md`](../FIRST_USEFUL_PERFORMANCE_REVIEW.md), [`PERFORMANCE_REVIEW_FAILURE_GALLERY.md`](../PERFORMANCE_REVIEW_FAILURE_GALLERY.md), [`PERFGATE-SPEC-0002-first-useful-performance-review`](../../.rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md), [`PERFGATE-SPEC-0012-agent-policy-change-guardrails`](../specs/PERFGATE-SPEC-0012-agent-policy-change-guardrails.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features repair
+cargo +1.95.0 test -p perfgate-cli --all-features check
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+```
+
+Linked tests:
+
+- [`cli_repair_context_tests.rs`](../../crates/perfgate-cli/tests/cli_repair_context_tests.rs)
+- [`cli_check_tests.rs`](../../crates/perfgate-cli/tests/cli_check_tests.rs)
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`repair_context.rs`](../../crates/perfgate-cli/src/repair_context.rs)
+
+Artifacts:
+
+- `repair_context.json`
+- `perfgate review explain` agent guardrails
+- policy review-packet agent guardrails
+
+Known limits:
+
+- Agent guidance is advisory. It does not authorize baseline promotion,
+  threshold loosening, required-gate changes, tradeoff acceptance, or server
+  ledger requirements.
+- Current proof covers fixture-backed repair and policy scenarios, not every
+  agent workflow or external hosted repair loop.
+- A copyable standalone agent prompt is not claimed as a shipped command
+  surface.
+
+Review after: next-agent-repair-contract-change
+
+## PG-CLAIM-0037: Non-mutating promotion plans
+
+Tier: advisory
+Proof freshness: current
+Surface: CLI, config guidance, tests
+Linked docs: [`FIRST_USEFUL_PERFORMANCE_REVIEW.md`](../FIRST_USEFUL_PERFORMANCE_REVIEW.md), [`POLICY_ROLLOUT.md`](../POLICY_ROLLOUT.md), [`PERFGATE-SPEC-0002-first-useful-performance-review`](../../.rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md)
+Proof commands:
+
+```bash
+cargo +1.95.0 test -p perfgate-cli --all-features baseline
+cargo +1.95.0 test -p perfgate-cli --all-features policy
+```
+
+Linked tests:
+
+- [`cli_baseline_bootstrap_tests.rs`](../../crates/perfgate-cli/tests/cli_baseline_bootstrap_tests.rs)
+- [`cli_policy_tests.rs`](../../crates/perfgate-cli/tests/cli_policy_tests.rs)
+- [`policy.rs`](../../crates/perfgate-cli/src/policy.rs)
+
+Artifacts:
+
+- `perfgate baseline promote-plan --config perfgate.toml --bench <bench>`
+- `perfgate policy promote-plan --config perfgate.toml --bench <bench> --to gate_candidate`
+- `perfgate policy promote-plan --config perfgate.toml --bench <bench> --to required_gate`
+
+Known limits:
+
+- Promotion plans do not write config, baselines, thresholds, policy, or server
+  settings.
+- `gate_candidate` is reviewable evidence, not blocking policy.
+- `required_gate` remains a human policy decision and needs explicit approval.
+- Plans do not prove public-release behavior until the commands ship and are
+  tested from public artifacts.
+
+Review after: next-policy-promotion-change
 
 ## PG-CLAIM-0032: Imported evidence in review surfaces
 
