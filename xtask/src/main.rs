@@ -18,6 +18,7 @@ const TARGET_PUBLIC_PACKAGES: [&str; 5] = [
 
 const BADGE_ENDPOINT_DIR: &str = "badges";
 const BADGE_ENDPOINT_TARGET_DIR: &str = "target/xtask/badges";
+const RIPR_BADGE_VERSION: &str = "0.5.0";
 const RIPR_PR_DIR: &str = "target/ripr/pr";
 const RIPR_REVIEW_DIR: &str = "target/ripr/review";
 
@@ -457,6 +458,7 @@ fn cmd_badges(check: bool) -> anyhow::Result<()> {
 
 fn ripr_plus_badge(workspace_root: &Path) -> anyhow::Result<ShieldsEndpointBadge> {
     let ripr_bin = std::env::var("RIPR_BIN").unwrap_or_else(|_| "ripr".to_string());
+    validate_ripr_badge_version(&ripr_bin)?;
     let mut output = run_ripr_check_format(&ripr_bin, workspace_root, "repo-badge-plus-shields")?;
 
     if !output.status.success()
@@ -479,6 +481,40 @@ fn ripr_plus_badge(workspace_root: &Path) -> anyhow::Result<ShieldsEndpointBadge
         .with_context(|| format!("{ripr_bin} emitted invalid Shields endpoint JSON"))?;
     badge.label = "ripr+".to_string();
     Ok(badge)
+}
+
+fn validate_ripr_badge_version(ripr_bin: &str) -> anyhow::Result<()> {
+    let output = std::process::Command::new(ripr_bin)
+        .arg("--version")
+        .output()
+        .with_context(|| format!("running {ripr_bin} --version"))?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "running {ripr_bin} --version failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let Some(version) = parse_ripr_version(&stdout) else {
+        anyhow::bail!("{ripr_bin} --version output was not recognized: {stdout:?}");
+    };
+    if version != RIPR_BADGE_VERSION {
+        anyhow::bail!(
+            "ripr+ badge generation requires ripr {RIPR_BADGE_VERSION}, got {version}. \
+             Install with: cargo install ripr --version {RIPR_BADGE_VERSION} --locked --force"
+        );
+    }
+
+    Ok(())
+}
+
+fn parse_ripr_version(output: &str) -> Option<&str> {
+    let mut parts = output.split_whitespace();
+    match (parts.next(), parts.next()) {
+        (Some("ripr"), Some(version)) => Some(version),
+        _ => None,
+    }
 }
 
 fn run_ripr_check_format(
@@ -6242,6 +6278,18 @@ mod tests {
         };
 
         validate_shields_badge(&badge, Some("ripr+")).unwrap();
+    }
+
+    #[test]
+    fn ripr_version_parser_accepts_expected_shape() {
+        assert_eq!(parse_ripr_version("ripr 0.5.0\n"), Some("0.5.0"));
+        assert_eq!(parse_ripr_version("ripr 0.7.0"), Some("0.7.0"));
+    }
+
+    #[test]
+    fn ripr_version_parser_rejects_unknown_shape() {
+        assert_eq!(parse_ripr_version("0.5.0"), None);
+        assert_eq!(parse_ripr_version("perfgate 0.5.0"), None);
     }
 
     #[test]

@@ -29,7 +29,9 @@ jobs:
           cache-on-failure: true
 
       - name: Install ripr
-        run: cargo install ripr --locked
+        run: |
+          cargo install ripr --version 0.5.0 --locked --force
+          ripr --version
 
       - name: Refresh badge endpoints
         run: cargo xtask badges
