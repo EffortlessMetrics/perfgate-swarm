@@ -31,7 +31,8 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
   templates.
 - ID-bearing Rails artifact filenames must start with their registered artifact
   ID. Support and policy artifacts are singleton registries and are exempt.
-- Rails-owned artifacts under proposals, specs, ADRs, closeouts, support, and policy directories must be registered.
+- Rails-owned artifacts under proposals, specs, ADRs, closeouts, plans, support,
+  and policy directories must be registered.
 - Rails support claim references and policy ledger paths must resolve.
 - Rails support claim IDs and policy ledger IDs must be unique inside their
   artifact.
