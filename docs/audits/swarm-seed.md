@@ -22,7 +22,13 @@ Date: 2026-05-19
 - Release tags were not pushed to `perfgate-swarm`.
 - Cargo package `repository` and `homepage` metadata remain pointed at `https://github.com/EffortlessMetrics/perfgate`.
 - Release, publish, signing, tag, package metadata, and release secrets do not move to `perfgate-swarm`.
-- `.github/workflows/release.yml` was intentionally omitted from the swarm seed.
+- `.github/workflows/release.yml` is present in `perfgate-swarm` as inert
+  publishing-source history. Its jobs are guarded to run only in
+  `EffortlessMetrics/perfgate`.
+- `.github/workflows/ci.yml` preserves the canonical hosted publishing-repo CI
+  shape and is guarded to run only in `EffortlessMetrics/perfgate`.
+- `.github/workflows/em-swarm-ci.yml` owns routed swarm development CI and is
+  guarded to run only in `EffortlessMetrics/perfgate-swarm`.
 - `perfgate-swarm` is not the external PR intake repo.
 
 ## Development flow
@@ -42,7 +48,7 @@ Linux xtask CI: CX43 -> CX53 -> GitHub-hosted
 Windows: GitHub-hosted
 Postgres integration: GitHub-hosted
 cargo-deny: GitHub-hosted
-release/publish/signing: absent
+release/publish/signing: files may exist, jobs guarded to EffortlessMetrics/perfgate
 ```
 
 Branch protection should require only the normalized final result check after routed CI proof.
