@@ -33,6 +33,10 @@ Use `.rails/` for durable repository knowledge, and keep tool/agent state in ext
 13. Keep support claim IDs and policy ledger IDs unique inside each registered
     support or policy artifact.
 14. Keep support claim proof command entries non-empty.
+15. Keep lane work item IDs unique and non-empty inside each lane tracker.
+16. Keep lane work item statuses in the accepted lane-work vocabulary:
+    `planned`, `ready`, `active`, `blocked`, `implemented`, or `superseded`.
+17. Keep lane work item proof command entries non-empty.
 
 ## Validation
 
@@ -47,6 +51,6 @@ fields, registered artifact and lane paths, status values, ID prefixes, artifact
 kind directories, filename identity, registry links, link target kinds,
 unregistered owned artifacts, support claim references, policy ledger paths,
 duplicate support claim or policy ledger IDs, lane tracker path/schema and
-identity/status/owner consistency, non-empty support proof commands, closeouts
-for implemented lanes, the required human docs, and the absence of the legacy
-`.perfgate-spec/` namespace.
+identity/status/owner consistency, lane work item IDs and statuses, non-empty
+support and lane work item proof commands, closeouts for implemented lanes, the
+required human docs, and the absence of the legacy `.perfgate-spec/` namespace.

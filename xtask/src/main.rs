@@ -4821,6 +4821,16 @@ struct RailsLaneTracker {
     name: String,
     status: String,
     owner: String,
+    #[serde(default)]
+    work_item: Vec<RailsLaneWorkItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RailsLaneWorkItem {
+    id: String,
+    status: String,
+    #[serde(default)]
+    proof: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -5448,6 +5458,49 @@ fn validate_rails_lane_tracker(root: &Path, lane: &RailsLane, errors: &mut Vec<S
             "Rails lane {} tracker owner `{}` must match index owner `{}`",
             lane.id, tracker.owner, lane.owner
         ));
+    }
+
+    let mut work_item_ids = BTreeSet::<&str>::new();
+    for work_item in &tracker.work_item {
+        if work_item.id.trim().is_empty() {
+            errors.push(format!(
+                "Rails lane {} tracker has a work item with an empty id",
+                lane.id
+            ));
+        } else if !work_item_ids.insert(work_item.id.as_str()) {
+            errors.push(format!(
+                "Rails lane {} tracker has duplicate work item id {}",
+                lane.id, work_item.id
+            ));
+        }
+        validate_rails_status(
+            "lane work item",
+            &format!("{}/{}", lane.id, work_item.id),
+            &work_item.status,
+            &[
+                "planned",
+                "ready",
+                "active",
+                "blocked",
+                "implemented",
+                "superseded",
+            ],
+            errors,
+        );
+        if work_item.proof.is_empty() {
+            errors.push(format!(
+                "Rails lane {} work item {} must list proof commands",
+                lane.id, work_item.id
+            ));
+        }
+        for proof in &work_item.proof {
+            if proof.trim().is_empty() {
+                errors.push(format!(
+                    "Rails lane {} work item {} has an empty proof command",
+                    lane.id, work_item.id
+                ));
+            }
+        }
     }
 }
 
@@ -7618,6 +7671,107 @@ owner = "other-owner"
             errors.iter().any(|error| error.contains(
                 "Rails lane demo-lane tracker owner `other-owner` must match index owner `test`"
             )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_empty_lane_work_item_proof_command() {
+        let root = unique_temp_dir("perfgate_rails_work_item_empty_proof");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+[[work_item]]
+id = "demo-work"
+status = "implemented"
+proof = ["cargo test", " "]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error
+                .contains("Rails lane demo-lane work item demo-work has an empty proof command")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_duplicate_lane_work_item_ids() {
+        let root = unique_temp_dir("perfgate_rails_work_item_duplicate");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+[[work_item]]
+id = "demo-work"
+status = "implemented"
+proof = ["cargo test"]
+
+[[work_item]]
+id = "demo-work"
+status = "implemented"
+proof = ["cargo test"]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error
+                .contains("Rails lane demo-lane tracker has duplicate work item id demo-work")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_unknown_lane_work_item_status() {
+        let root = unique_temp_dir("perfgate_rails_work_item_unknown_status");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+[[work_item]]
+id = "demo-work"
+status = "maybe"
+proof = ["cargo test"]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error
+                .contains("Rails lane work item demo-lane/demo-work uses unknown status `maybe`")),
             "unexpected errors: {:?}",
             errors
         );
