@@ -55,11 +55,21 @@ status = "accepted"
 owner = "rails-adoption"
 linked_specs = ["PERFGATE-SPEC-0001"]
 
+[[artifact]]
+id = "PERFGATE-CLOSEOUT-0001"
+kind = "closeout"
+path = ".rails/closeouts/PERFGATE-CLOSEOUT-0001-rails-adoption.md"
+status = "implemented"
+owner = "docs-platform"
+linked_proposal = "PERFGATE-PROP-0001"
+linked_specs = ["PERFGATE-SPEC-0001"]
+linked_adrs = ["PERFGATE-ADR-0001"]
+
 [[lane]]
 id = "rails-adoption"
 name = "Rails adoption"
 path = ".rails/lanes/rails-adoption/tracker.toml"
-status = "active"
+status = "implemented"
 owner = "docs-platform"
 
 [[lane]]
