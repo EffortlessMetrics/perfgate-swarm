@@ -25,6 +25,7 @@ fn cli_help_main() {
         .stdout(predicate::str::contains("ledger"))
         .stdout(predicate::str::contains("policy"))
         .stdout(predicate::str::contains("adoption"))
+        .stdout(predicate::str::contains("review"))
         .stdout(predicate::str::contains("paired"))
         .stdout(predicate::str::contains("audit"))
         .stdout(predicate::str::contains("probe"))
@@ -186,6 +187,7 @@ fn cli_help_baseline() {
         .stdout(predicate::str::contains("init"))
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("promote"))
+        .stdout(predicate::str::contains("promote-plan"))
         .stdout(predicate::str::contains("list"))
         .stdout(predicate::str::contains("download"));
 }
@@ -451,6 +453,7 @@ fn cli_help_policy() {
         .stdout(predicate::str::contains("profiles"))
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("emit-patch"))
+        .stdout(predicate::str::contains("promote-plan"))
         .stdout(predicate::str::contains("review-packet"));
 }
 
@@ -496,6 +499,21 @@ fn cli_help_policy_emit_patch() {
 }
 
 #[test]
+fn cli_help_policy_promote_plan() {
+    perfgate_cmd()
+        .args(["policy", "promote-plan", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Plan a non-mutating policy promotion",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--to"));
+}
+
+#[test]
 fn cli_help_policy_review_packet() {
     perfgate_cmd()
         .args(["policy", "review-packet", "--help"])
@@ -508,6 +526,33 @@ fn cli_help_policy_review_packet() {
         .stdout(predicate::str::contains("--out-dir"))
         .stdout(predicate::str::contains("--bench"))
         .stdout(predicate::str::contains("--out"));
+}
+
+#[test]
+fn cli_help_review() {
+    perfgate_cmd()
+        .args(["review", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Explain first-use performance posture",
+        ))
+        .stdout(predicate::str::contains("explain"));
+}
+
+#[test]
+fn cli_help_review_explain() {
+    perfgate_cmd()
+        .args(["review", "explain", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Explain first-use performance posture",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--json"));
 }
 
 #[test]
@@ -764,10 +809,31 @@ fn snapshot_help_policy_emit_patch() {
 }
 
 #[test]
+fn snapshot_help_policy_promote_plan() {
+    insta::assert_snapshot!(
+        "help_policy_promote_plan",
+        help_output(&["policy", "promote-plan", "--help"])
+    );
+}
+
+#[test]
 fn snapshot_help_policy_review_packet() {
     insta::assert_snapshot!(
         "help_policy_review_packet",
         help_output(&["policy", "review-packet", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_review() {
+    insta::assert_snapshot!("help_review", help_output(&["review", "--help"]));
+}
+
+#[test]
+fn snapshot_help_review_explain() {
+    insta::assert_snapshot!(
+        "help_review_explain",
+        help_output(&["review", "explain", "--help"])
     );
 }
 

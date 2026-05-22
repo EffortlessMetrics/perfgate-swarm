@@ -1,0 +1,76 @@
+id = "perfgate-first-useful-performance-review"
+title = "perfgate 0.22 first useful performance review"
+status = "completed"
+owner = "codex"
+created = "2026-05-21"
+completed = "2026-05-22"
+milestone = "0.22.0"
+closeout = "docs/handoffs/2026-05-22-first-useful-performance-review-closeout.md"
+
+objective = """
+Turn perfgate's evidence-intake and maturity substrate into one coherent
+first-use performance review loop: recommend a reviewable setup, emit dry-run
+setup patches, explain evidence posture, surface benchmark passports, guide
+agents safely, and produce non-mutating baseline and policy promotion plans.
+"""
+
+end_state = [
+  "Adoption pack recommendation is implemented and fixture-backed.",
+  "Adoption apply emits non-mutating dry-run setup artifacts.",
+  "Review explain composes evidence source, baseline health, signal maturity, policy posture, non-inferences, and next commands.",
+  "Benchmark passport appears in review packets and Action summaries.",
+  "Repair context includes safe commands, forbidden changes, and human-review requirements.",
+  "Baseline and policy promote-plan commands are non-mutating and reviewable.",
+  "Canaries, docs, and product claims describe implemented behavior without overclaiming.",
+]
+
+linked_proposal = ".rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md"
+linked_spec = ".rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md"
+linked_plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+linked_closeout = "docs/handoffs/2026-05-22-first-useful-performance-review-closeout.md"
+linked_status = [
+  "docs/status/PRODUCT_CLAIMS.md",
+  "docs/status/PROOF_FRESHNESS.md",
+  "docs/status/CANARY_MATRIX.md",
+]
+
+proof = [
+  "cargo +1.95.0 run -p xtask -- rails check",
+  "cargo +1.95.0 run -p xtask -- docs-check",
+  "cargo +1.95.0 run -p xtask -- doc-test",
+  "cargo +1.95.0 run -p xtask -- docs-source-check",
+  "cargo +1.95.0 run -p xtask -- product-claims-check",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "lane-plan"
+status = "merged"
+
+[[work_item]]
+id = "adoption-recommend"
+status = "merged"
+
+[[work_item]]
+id = "adoption-apply-dry-run"
+status = "merged"
+
+[[work_item]]
+id = "review-explain"
+status = "merged"
+
+[[work_item]]
+id = "benchmark-passport"
+status = "merged"
+
+[[work_item]]
+id = "agent-repair-context"
+status = "merged"
+
+[[work_item]]
+id = "promotion-plans"
+status = "merged"
+
+[[work_item]]
+id = "canaries-docs-claims-closeout"
+status = "merged"

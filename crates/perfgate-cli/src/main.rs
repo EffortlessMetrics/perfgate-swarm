@@ -4,6 +4,7 @@ mod adoption_packs;
 mod artifact_explain;
 mod baseline;
 mod baseline_doctor;
+mod benchmark_passport;
 mod check_guidance;
 mod cli_parsing;
 mod decision_debt;
@@ -15,6 +16,7 @@ mod ledger_doctor;
 mod policy;
 mod probe_templates;
 mod repair_context;
+mod review;
 mod storage;
 
 use storage::{
@@ -26,7 +28,7 @@ use adoption_packs::{AdoptionAction, execute_adoption_action};
 use anyhow::Context;
 use artifact_explain::execute_explain_action;
 use baseline::{BaselineSelector, parse_baseline_selector};
-use baseline_doctor::execute_baseline_doctor;
+use baseline_doctor::{BaselineMaturity, execute_baseline_doctor, inspect_baseline};
 use check_guidance::{
     FailureClass, check_command, classify_check_error, emit_check_outcome_guidance, paired_command,
     print_check_failure_guidance,
@@ -90,6 +92,7 @@ use regex::Regex;
 #[cfg(test)]
 use repair_context::parse_changed_files_summary;
 use repair_context::{git_metadata, maybe_write_repair_context, run_git_capture};
+use review::{ReviewAction, execute_review_action};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -425,6 +428,12 @@ enum Command {
     Adoption {
         #[command(subcommand)]
         action: AdoptionAction,
+    },
+
+    /// Explain first-use performance posture from existing receipts.
+    Review {
+        #[command(subcommand)]
+        action: ReviewAction,
     },
 
     /// Generate an embeddable SVG status badge from a report or compare receipt.
@@ -2129,6 +2138,25 @@ enum BaselineAction {
         pretty: bool,
     },
 
+    /// Plan a reviewed baseline promotion without writing files.
+    PromotePlan {
+        /// Path to the config file (TOML or JSON)
+        #[arg(long, default_value = "perfgate.toml")]
+        config: PathBuf,
+
+        /// Benchmark name to evaluate for promotion
+        #[arg(long)]
+        bench: String,
+
+        /// Path or cloud URI to the candidate run receipt. Defaults to [defaults].out_dir/<bench>/run.json.
+        #[arg(long)]
+        current: Option<PathBuf>,
+
+        /// Path or cloud URI where the baseline would be written. Defaults to the configured baseline path.
+        #[arg(long)]
+        to: Option<PathBuf>,
+    },
+
     /// List baselines for a project.
     List {
         /// Project name (uses --project flag or PERFGATE_PROJECT if not specified)
@@ -2418,7 +2446,7 @@ fn resolve_bench_names(
 }
 
 fn main() -> ExitCode {
-    match real_main() {
+    match run_real_main() {
         Ok(_) => ExitCode::from(0),
         Err(err) => {
             if let Some(clap_err) = err.downcast_ref::<clap::Error>() {
@@ -2428,6 +2456,28 @@ fn main() -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+#[cfg(windows)]
+fn run_real_main() -> anyhow::Result<()> {
+    // The full all-features CLI type graph can exceed the default Windows
+    // main-thread stack in debug builds. Keep the process entrypoint small and
+    // do parsing/execution on a larger stack.
+    let handle = std::thread::Builder::new()
+        .name("perfgate-main".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(real_main)
+        .context("failed to start perfgate main thread")?;
+
+    match handle.join() {
+        Ok(result) => result,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
+#[cfg(not(windows))]
+fn run_real_main() -> anyhow::Result<()> {
+    real_main()
 }
 
 fn real_main() -> anyhow::Result<()> {
@@ -3380,6 +3430,7 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
             Ok(())
         }
         Command::Adoption { action } => execute_adoption_action(action),
+        Command::Review { action } => execute_review_action(action),
         Command::Badge(args) => execute_badge(*args),
 
         Command::Discover { path, json } => {
@@ -5956,6 +6007,230 @@ fn promote_one_local_baseline(
     Ok(())
 }
 
+fn execute_local_baseline_promote_plan(
+    config_path: &Path,
+    bench: &str,
+    current: Option<PathBuf>,
+    to: Option<PathBuf>,
+) -> anyhow::Result<()> {
+    let config = load_validated_baseline_config(config_path)?;
+    configured_baseline_benches(&config, Some(bench))?;
+
+    let baseline_path = to.unwrap_or_else(|| resolve_baseline_path(&None, bench, &config));
+    let target_exists = location_exists(&baseline_path)?;
+    let baseline_row = inspect_baseline(&config, bench)?;
+    let current_candidates = if let Some(current) = current {
+        vec![current]
+    } else {
+        check_run_receipt_candidates(&config, bench)
+    };
+
+    println!("Baseline promote plan ({})", config_path.display());
+    println!("bench: {bench}");
+    println!("target baseline: {}", baseline_path.display());
+    println!(
+        "existing baseline: {} at {}",
+        baseline_row.maturity.as_str(),
+        baseline_row.path
+    );
+    println!(
+        "target baseline exists: {}",
+        if target_exists { "yes" } else { "no" }
+    );
+
+    let Some(current_path) = first_existing_location(&current_candidates)? else {
+        println!("candidate source: missing");
+        println!("searched:");
+        for candidate in &current_candidates {
+            println!("  - {}", candidate.display());
+        }
+        println!("promotion safety: blocked until a candidate run receipt exists");
+        println!();
+        println!("Next:");
+        println!(
+            "  perfgate check --config {} --bench {}",
+            config_path.display(),
+            bench
+        );
+        println!();
+        println!("Do not:");
+        println!("  do not promote a missing or unreviewed baseline");
+        println!("  do not loosen thresholds to create promotion evidence");
+        return Ok(());
+    };
+
+    let receipt: RunReceipt = read_json_from_location(&current_path)
+        .with_context(|| format!("failed to read run receipt from {}", current_path.display()))?;
+    if receipt.bench.name != bench {
+        anyhow::bail!(
+            "run receipt benchmark '{}' does not match --bench '{}'",
+            receipt.bench.name,
+            bench
+        );
+    }
+
+    let measured_samples = receipt
+        .samples
+        .iter()
+        .filter(|sample| !sample.warmup)
+        .count();
+    let cv = receipt.stats.wall_ms.cv();
+    let receipt_host = run_receipt_host_class(&receipt);
+    let current_host = current_runtime_host_class();
+    let imported_evidence = imported_evidence::summarize_imported_receipt(&receipt);
+    let source = imported_evidence
+        .as_ref()
+        .map(|imported| imported.source_label().to_string())
+        .unwrap_or_else(|| "native perfgate run".to_string());
+    let sample_model = imported_evidence
+        .as_ref()
+        .map(|imported| imported.sample_model)
+        .unwrap_or("raw_samples")
+        .to_string();
+    let noise_support = imported_evidence
+        .as_ref()
+        .map(|imported| imported.noise_support.to_string())
+        .unwrap_or_else(|| {
+            cv.map(format_promote_plan_percent)
+                .unwrap_or_else(|| "cv unavailable".to_string())
+        });
+    let host_context = if receipt_host == current_host {
+        format!("compatible_with_current_runner ({receipt_host})")
+    } else {
+        format!("host_mismatch_review_required ({receipt_host} vs {current_host})")
+    };
+
+    println!("candidate source: {}", current_path.display());
+    println!("source: {source}");
+    println!("sample model: {sample_model}");
+    println!(
+        "samples: {measured_samples} measured sample{}",
+        plural(measured_samples)
+    );
+    println!("noise support: {noise_support}");
+    println!("host context: {host_context}");
+    if let Some(imported) = imported_evidence.as_ref() {
+        println!("source limits:");
+        for limit in imported.limitations() {
+            println!("  - {limit}");
+        }
+    }
+    println!(
+        "promotion safety: {}",
+        baseline_promote_plan_safety(
+            baseline_row.maturity,
+            measured_samples,
+            cv,
+            &receipt_host,
+            &current_host,
+            imported_evidence.as_ref(),
+        )
+    );
+    println!();
+    println!("Review checklist:");
+    println!("  - confirm this workload is still representative");
+    println!("  - confirm setup time is not being mistaken for measured runtime");
+    println!("  - confirm noise and host context are acceptable for baseline history");
+    println!("  - confirm this is setup/history work, not regression repair");
+    println!();
+    println!("Command after review:");
+    println!(
+        "  {}",
+        baseline_promote_plan_command(
+            config_path,
+            bench,
+            &current_path,
+            &baseline_path,
+            target_exists,
+        )
+    );
+    println!();
+    println!("Do not:");
+    println!("  do not let an agent promote this baseline without review");
+    println!("  do not loosen thresholds to make this plan look safe");
+    println!("  do not make this benchmark required_gate from promotion alone");
+
+    Ok(())
+}
+
+fn first_existing_location(candidates: &[PathBuf]) -> anyhow::Result<Option<PathBuf>> {
+    for candidate in candidates {
+        if location_exists(candidate)? {
+            return Ok(Some(candidate.clone()));
+        }
+    }
+    Ok(None)
+}
+
+fn run_receipt_host_class(receipt: &RunReceipt) -> String {
+    format!("{}-{}", receipt.run.host.os, receipt.run.host.arch)
+}
+
+fn current_runtime_host_class() -> String {
+    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+fn format_promote_plan_percent(value: f64) -> String {
+    format!("cv {:.1}%", value * 100.0)
+}
+
+fn baseline_promote_plan_safety(
+    maturity: BaselineMaturity,
+    samples: usize,
+    cv: Option<f64>,
+    receipt_host: &str,
+    current_host: &str,
+    imported_evidence: Option<&imported_evidence::ImportedEvidenceSummary>,
+) -> &'static str {
+    if imported_evidence.is_some_and(|imported| imported.is_summary_only()) {
+        return "review required; summary-only imported evidence has limited noise support";
+    }
+    if receipt_host != current_host {
+        return "review required; candidate host differs from this runner";
+    }
+    if cv.is_some_and(|cv| cv > 0.10) {
+        return "review required; candidate signal is high-noise";
+    }
+    if samples < 3 {
+        return "review required; candidate has too few measured samples";
+    }
+
+    match maturity {
+        BaselineMaturity::Missing => {
+            "review required; this creates setup history, not regression repair"
+        }
+        BaselineMaturity::New => "review required; replacing a new baseline needs approval",
+        BaselineMaturity::Immature => {
+            "review required; replacing an immature baseline needs maturity review"
+        }
+        BaselineMaturity::Mature => "review required; replacing a mature baseline needs approval",
+        BaselineMaturity::Stale => "review required; stale baseline refresh needs review",
+        BaselineMaturity::HostMismatched => "review required; existing baseline is host-mismatched",
+        BaselineMaturity::HighNoise => "review required; existing baseline is high-noise",
+        BaselineMaturity::Remote => "review required; remote baseline target is not locally probed",
+    }
+}
+
+fn baseline_promote_plan_command(
+    config_path: &Path,
+    bench: &str,
+    current_path: &Path,
+    baseline_path: &Path,
+    target_exists: bool,
+) -> String {
+    let mut command = format!(
+        "perfgate baseline promote --config {} --bench {} --current {} --to {}",
+        config_path.display(),
+        bench,
+        current_path.display(),
+        baseline_path.display()
+    );
+    if target_exists {
+        command.push_str(" --force");
+    }
+    command
+}
+
 /// Execute baseline management actions.
 fn execute_baseline_action(
     action: BaselineAction,
@@ -5990,6 +6265,12 @@ fn execute_baseline_action(
                 pretty,
             },
         ),
+        BaselineAction::PromotePlan {
+            config,
+            bench,
+            current,
+            to,
+        } => execute_local_baseline_promote_plan(&config, &bench, current, to),
         remote_action => execute_remote_baseline_action(remote_action, server_flags),
     }
 }
@@ -6007,7 +6288,8 @@ fn execute_remote_baseline_action(
         BaselineAction::Status { .. }
         | BaselineAction::Init { .. }
         | BaselineAction::Doctor { .. }
-        | BaselineAction::Promote { .. } => {
+        | BaselineAction::Promote { .. }
+        | BaselineAction::PromotePlan { .. } => {
             unreachable!("local baseline actions are handled before server dispatch");
         }
         BaselineAction::List {
