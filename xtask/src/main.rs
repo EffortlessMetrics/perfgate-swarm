@@ -4935,6 +4935,8 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
         }
     }
 
+    validate_rails_owned_artifacts_registered(root, &artifact_paths, &mut errors);
+
     let implemented_closeout_paths = index
         .artifact
         .iter()
@@ -4979,6 +4981,75 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
     }
 
     Ok(errors)
+}
+
+fn validate_rails_owned_artifacts_registered(
+    root: &Path,
+    artifact_paths: &BTreeMap<String, String>,
+    errors: &mut Vec<String>,
+) {
+    for artifact_dir in [
+        ".rails/proposals",
+        ".rails/specs",
+        ".rails/adr",
+        ".rails/closeouts",
+        ".rails/support",
+        ".rails/policy",
+    ] {
+        let path = root.join(artifact_dir);
+        if path.exists() {
+            validate_rails_owned_artifact_dir(root, &path, artifact_paths, errors);
+        }
+    }
+}
+
+fn validate_rails_owned_artifact_dir(
+    root: &Path,
+    dir: &Path,
+    artifact_paths: &BTreeMap<String, String>,
+    errors: &mut Vec<String>,
+) {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            errors.push(format!(
+                "Rails-owned artifact directory `{}` could not be read: {err}",
+                relative_display(root, dir)
+            ));
+            return;
+        }
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                errors.push(format!(
+                    "Rails-owned artifact directory `{}` has unreadable entry: {err}",
+                    relative_display(root, dir)
+                ));
+                continue;
+            }
+        };
+        let path = entry.path();
+        if path.is_dir() {
+            validate_rails_owned_artifact_dir(root, &path, artifact_paths, errors);
+            continue;
+        }
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+        if file_name == "README.md" {
+            continue;
+        }
+        let relative = relative_display(root, &path);
+        if !artifact_paths.contains_key(&relative) {
+            errors.push(format!(
+                "Rails-owned artifact `{relative}` must be registered in .rails/index.toml"
+            ));
+        }
+    }
 }
 
 fn validate_rails_lane_tracker(root: &Path, lane: &RailsLane, errors: &mut Vec<String>) {
@@ -6517,6 +6588,28 @@ owner = "test"
             errors
                 .iter()
                 .any(|error| error.contains("implemented Rails lane demo-lane")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_unregistered_owned_artifacts() {
+        let root = unique_temp_dir("perfgate_rails_unregistered_artifact");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/support/claim-map.toml",
+            "schema_version = \"1.0\"\n",
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails-owned artifact `.rails/support/claim-map.toml` must be registered"
+            )),
             "unexpected errors: {:?}",
             errors
         );

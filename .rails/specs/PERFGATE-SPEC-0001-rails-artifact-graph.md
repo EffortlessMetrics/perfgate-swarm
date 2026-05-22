@@ -19,6 +19,7 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 
 - Rails-owned artifacts must be indexed in `.rails/index.toml`.
 - Rails-owned artifact paths must live under `.rails/`.
+- Rails-owned artifacts under proposals, specs, ADRs, closeouts, support, and policy directories must be registered.
 - External namespaces may be listed for awareness, but not owned.
 - Specs define behavior contracts, not PR ordering.
 - Lane trackers define focused implementation sequence.
@@ -55,5 +56,6 @@ Promotion once index/lane validators are implemented and used in CI.
 
 ## Failure modes
 
-Missing linked artifacts, lane tracker drift, missing closeouts for implemented
-lanes, or paths under external namespaces must fail validation.
+Missing linked artifacts, unregistered owned artifacts, lane tracker drift,
+missing closeouts for implemented lanes, or paths under external namespaces
+must fail validation.

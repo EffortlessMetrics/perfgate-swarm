@@ -56,6 +56,22 @@ owner = "rails-adoption"
 linked_specs = ["PERFGATE-SPEC-0001"]
 
 [[artifact]]
+id = "PERFGATE-SUPPORT-0001"
+kind = "support"
+path = ".rails/support/claim-map.toml"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
+id = "PERFGATE-POLICY-0001"
+kind = "policy"
+path = ".rails/policy/ledgers.toml"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
 id = "PERFGATE-CLOSEOUT-0001"
 kind = "closeout"
 path = ".rails/closeouts/PERFGATE-CLOSEOUT-0001-rails-adoption.md"
