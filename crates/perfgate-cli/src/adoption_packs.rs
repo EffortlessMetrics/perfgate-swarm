@@ -1,7 +1,11 @@
 //! Reviewable adoption packs for common repository shapes.
 
+use crate::storage::atomic_write;
+use anyhow::{Context, bail};
 use clap::{Subcommand, ValueEnum};
+use serde::Serialize;
 use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum AdoptionPackName {
@@ -32,8 +36,44 @@ impl AdoptionPackName {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AdoptionCiPlatform {
+    #[value(name = "github")]
+    Github,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum AdoptionAction {
+    /// Recommend a reviewable adoption pack from repository shape.
+    Recommend {
+        /// Repository path to inspect.
+        #[arg(long, default_value = ".")]
+        path: PathBuf,
+
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Emit reviewable setup artifacts without changing repository files.
+    Apply {
+        /// Adoption pack to scaffold review artifacts for.
+        #[arg(long)]
+        pack: AdoptionPackName,
+
+        /// CI platform to include in the dry-run workflow artifact.
+        #[arg(long, value_enum, default_value = "github")]
+        ci: AdoptionCiPlatform,
+
+        /// Write review artifacts under the output directory without changing setup files.
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Directory for generated review artifacts.
+        #[arg(long, default_value = "target/perfgate-adoption")]
+        out_dir: PathBuf,
+    },
+
     /// List reviewable adoption packs without changing config.
     Packs {
         /// Show one adoption pack instead of the full catalog.
@@ -56,6 +96,25 @@ pub struct AdoptionPack {
     pub promotion_path: &'static [&'static str],
     pub known_bad_fits: &'static [&'static str],
     pub do_not_infer: &'static [&'static str],
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdoptionRecommendation {
+    pub recommended_pack: &'static str,
+    pub confidence: &'static str,
+    pub why: Vec<String>,
+    pub inspected: Vec<String>,
+    pub not_inspected: Vec<&'static str>,
+    pub known_bad_fits: Vec<&'static str>,
+    pub next_command: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AdoptionApplyArtifacts {
+    pub config_patch: String,
+    pub github_workflow: String,
+    pub local_commands: String,
+    pub non_inferences: String,
 }
 
 const ADOPTION_PACKS: &[AdoptionPack] = &[
@@ -271,6 +330,141 @@ pub fn adoption_pack(name: AdoptionPackName) -> &'static AdoptionPack {
         .expect("all AdoptionPackName values have catalog entries")
 }
 
+pub fn recommend_adoption_pack(root: &Path) -> AdoptionRecommendation {
+    let mut inspected = Vec::new();
+
+    let cargo_toml = path_exists(root, "Cargo.toml", &mut inspected);
+    let rust_main = path_exists(root, "src/main.rs", &mut inspected);
+    let rust_lib = path_exists(root, "src/lib.rs", &mut inspected);
+    let rust_benches = path_exists(root, "benches", &mut inspected);
+    let pytest_ini = path_exists(root, "pytest.ini", &mut inspected);
+    let pyproject = path_exists(root, "pyproject.toml", &mut inspected);
+    let python_benchmarks = path_exists(root, "benchmarks", &mut inspected);
+    let package_json = path_exists(root, "package.json", &mut inspected);
+    let action_yml = path_exists(root, "action.yml", &mut inspected);
+    let action_yaml = path_exists(root, "action.yaml", &mut inspected);
+    let scripts_dir = path_exists(root, "scripts", &mut inspected);
+
+    let cargo_is_workspace = cargo_toml && file_contains(root.join("Cargo.toml"), "[workspace]");
+    if cargo_is_workspace {
+        inspected.push("Cargo.toml contains [workspace]".to_string());
+    }
+
+    let has_k6_script = scripts_dir && directory_contains_name(root.join("scripts"), "k6");
+    if has_k6_script {
+        inspected.push("scripts/ contains a k6-named file".to_string());
+    }
+
+    let has_bench_script = scripts_dir && directory_contains_name(root.join("scripts"), "bench");
+    if has_bench_script {
+        inspected.push("scripts/ contains a bench-named file".to_string());
+    }
+
+    let (pack_name, confidence, why) = if cargo_is_workspace || (cargo_toml && rust_benches) {
+        (
+            AdoptionPackName::RustWorkspace,
+            "high",
+            vec![reason(
+                "Cargo workspace or benches indicate a larger Rust workspace",
+            )],
+        )
+    } else if cargo_toml && (rust_main || rust_lib) {
+        (
+            AdoptionPackName::RustCli,
+            "high",
+            vec![reason(
+                "Cargo.toml plus src/main.rs or src/lib.rs indicate a Rust CLI/library shape",
+            )],
+        )
+    } else if (pytest_ini || pyproject) && python_benchmarks {
+        (
+            AdoptionPackName::PythonService,
+            "medium",
+            vec![reason(
+                "Python project metadata plus benchmarks/ suggests pytest-benchmark or a benchmark script",
+            )],
+        )
+    } else if package_json && (action_yml || action_yaml) {
+        (
+            AdoptionPackName::NodeToolAction,
+            "high",
+            vec![reason(
+                "package.json plus action.yml/action.yaml indicates a Node tool or GitHub Action",
+            )],
+        )
+    } else if has_k6_script {
+        (
+            AdoptionPackName::HttpLocalSmoke,
+            "medium",
+            vec![reason(
+                "scripts/ contains a k6-named file, which fits local HTTP smoke intake",
+            )],
+        )
+    } else if has_bench_script {
+        (
+            AdoptionPackName::GenericCommand,
+            "medium",
+            vec![reason(
+                "scripts/ contains a bench-named file, but the framework is not known",
+            )],
+        )
+    } else {
+        (
+            AdoptionPackName::GenericCommand,
+            "low",
+            vec![reason(
+                "no known framework markers were found; start with explicit generic command evidence",
+            )],
+        )
+    };
+
+    let pack = adoption_pack(pack_name);
+    AdoptionRecommendation {
+        recommended_pack: pack.name,
+        confidence,
+        why,
+        inspected,
+        not_inspected: vec![
+            "benchmark runtime behavior",
+            "baseline maturity",
+            "signal noise",
+            "host compatibility",
+            "whether any generated setup should be written",
+        ],
+        known_bad_fits: pack.known_bad_fits.to_vec(),
+        next_command: format!("perfgate adoption packs --pack {}", pack.name),
+    }
+}
+
+pub fn render_adoption_recommendation(recommendation: &AdoptionRecommendation) -> String {
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "Recommended adoption pack: {}",
+        recommendation.recommended_pack
+    );
+    let _ = writeln!(out, "Confidence: {}", recommendation.confidence);
+    render_owned_list(&mut out, "Why", &recommendation.why);
+    render_owned_list(&mut out, "Inspected", &recommendation.inspected);
+    render_list(&mut out, "Not inspected", &recommendation.not_inspected);
+    render_list(&mut out, "Known bad fits", &recommendation.known_bad_fits);
+    let _ = writeln!(out, "Next: {}", recommendation.next_command);
+    out
+}
+
+pub fn render_adoption_apply_artifacts(
+    pack: &AdoptionPack,
+    _ci: AdoptionCiPlatform,
+) -> AdoptionApplyArtifacts {
+    let starter = starter_bench(pack.name);
+    AdoptionApplyArtifacts {
+        config_patch: render_config_patch(pack, starter),
+        github_workflow: render_github_workflow(),
+        local_commands: render_local_commands(pack),
+        non_inferences: render_non_inferences(pack),
+    }
+}
+
 pub fn render_adoption_packs(filter: Option<AdoptionPackName>) -> String {
     let mut out = String::new();
     out.push_str(
@@ -292,6 +486,131 @@ pub fn render_adoption_packs(filter: Option<AdoptionPackName>) -> String {
         render_pack(&mut out, pack);
     }
 
+    out
+}
+
+fn render_config_patch(pack: &AdoptionPack, starter: StarterBench) -> String {
+    let command = starter
+        .command
+        .iter()
+        .map(|part| format!("\"{part}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        r#"# Generated by `perfgate adoption apply --dry-run`.
+# Review before applying. This patch does not promote baselines, loosen thresholds,
+# make a required gate, or require server ledger mode.
+--- /dev/null
++++ b/perfgate.toml
+@@
++# Pack: {pack_name}
++# Repo shape: {repo_shape}
++# Starting policy: {starting_policy}
++[defaults]
++repeat = 7
++warmup = 1
++threshold = 0.20
++warn_factor = 0.50
++noise_threshold = 0.10
++noise_policy = "warn"
++out_dir = "artifacts/perfgate"
++baseline_dir = "baselines"
++
++# Review and replace this starter benchmark before relying on it.
++# Best current fit: {start_with}
++[[bench]]
++name = "{bench_name}"
++command = [{command}]
+"#,
+        pack_name = pack.name,
+        repo_shape = pack.repo_shape,
+        starting_policy = pack.starting_policy,
+        start_with = pack.start_with,
+        bench_name = starter.name,
+    )
+}
+
+fn render_github_workflow() -> String {
+    r#"# Generated by `perfgate adoption apply --dry-run`.
+# Review before copying to .github/workflows/perfgate.yml.
+name: Performance Evidence
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  perfgate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: EffortlessMetrics/perfgate@v0
+        with:
+          config: perfgate.toml
+          all: "true"
+          require_baseline: "false"
+          upload_artifact: "true"
+"#
+    .to_string()
+}
+
+fn render_local_commands(pack: &AdoptionPack) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "# Local adoption commands");
+    let _ = writeln!(out);
+    let _ = writeln!(out, "Pack: `{}`", pack.name);
+    let _ = writeln!(out);
+    let _ = writeln!(out, "Run after reviewing the generated patch and workflow:");
+    let _ = writeln!(out);
+    let _ = writeln!(out, "```bash");
+    let _ = writeln!(out, "perfgate adoption packs --pack {}", pack.name);
+    let _ = writeln!(out, "perfgate check --config perfgate.toml --all");
+    let _ = writeln!(out, "perfgate baseline doctor --config perfgate.toml --all");
+    let _ = writeln!(out, "perfgate doctor signal --config perfgate.toml --all");
+    let _ = writeln!(
+        out,
+        "perfgate policy review-packet --config perfgate.toml --bench <bench> --out artifacts/perfgate/<bench>/review-packet.md"
+    );
+    let _ = writeln!(out, "```");
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "Do not promote baselines or make gates blocking until maturity output has been reviewed."
+    );
+    out
+}
+
+fn render_non_inferences(pack: &AdoptionPack) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "# Non-inferences");
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "These dry-run artifacts are setup review material for `{}`.",
+        pack.name
+    );
+    let _ = writeln!(out, "They do not prove:");
+    let _ = writeln!(out);
+    render_list(
+        &mut out,
+        "Universal limits",
+        &[
+            "the selected benchmark is mature",
+            "the first run should become a baseline",
+            "signal noise is low enough to block CI",
+            "host compatibility has been proven",
+            "policy should become required_gate",
+            "server ledger history is required for correctness",
+        ],
+    );
+    render_list(&mut out, "Pack-specific limits", pack.do_not_infer);
     out
 }
 
@@ -317,8 +636,154 @@ fn render_list(out: &mut String, label: &str, items: &[&str]) {
     }
 }
 
+fn render_owned_list(out: &mut String, label: &str, items: &[String]) {
+    let _ = writeln!(out, "{label}:");
+    for item in items {
+        let _ = writeln!(out, "  - {item}");
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StarterBench {
+    name: &'static str,
+    command: &'static [&'static str],
+}
+
+fn starter_bench(pack_name: &str) -> StarterBench {
+    match pack_name {
+        "rust-cli" => StarterBench {
+            name: "cli-help",
+            command: &["cargo", "run", "-q", "--", "--help"],
+        },
+        "rust-workspace" => StarterBench {
+            name: "workspace-smoke",
+            command: &["cargo", "test", "-p", "your-package", "--no-fail-fast"],
+        },
+        "python-service" => StarterBench {
+            name: "python-bench",
+            command: &["python", "scripts/bench.py"],
+        },
+        "node-tool-action" => StarterBench {
+            name: "node-bench",
+            command: &["node", "scripts/bench.js"],
+        },
+        "http-local-smoke" => StarterBench {
+            name: "http-health",
+            command: &["curl", "-fsS", "http://127.0.0.1:8080/health"],
+        },
+        _ => StarterBench {
+            name: "command-smoke",
+            command: &["./scripts/bench.sh"],
+        },
+    }
+}
+
+fn path_exists(root: &Path, relative: &str, inspected: &mut Vec<String>) -> bool {
+    let exists = root.join(relative).exists();
+    inspected.push(format!(
+        "{} {}",
+        if exists { "found" } else { "missing" },
+        relative
+    ));
+    exists
+}
+
+fn file_contains(path: PathBuf, needle: &str) -> bool {
+    std::fs::read_to_string(path)
+        .map(|content| content.contains(needle))
+        .unwrap_or(false)
+}
+
+fn directory_contains_name(path: PathBuf, needle: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return false;
+    };
+
+    entries.filter_map(Result::ok).any(|entry| {
+        entry
+            .file_name()
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains(needle)
+    })
+}
+
+fn reason(value: &str) -> String {
+    value.to_string()
+}
+
+fn write_adoption_apply_artifacts(
+    out_dir: &Path,
+    artifacts: &AdoptionApplyArtifacts,
+) -> anyhow::Result<Vec<PathBuf>> {
+    std::fs::create_dir_all(out_dir).with_context(|| format!("create {}", out_dir.display()))?;
+    let files = [
+        ("perfgate.toml.patch", &artifacts.config_patch),
+        ("github-workflow.yml", &artifacts.github_workflow),
+        ("local-commands.md", &artifacts.local_commands),
+        ("non-inferences.md", &artifacts.non_inferences),
+    ];
+    let mut written = Vec::with_capacity(files.len());
+    for (name, content) in files {
+        let path = out_dir.join(name);
+        atomic_write(&path, content.as_bytes())
+            .with_context(|| format!("write {}", path.display()))?;
+        written.push(path);
+    }
+    Ok(written)
+}
+
 pub fn execute_adoption_action(action: AdoptionAction) -> anyhow::Result<()> {
     match action {
+        AdoptionAction::Recommend { path, json } => {
+            let root = path.canonicalize().with_context(|| {
+                format!(
+                    "failed to resolve adoption recommend path: {}",
+                    path.display()
+                )
+            })?;
+            if !root.is_dir() {
+                bail!(
+                    "adoption recommend path must be a directory: {}",
+                    root.display()
+                );
+            }
+
+            let recommendation = recommend_adoption_pack(&root);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&recommendation)?);
+            } else {
+                print!("{}", render_adoption_recommendation(&recommendation));
+            }
+            Ok(())
+        }
+        AdoptionAction::Apply {
+            pack,
+            ci,
+            dry_run,
+            out_dir,
+        } => {
+            if !dry_run {
+                bail!(
+                    "adoption apply is non-mutating in this lane; rerun with --dry-run to emit review artifacts"
+                );
+            }
+
+            let pack = adoption_pack(pack);
+            let artifacts = render_adoption_apply_artifacts(pack, ci);
+            let written = write_adoption_apply_artifacts(&out_dir, &artifacts)?;
+            println!(
+                "Dry-run adoption artifacts written to {}",
+                out_dir.display()
+            );
+            for path in written {
+                println!("  - {}", path.display());
+            }
+            println!(
+                "No perfgate.toml, workflow, baselines, thresholds, required gates, or server ledger settings were changed."
+            );
+            Ok(())
+        }
         AdoptionAction::Packs { pack } => {
             print!("{}", render_adoption_packs(pack));
             Ok(())
@@ -365,5 +830,61 @@ mod tests {
         assert!(rendered.contains("Pack: http-local-smoke"));
         assert!(rendered.contains("k6 summary JSON"));
         assert!(!rendered.contains("Pack: rust-cli"));
+    }
+
+    #[test]
+    fn recommendation_prefers_rust_cli_shape() {
+        let root = tempfile::tempdir().expect("temp dir");
+        std::fs::write(
+            root.path().join("Cargo.toml"),
+            "[package]\nname = \"demo\"\n",
+        )
+        .expect("write manifest");
+        std::fs::create_dir(root.path().join("src")).expect("create src");
+        std::fs::write(root.path().join("src/main.rs"), "fn main() {}\n").expect("write main");
+
+        let recommendation = recommend_adoption_pack(root.path());
+
+        assert_eq!(recommendation.recommended_pack, "rust-cli");
+        assert_eq!(recommendation.confidence, "high");
+        assert!(
+            recommendation
+                .inspected
+                .contains(&"found Cargo.toml".to_string())
+        );
+        assert!(recommendation.not_inspected.contains(&"baseline maturity"));
+    }
+
+    #[test]
+    fn recommendation_prefers_workspace_shape_over_cli() {
+        let root = tempfile::tempdir().expect("temp dir");
+        std::fs::write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/demo\"]\n",
+        )
+        .expect("write manifest");
+        std::fs::create_dir(root.path().join("src")).expect("create src");
+        std::fs::write(root.path().join("src/main.rs"), "fn main() {}\n").expect("write main");
+
+        let recommendation = recommend_adoption_pack(root.path());
+
+        assert_eq!(recommendation.recommended_pack, "rust-workspace");
+        assert_eq!(recommendation.confidence, "high");
+        assert!(
+            recommendation
+                .inspected
+                .contains(&"Cargo.toml contains [workspace]".to_string())
+        );
+    }
+
+    #[test]
+    fn recommendation_falls_back_to_generic_command() {
+        let root = tempfile::tempdir().expect("temp dir");
+
+        let recommendation = recommend_adoption_pack(root.path());
+
+        assert_eq!(recommendation.recommended_pack, "generic-command");
+        assert_eq!(recommendation.confidence, "low");
+        assert!(recommendation.next_command.contains("generic-command"));
     }
 }
