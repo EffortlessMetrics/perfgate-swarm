@@ -250,4 +250,80 @@ threshold = 0.2 # inline comment
         assert!(updated.contains("# bench comment"));
         assert!(updated.contains("threshold = 0.18"));
     }
+
+    #[test]
+    fn load_config_file_missing_path_returns_default() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("missing.toml");
+
+        let cfg = load_config_file(&path).expect("load missing config");
+        assert_eq!(cfg, ConfigFile::default());
+    }
+
+    #[test]
+    fn load_config_file_json_extension_uses_json_loader() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("perfgate.json");
+        std::fs::write(&path, r#"{"defaults":{"threshold":0.33}}"#).expect("write");
+
+        let cfg = load_config_file(&path).expect("load json config");
+        assert_eq!(cfg.defaults.threshold, Some(0.33));
+    }
+
+    #[test]
+    fn ratchet_toml_apply_does_not_raise_threshold() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("perfgate.toml");
+        std::fs::write(
+            &path,
+            r#"[[bench]]
+name = "bench-a"
+[bench.budgets.wall_ms]
+threshold = 0.20
+"#,
+        )
+        .expect("write");
+
+        let changes = vec![RatchetChange {
+            metric: Metric::WallMs,
+            field: "threshold".to_string(),
+            old_value: 0.2,
+            new_value: 0.25,
+            reason: "should not raise".to_string(),
+        }];
+
+        let changed = apply_ratchet_toml_changes(&path, "bench-a", &changes).expect("apply");
+        assert!(!changed);
+
+        let updated = std::fs::read_to_string(&path).expect("read");
+        assert!(updated.contains("threshold = 0.20"));
+    }
+
+    #[test]
+    fn ratchet_toml_apply_creates_missing_metric_table() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("perfgate.toml");
+        std::fs::write(
+            &path,
+            r#"[[bench]]
+name = "bench-a"
+"#,
+        )
+        .expect("write");
+
+        let changes = vec![RatchetChange {
+            metric: Metric::CpuMs,
+            field: "threshold".to_string(),
+            old_value: 10.0,
+            new_value: 8.0,
+            reason: "add missing metric table".to_string(),
+        }];
+
+        let changed = apply_ratchet_toml_changes(&path, "bench-a", &changes).expect("apply");
+        assert!(changed);
+
+        let updated = std::fs::read_to_string(&path).expect("read");
+        assert!(updated.contains("[bench.budgets.cpu_ms]"));
+        assert!(updated.contains("threshold = 8"));
+    }
 }

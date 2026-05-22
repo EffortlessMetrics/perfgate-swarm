@@ -11,6 +11,7 @@ Commands:
   profiles List reviewable policy rollout profiles without changing config
   doctor Report advisory policy promotion readiness without changing config
   emit-patch Emit a reviewable, non-mutating policy promotion patch
+  promote-plan Plan a non-mutating policy promotion with blockers and review steps
   review-packet Render a compact performance review packet without changing policy
   help Print this message or the help of the given subcommand(s)
 
