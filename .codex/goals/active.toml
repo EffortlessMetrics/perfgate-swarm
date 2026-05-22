@@ -4,8 +4,8 @@ status = "active"
 owner = "codex"
 created = "2026-05-21"
 milestone = "0.22.0"
-current_work_item = "promotion-plans"
-current_pr = "promotion-plans"
+current_work_item = "canaries-docs-claims-closeout"
+current_pr = "canaries-docs-claims-closeout"
 
 objective = """
 Turn perfgate's evidence-intake and maturity substrate into one coherent
@@ -123,6 +123,13 @@ plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
 
 [[work_item]]
 id = "promotion-plans"
+status = "merged"
+proposal = ".rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md"
+spec = ".rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md"
+plan = ".rails/lanes/first-useful-performance-review/implementation-plan.md"
+
+[[work_item]]
+id = "canaries-docs-claims-closeout"
 status = "active"
 proposal = ".rails/proposals/PERFGATE-PROP-0002-first-useful-performance-review.md"
 spec = ".rails/specs/PERFGATE-SPEC-0002-first-useful-performance-review.md"

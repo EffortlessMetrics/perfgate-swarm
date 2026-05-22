@@ -65,6 +65,9 @@ pub enum PolicyAction {
     /// Emit a reviewable, non-mutating policy promotion patch.
     EmitPatch(PolicyEmitPatchArgs),
 
+    /// Plan a non-mutating policy promotion with blockers and review steps.
+    PromotePlan(PolicyPromotePlanArgs),
+
     /// Render a compact performance review packet without changing policy.
     ReviewPacket(PolicyReviewPacketArgs),
 }
@@ -99,6 +102,25 @@ pub struct PolicyEmitPatchArgs {
     pub bench: String,
 
     /// Proposed rollout state for reviewer approval.
+    #[arg(long, value_enum)]
+    pub to: PolicyRolloutState,
+}
+
+#[derive(Debug, Args)]
+pub struct PolicyPromotePlanArgs {
+    /// Path to the config file (TOML or JSON).
+    #[arg(long, default_value = "perfgate.toml")]
+    pub config: PathBuf,
+
+    /// Output directory containing recent artifacts. Defaults to [defaults].out_dir or artifacts/perfgate.
+    #[arg(long, value_name = "DIR")]
+    pub out_dir: Option<PathBuf>,
+
+    /// Benchmark to prepare a policy promotion plan for.
+    #[arg(long)]
+    pub bench: String,
+
+    /// Target rollout state to evaluate for reviewer approval.
     #[arg(long, value_enum)]
     pub to: PolicyRolloutState,
 }
@@ -567,6 +589,102 @@ pub fn execute_policy_emit_patch(args: PolicyEmitPatchArgs) -> anyhow::Result<()
     Ok(())
 }
 
+pub fn execute_policy_promote_plan(args: PolicyPromotePlanArgs) -> anyhow::Result<()> {
+    let evidence = load_policy_evidence(&args.config, args.out_dir.as_ref(), &args.bench)?;
+    let current = current_posture(&evidence.baseline);
+    let recommended = recommended_posture(&evidence.baseline, &evidence.signal);
+    let suggestion = patch_budget_suggestion(&evidence.config, &args.bench);
+    let status = promotion_plan_status(args.to, recommended);
+
+    println!("perfgate policy promote-plan");
+    println!("Config: {}", args.config.display());
+    println!("bench: {}", args.bench);
+    println!("current posture: {}", current.as_str());
+    println!("recommended posture: {}", recommended.as_str());
+    println!("target posture: {}", args.to.as_str());
+    println!("promotion status: {}", status);
+    println!();
+    println!("Evidence used:");
+    for reason in policy_reasons(&evidence.baseline, &evidence.signal, recommended) {
+        println!("  - {reason}");
+    }
+    println!();
+    println!("Missing evidence or review requirements:");
+    for missing in policy_missing_requirements(&evidence.baseline, &evidence.signal, recommended) {
+        println!("  - {missing}");
+    }
+    for note in target_review_notes(args.to, recommended) {
+        println!("  - {note}");
+    }
+    println!();
+    println!("Risk explanation:");
+    for risk in promotion_plan_risks(&evidence.baseline, &evidence.signal, args.to, recommended) {
+        println!("  - {risk}");
+    }
+    println!();
+    println!("Review checklist:");
+    println!("  - confirm the benchmark still answers an active review question");
+    println!("  - confirm baseline maturity and signal confidence are current");
+    println!("  - confirm host compatibility for the runner class that will enforce policy");
+    println!("  - confirm reviewers can reproduce the result locally");
+    if args.to == PolicyRolloutState::RequiredGate {
+        println!("  - record explicit required_gate reviewer approval");
+    }
+    println!();
+    println!("Reviewable config patch:");
+    println!(
+        "# Apply manually inside the existing [[bench]] named \"{}\" only after review.",
+        args.bench
+    );
+    println!(
+        "# Target posture: {}; current posture: {}; recommendation: {}.",
+        args.to.as_str(),
+        current.as_str(),
+        recommended.as_str()
+    );
+    println!(
+        "# This fragment reviews threshold posture only; it does not make policy blocking by itself."
+    );
+    println!("[bench.budgets.wall_ms]");
+    println!("threshold = {:.2}", suggestion.threshold);
+    println!("warn_factor = {:.2}", suggestion.warn_factor);
+    println!("noise_threshold = {:.2}", suggestion.noise_threshold);
+    println!("noise_policy = \"{}\"", suggestion.noise_policy.as_str());
+    println!();
+    println!("Next:");
+    for command in policy_next_commands(
+        &args.config,
+        &evidence.baseline,
+        &evidence.signal,
+        recommended,
+    ) {
+        println!("  {command}");
+    }
+    println!(
+        "  perfgate policy emit-patch --config {} --bench {} --to {}",
+        args.config.display(),
+        args.bench,
+        args.to.as_str()
+    );
+    println!(
+        "  perfgate policy review-packet --config {} --bench {}",
+        args.config.display(),
+        args.bench
+    );
+    println!("Do not:");
+    println!("  do not apply this plan automatically");
+    println!(
+        "  do not promote baselines, loosen thresholds, or require server ledger mode from this plan"
+    );
+    println!("  do not make required_gate blocking without explicit human review");
+    println!();
+    println!(
+        "Advisory only: no config, baseline, threshold, policy, or server setting was changed."
+    );
+
+    Ok(())
+}
+
 pub fn execute_policy_review_packet(args: PolicyReviewPacketArgs) -> anyhow::Result<()> {
     let evidence = load_policy_evidence(&args.config, args.out_dir.as_ref(), &args.bench)?;
     let out_dir = resolve_configured_out_dir(args.out_dir.as_ref(), Some(&evidence.config));
@@ -1014,6 +1132,82 @@ fn target_review_notes(
     notes
 }
 
+fn promotion_plan_status(target: PolicyRolloutState, recommended: PolicyPosture) -> &'static str {
+    match target {
+        PolicyRolloutState::GateCandidate if recommended == PolicyPosture::GateCandidate => {
+            "reviewable"
+        }
+        PolicyRolloutState::RequiredGate if recommended == PolicyPosture::GateCandidate => {
+            "review_required"
+        }
+        PolicyRolloutState::Smoke | PolicyRolloutState::Advisory => "demotion_review",
+        PolicyRolloutState::Quarantined | PolicyRolloutState::Retired => "review_required",
+        _ => "blocked",
+    }
+}
+
+fn promotion_plan_risks(
+    baseline: &BaselineDoctorRow,
+    signal: &SignalDoctorRow,
+    target: PolicyRolloutState,
+    recommended: PolicyPosture,
+) -> Vec<&'static str> {
+    let mut risks = Vec::new();
+    match baseline.maturity {
+        BaselineMaturity::Missing => {
+            risks.push("missing baseline means this is setup evidence, not policy evidence")
+        }
+        BaselineMaturity::New | BaselineMaturity::Immature => {
+            risks.push("baseline history is too young for blocking policy")
+        }
+        BaselineMaturity::HighNoise => {
+            risks.push("high noise can turn real changes into false policy decisions")
+        }
+        BaselineMaturity::HostMismatched => {
+            risks.push("host mismatch prevents runner-compatible policy evidence")
+        }
+        BaselineMaturity::Stale => risks.push("stale proof cannot support policy promotion"),
+        BaselineMaturity::Remote => {
+            risks.push("remote baseline history needs review before local gating")
+        }
+        BaselineMaturity::Mature => {}
+    }
+    match signal.recommendation {
+        SignalRecommendation::UsePairedMode => {
+            risks.push("paired mode is recommended before promotion")
+        }
+        SignalRecommendation::IncreaseSamples => {
+            risks.push("sample count is too low for promotion confidence")
+        }
+        SignalRecommendation::CheckHostMismatch => {
+            risks.push("host-compatible evidence is required before promotion")
+        }
+        SignalRecommendation::RefreshBaseline => {
+            risks.push("baseline refresh is required before promotion")
+        }
+        SignalRecommendation::AdvisoryOnly | SignalRecommendation::NoDecisionYet => {
+            risks.push("current signal should remain advisory")
+        }
+        SignalRecommendation::SafeToGate => {}
+    }
+    if target == PolicyRolloutState::RequiredGate {
+        risks.push("required_gate is a human policy decision, not an automatic maturity outcome");
+        if recommended != PolicyPosture::GateCandidate {
+            risks.push("required_gate is blocked until gate_candidate evidence is reviewable");
+        }
+    } else if target == PolicyRolloutState::GateCandidate
+        && recommended != PolicyPosture::GateCandidate
+    {
+        risks.push("gate_candidate is blocked until baseline and signal evidence are mature");
+    }
+    if risks.is_empty() {
+        risks.push(
+            "no blocking risk found for gate_candidate review; required_gate still needs approval",
+        );
+    }
+    risks
+}
+
 fn print_policy_doctor_row(
     config: &ConfigFile,
     config_path: &Path,
@@ -1446,6 +1640,7 @@ pub fn execute_policy_action(action: PolicyAction) -> anyhow::Result<()> {
         }
         PolicyAction::Doctor(args) => execute_policy_doctor(args),
         PolicyAction::EmitPatch(args) => execute_policy_emit_patch(args),
+        PolicyAction::PromotePlan(args) => execute_policy_promote_plan(args),
         PolicyAction::ReviewPacket(args) => execute_policy_review_packet(args),
     }
 }

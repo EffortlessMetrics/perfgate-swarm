@@ -453,6 +453,7 @@ fn cli_help_policy() {
         .stdout(predicate::str::contains("profiles"))
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("emit-patch"))
+        .stdout(predicate::str::contains("promote-plan"))
         .stdout(predicate::str::contains("review-packet"));
 }
 
@@ -490,6 +491,21 @@ fn cli_help_policy_emit_patch() {
         .success()
         .stdout(predicate::str::contains(
             "Emit a reviewable, non-mutating policy promotion patch",
+        ))
+        .stdout(predicate::str::contains("--config"))
+        .stdout(predicate::str::contains("--out-dir"))
+        .stdout(predicate::str::contains("--bench"))
+        .stdout(predicate::str::contains("--to"));
+}
+
+#[test]
+fn cli_help_policy_promote_plan() {
+    perfgate_cmd()
+        .args(["policy", "promote-plan", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Plan a non-mutating policy promotion",
         ))
         .stdout(predicate::str::contains("--config"))
         .stdout(predicate::str::contains("--out-dir"))
@@ -789,6 +805,14 @@ fn snapshot_help_policy_emit_patch() {
     insta::assert_snapshot!(
         "help_policy_emit_patch",
         help_output(&["policy", "emit-patch", "--help"])
+    );
+}
+
+#[test]
+fn snapshot_help_policy_promote_plan() {
+    insta::assert_snapshot!(
+        "help_policy_promote_plan",
+        help_output(&["policy", "promote-plan", "--help"])
     );
 }
 

@@ -117,7 +117,7 @@ proof = [
 
 [[work_item]]
 id = "promotion-plans"
-status = "active"
+status = "implemented"
 proposal = "PERFGATE-PROP-0002"
 spec = "PERFGATE-SPEC-0002"
 adr = ""
@@ -132,7 +132,7 @@ proof = [
 
 [[work_item]]
 id = "canaries-docs-claims-closeout"
-status = "planned"
+status = "active"
 proposal = "PERFGATE-PROP-0002"
 spec = "PERFGATE-SPEC-0002"
 adr = ""
