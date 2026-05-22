@@ -30,4 +30,4 @@ Run this before opening or merging Rails artifact changes:
 cargo run -p xtask -- rails check
 ```
 
-The check validates `.rails/index.toml`, registered artifact and lane paths, status values, ID prefixes, registry links, unregistered owned artifacts, lane tracker identity/status/owner consistency, closeouts for implemented lanes, the required human docs, and the absence of the legacy `.perfgate-spec/` namespace.
+The check validates `.rails/index.toml`, registered artifact and lane paths, status values, ID prefixes, registry links, unregistered owned artifacts, support claim references, policy ledger paths, lane tracker identity/status/owner consistency, closeouts for implemented lanes, the required human docs, and the absence of the legacy `.perfgate-spec/` namespace.
