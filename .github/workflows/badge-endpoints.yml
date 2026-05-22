@@ -40,6 +40,7 @@ jobs:
         uses: peter-evans/create-pull-request@v8
         with:
           branch: automation/badge-endpoints
+          delete-branch: true
           title: "badge: refresh public endpoints"
           commit-message: "badge: refresh public endpoints"
           body: |
