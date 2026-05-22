@@ -19,7 +19,8 @@ Use `.rails/` for durable repository knowledge, and keep tool/agent state in ext
 3. Keep lane trackers focused by lane; do not create one giant shared active queue.
 4. Do not migrate or rewrite `.codex/`, `.spec/`, `.claude/`, or `.jules/` as part of Rails changes.
 5. Keep artifact IDs repo-scoped (`PERFGATE-PROP-*`, `PERFGATE-SPEC-*`, `PERFGATE-ADR-*`).
-6. Keep registered lane `id`, `status`, and `owner` values synchronized with the lane tracker.
+6. Keep registered lane `id`, `name`, `status`, and `owner` values
+   synchronized with the lane tracker.
 7. When a lane becomes `implemented`, register an implemented closeout artifact for that lane in `.rails/index.toml`.
 8. Keep `.rails/index.toml` header fields stable: schema version `1.0`, repo
    `perfgate`, framework `rails`, root `.rails`, the registered prefix
@@ -41,6 +42,6 @@ The check validates `.rails/index.toml` schema/project/convention/namespace
 fields, registered artifact and lane paths, status values, ID prefixes, registry
 links, link target kinds, unregistered owned artifacts, support claim
 references, policy ledger paths, duplicate support claim or policy ledger IDs,
-lane tracker identity/status/owner consistency, closeouts for implemented lanes,
-the required human docs, and the absence of the legacy `.perfgate-spec/`
-namespace.
+lane tracker schema and identity/status/owner consistency, closeouts for
+implemented lanes, the required human docs, and the absence of the legacy
+`.perfgate-spec/` namespace.

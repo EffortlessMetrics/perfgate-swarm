@@ -4808,6 +4808,7 @@ struct RailsArtifact {
 #[derive(Debug, Deserialize)]
 struct RailsLane {
     id: String,
+    name: String,
     path: String,
     status: String,
     owner: String,
@@ -4815,7 +4816,9 @@ struct RailsLane {
 
 #[derive(Debug, Deserialize)]
 struct RailsLaneTracker {
+    schema_version: String,
     id: String,
+    name: String,
     status: String,
     owner: String,
 }
@@ -4995,6 +4998,9 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
 
     let mut lane_ids = BTreeSet::<String>::new();
     for lane in &index.lane {
+        if lane.name.trim().is_empty() {
+            errors.push(format!("lane {} has an empty name", lane.id));
+        }
         if lane.owner.trim().is_empty() {
             errors.push(format!("lane {} has an empty owner", lane.id));
         }
@@ -5401,10 +5407,22 @@ fn validate_rails_lane_tracker(root: &Path, lane: &RailsLane, errors: &mut Vec<S
         }
     };
 
+    if tracker.schema_version != "1.0" {
+        errors.push(format!(
+            "Rails lane {} tracker schema_version `{}` must be `1.0`",
+            lane.id, tracker.schema_version
+        ));
+    }
     if tracker.id != lane.id {
         errors.push(format!(
             "Rails lane {} tracker id `{}` must match index id `{}`",
             lane.id, tracker.id, lane.id
+        ));
+    }
+    if tracker.name != lane.name {
+        errors.push(format!(
+            "Rails lane {} tracker name `{}` must match index name `{}`",
+            lane.id, tracker.name, lane.name
         ));
     }
     if tracker.status != lane.status {
@@ -7312,6 +7330,61 @@ owner = "test"
         assert!(
             errors.iter().any(|error| error.contains(
                 "Rails lane demo-lane tracker status `active` must match index status `implemented`"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_lane_tracker_schema_version_drift() {
+        let root = unique_temp_dir("perfgate_rails_tracker_schema_drift");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "2.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error
+                .contains("Rails lane demo-lane tracker schema_version `2.0` must be `1.0`")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_lane_tracker_name_drift() {
+        let root = unique_temp_dir("perfgate_rails_tracker_name_drift");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Other lane"
+status = "implemented"
+owner = "test"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails lane demo-lane tracker name `Other lane` must match index name `Demo lane`"
             )),
             "unexpected errors: {:?}",
             errors
