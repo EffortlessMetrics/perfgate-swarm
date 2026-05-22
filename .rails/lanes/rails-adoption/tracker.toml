@@ -2,7 +2,7 @@ schema_version = "1.0"
 
 id = "rails-adoption"
 name = "Rails adoption"
-status = "active"
+status = "implemented"
 owner = "docs-platform"
 
 objective = """
@@ -12,11 +12,12 @@ Adopt .rails/ as the durable framework root and establish the initial artifact g
 end_state = [
   ".rails/ footprint and docs are in place.",
   "Foundational proposal/spec/ADR are linked in index.",
+  "Rails registry validation is available through cargo xtask rails check.",
 ]
 
 [[work_item]]
 id = "rails-adoption-foundation"
-status = "ready"
+status = "implemented"
 proposal = "PERFGATE-PROP-0001"
 spec = "PERFGATE-SPEC-0001"
 adr = "PERFGATE-ADR-0001"
@@ -25,4 +26,5 @@ blocks = []
 blocked_by = []
 proof = [
   "git diff --check",
+  "cargo +1.95.0 run -p xtask -- rails check",
 ]
