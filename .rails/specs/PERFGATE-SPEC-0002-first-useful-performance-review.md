@@ -1,6 +1,6 @@
 # PERFGATE-SPEC-0002: First useful performance review contract
 
-Status: accepted
+Status: implemented
 Owner: product-platform
 Created: 2026-05-21
 Linked proposal: PERFGATE-PROP-0002

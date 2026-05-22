@@ -1,6 +1,6 @@
 # PERFGATE-PROP-0002: First useful performance review
 
-Status: accepted
+Status: implemented
 Owner: product-platform
 Created: 2026-05-21
 Target milestone: 0.22

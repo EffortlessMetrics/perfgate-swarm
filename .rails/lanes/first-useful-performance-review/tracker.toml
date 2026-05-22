@@ -2,7 +2,7 @@ schema_version = "1.0"
 
 id = "first-useful-performance-review"
 name = "First useful performance review"
-status = "active"
+status = "implemented"
 owner = "product-platform"
 
 objective = """
@@ -132,7 +132,7 @@ proof = [
 
 [[work_item]]
 id = "canaries-docs-claims-closeout"
-status = "active"
+status = "implemented"
 proposal = "PERFGATE-PROP-0002"
 spec = "PERFGATE-SPEC-0002"
 adr = ""
