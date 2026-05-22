@@ -25,16 +25,18 @@ The release badge shows the latest GitHub release. GitHub releases are the publi
 Regenerate public badge endpoints:
 
 ```bash
+cargo install ripr --version 0.5.0 --locked --force
 cargo xtask badges
 ```
 
 Check committed endpoint drift:
 
 ```bash
+cargo install ripr --version 0.5.0 --locked --force
 cargo xtask badges --check
 ```
 
-Committed endpoint files live under `badges/`. Detailed reports stay under `target/` locally or in CI artifacts.
+Committed endpoint files live under `badges/`. Detailed reports stay under `target/` locally or in CI artifacts. The `ripr` version is pinned for public badge generation so scheduled badge refreshes do not change semantics when a newer `ripr` release is published.
 
 ## Pull Request Evidence
 
