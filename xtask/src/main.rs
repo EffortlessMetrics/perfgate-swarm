@@ -4935,6 +4935,7 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
             &mut errors,
         );
         validate_rails_registered_path(root, "artifact", &artifact.id, &artifact.path, &mut errors);
+        validate_rails_artifact_kind_path(artifact, &mut errors);
         validate_rails_artifact_path_identity(artifact, &mut errors);
 
         if let Some(previous_path) = artifact_ids.insert(artifact.id.clone(), artifact.path.clone())
@@ -5499,6 +5500,27 @@ fn validate_rails_registered_path(
     if !path.exists() {
         errors.push(format!(
             "Rails {label} {id} links to missing path `{raw_path}`"
+        ));
+    }
+}
+
+fn validate_rails_artifact_kind_path(artifact: &RailsArtifact, errors: &mut Vec<String>) {
+    let expected_prefix = match artifact.kind.as_str() {
+        "proposal" => ".rails/proposals/",
+        "spec" => ".rails/specs/",
+        "adr" => ".rails/adr/",
+        "support" => ".rails/support/",
+        "policy" => ".rails/policy/",
+        "closeout" => ".rails/closeouts/",
+        "plan" => ".rails/plans/",
+        "template" => ".rails/templates/",
+        _ => return,
+    };
+
+    if !artifact.path.starts_with(expected_prefix) {
+        errors.push(format!(
+            "Rails artifact {} kind `{}` path `{}` must live under `{}`",
+            artifact.id, artifact.kind, artifact.path, expected_prefix
         ));
     }
 }
@@ -7356,6 +7378,35 @@ owner = "test"
         assert!(
             errors.iter().any(|error| error.contains(
                 "Rails artifact PERFGATE-PROP-9999 path `.rails/proposals/demo.md` filename must start with `PERFGATE-PROP-9999`"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_artifact_kind_path_drift() {
+        let root = unique_temp_dir("perfgate_rails_artifact_kind_path_drift");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/proposals/PERFGATE-SPEC-9999-demo.md",
+            "# Spec in wrong directory\n",
+        );
+        fs::remove_file(root.join(".rails/specs/PERFGATE-SPEC-9999-demo.md"))
+            .expect("remove original spec artifact");
+        replace_rails_index(
+            &root,
+            "path = \".rails/specs/PERFGATE-SPEC-9999-demo.md\"",
+            "path = \".rails/proposals/PERFGATE-SPEC-9999-demo.md\"",
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails artifact PERFGATE-SPEC-9999 kind `spec` path `.rails/proposals/PERFGATE-SPEC-9999-demo.md` must live under `.rails/specs/`"
             )),
             "unexpected errors: {:?}",
             errors

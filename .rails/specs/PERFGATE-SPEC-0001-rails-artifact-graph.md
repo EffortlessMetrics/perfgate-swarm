@@ -26,6 +26,9 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 - `.rails/index.toml` must preserve external namespace mappings for `.codex/`,
   `.spec/`, `.claude/`, and `.jules/`.
 - Rails-owned artifact paths must live under `.rails/`.
+- Rails-owned artifact paths must live under the directory that matches their
+  registered kind: proposals, specs, ADRs, support, policy, closeouts, plans, or
+  templates.
 - ID-bearing Rails artifact filenames must start with their registered artifact
   ID. Support and policy artifacts are singleton registries and are exempt.
 - Rails-owned artifacts under proposals, specs, ADRs, closeouts, support, and policy directories must be registered.
@@ -74,8 +77,8 @@ Promotion once index/lane validators are implemented and used in CI.
 
 Registry schema drift, project identity drift, prefix convention drift, external
 namespace drift, missing linked artifacts, unregistered owned artifacts,
-artifact filename identity drift, wrong-kind artifact links, unresolved support
-claim references, unresolved policy ledger paths, duplicate support claim or
-policy ledger IDs, lane tracker path drift, lane tracker schema drift, lane
-tracker identity drift, missing closeouts for implemented lanes, or paths under
-external namespaces must fail validation.
+artifact kind-directory drift, artifact filename identity drift, wrong-kind
+artifact links, unresolved support claim references, unresolved policy ledger
+paths, duplicate support claim or policy ledger IDs, lane tracker path drift,
+lane tracker schema drift, lane tracker identity drift, missing closeouts for
+implemented lanes, or paths under external namespaces must fail validation.
