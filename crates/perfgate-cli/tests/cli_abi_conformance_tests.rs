@@ -13,7 +13,17 @@ mod common;
 use common::perfgate_cmd;
 use serde_json::Value;
 use std::fs;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use tempfile::tempdir;
+
+static ABI_CONFORMANCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn abi_conformance_lock() -> MutexGuard<'static, ()> {
+    match ABI_CONFORMANCE_LOCK.get_or_init(|| Mutex::new(())).lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
 
 /// Returns a cross-platform command that exits successfully.
 #[cfg(unix)]
@@ -75,6 +85,7 @@ fn validate_against_schema(validator: &jsonschema::Validator, instance: &Value, 
 /// Test a basic cockpit check passes.
 #[test]
 fn test_cockpit_basic_pass() {
+    let _guard = abi_conformance_lock();
     let temp_dir = tempdir().expect("failed to create temp dir");
     let out_dir = temp_dir.path().join("artifacts");
     let config_path = create_config(temp_dir.path(), &["test-bench"]);
@@ -105,6 +116,7 @@ fn test_cockpit_basic_pass() {
 /// Test that artifacts are sorted by (type, path)
 #[test]
 fn test_artifact_ordering_sorted() {
+    let _guard = abi_conformance_lock();
     let temp_dir = tempdir().expect("failed to create temp dir");
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = create_config(temp_dir.path(), &["test-bench"]);
@@ -153,6 +165,7 @@ fn test_artifact_ordering_sorted() {
 /// Test that data section has no `compare` key (opacity)
 #[test]
 fn test_data_opacity_no_compare() {
+    let _guard = abi_conformance_lock();
     let temp_dir = tempdir().expect("failed to create temp dir");
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = create_config(temp_dir.path(), &["test-bench"]);
@@ -188,6 +201,7 @@ fn test_data_opacity_no_compare() {
 /// Test error convention: config error → tool.runtime + runtime_error
 #[test]
 fn test_error_convention_config_error() {
+    let _guard = abi_conformance_lock();
     let temp_dir = tempdir().expect("failed to create temp dir");
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = temp_dir.path().join("bad.toml");
@@ -239,6 +253,7 @@ fn test_error_convention_config_error() {
 /// Test extras files use versioned names
 #[test]
 fn test_extras_versioned_names() {
+    let _guard = abi_conformance_lock();
     let temp_dir = tempdir().expect("failed to create temp dir");
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = create_config(temp_dir.path(), &["test-bench"]);
@@ -282,6 +297,7 @@ fn test_extras_versioned_names() {
 /// Test baseline reason is normalized to `no_baseline` token
 #[test]
 fn test_baseline_reason_normalized() {
+    let _guard = abi_conformance_lock();
     let temp_dir = tempdir().expect("failed to create temp dir");
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = create_config(temp_dir.path(), &["no-bl-bench"]);
@@ -320,6 +336,7 @@ fn test_baseline_reason_normalized() {
 
 #[test]
 fn test_golden_pass_validates_against_schema() {
+    let _guard = abi_conformance_lock();
     let validator = load_vendored_schema_validator();
     let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden/sensor_report_pass.json");
@@ -330,6 +347,7 @@ fn test_golden_pass_validates_against_schema() {
 
 #[test]
 fn test_golden_fail_validates_against_schema() {
+    let _guard = abi_conformance_lock();
     let validator = load_vendored_schema_validator();
     let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden/sensor_report_fail.json");
@@ -340,6 +358,7 @@ fn test_golden_fail_validates_against_schema() {
 
 #[test]
 fn test_golden_warn_validates_against_schema() {
+    let _guard = abi_conformance_lock();
     let validator = load_vendored_schema_validator();
     let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden/sensor_report_warn.json");
@@ -350,6 +369,7 @@ fn test_golden_warn_validates_against_schema() {
 
 #[test]
 fn test_golden_no_baseline_validates_against_schema() {
+    let _guard = abi_conformance_lock();
     let validator = load_vendored_schema_validator();
     let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden/sensor_report_no_baseline.json");
@@ -360,6 +380,7 @@ fn test_golden_no_baseline_validates_against_schema() {
 
 #[test]
 fn test_golden_error_validates_against_schema() {
+    let _guard = abi_conformance_lock();
     let validator = load_vendored_schema_validator();
     let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden/sensor_report_error.json");
@@ -370,6 +391,7 @@ fn test_golden_error_validates_against_schema() {
 
 #[test]
 fn test_golden_multi_bench_validates_against_schema() {
+    let _guard = abi_conformance_lock();
     let validator = load_vendored_schema_validator();
     let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/golden/sensor_report_multi_bench.json");
@@ -381,6 +403,7 @@ fn test_golden_multi_bench_validates_against_schema() {
 /// Test that cockpit mode output validates against vendored schema
 #[test]
 fn test_cockpit_output_validates_against_vendored_schema() {
+    let _guard = abi_conformance_lock();
     let validator = load_vendored_schema_validator();
 
     let temp_dir = tempdir().expect("failed to create temp dir");
@@ -411,6 +434,7 @@ fn test_cockpit_output_validates_against_vendored_schema() {
 /// Test that error report validates against vendored schema
 #[test]
 fn test_cockpit_error_report_validates_against_schema() {
+    let _guard = abi_conformance_lock();
     let validator = load_vendored_schema_validator();
 
     let temp_dir = tempdir().expect("failed to create temp dir");
@@ -441,6 +465,7 @@ fn test_cockpit_error_report_validates_against_schema() {
 /// Test determinism: run cockpit twice, null out time-varying fields, assert structural identity
 #[test]
 fn test_cockpit_mode_determinism() {
+    let _guard = abi_conformance_lock();
     let temp_dir = tempdir().expect("failed to create temp dir");
     let config_path = create_config(temp_dir.path(), &["det-bench"]);
 
@@ -500,6 +525,7 @@ fn test_cockpit_mode_determinism() {
 /// Test that findings have fingerprints in cockpit output
 #[test]
 fn test_cockpit_output_has_fingerprints() {
+    let _guard = abi_conformance_lock();
     let temp_dir = tempdir().expect("failed to create temp dir");
     let out_dir = temp_dir.path().join("artifacts/perfgate");
     let config_path = create_config(temp_dir.path(), &["fp-bench"]);

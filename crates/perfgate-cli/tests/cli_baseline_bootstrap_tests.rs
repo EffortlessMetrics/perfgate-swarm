@@ -415,6 +415,128 @@ fn baseline_promote_all_uses_check_all_artifact_convention() {
 }
 
 #[test]
+fn baseline_promote_plan_is_non_mutating_and_reviewable() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    write_config(temp_dir.path());
+    write_run_fixture(
+        &temp_dir
+            .path()
+            .join("artifacts/perfgate/test-benchmark/run.json"),
+        "test-benchmark",
+    );
+    let config_path = temp_dir.path().join("perfgate.toml");
+    let config_before = fs::read_to_string(&config_path).expect("read config before plan");
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "baseline",
+            "promote-plan",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "test-benchmark",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Baseline promote plan"))
+        .stdout(predicate::str::contains("bench: test-benchmark"))
+        .stdout(predicate::str::contains("candidate source:"))
+        .stdout(predicate::str::contains(
+            "promotion safety: review required",
+        ))
+        .stdout(predicate::str::contains("Review checklist:"))
+        .stdout(predicate::str::contains("Command after review:"))
+        .stdout(predicate::str::contains(
+            "perfgate baseline promote --config perfgate.toml --bench test-benchmark",
+        ))
+        .stdout(predicate::str::contains("Do not:"));
+
+    assert_eq!(
+        fs::read_to_string(&config_path).expect("read config after plan"),
+        config_before,
+        "baseline promote-plan must not mutate config"
+    );
+    assert!(
+        !temp_dir
+            .path()
+            .join("baselines/test-benchmark.json")
+            .exists(),
+        "baseline promote-plan must not write a baseline"
+    );
+}
+
+#[test]
+fn baseline_promote_plan_blocks_missing_candidate_without_writing() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    write_config(temp_dir.path());
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "baseline",
+            "promote-plan",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "test-benchmark",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("candidate source: missing"))
+        .stdout(predicate::str::contains("promotion safety: blocked"))
+        .stdout(predicate::str::contains(
+            "perfgate check --config perfgate.toml --bench test-benchmark",
+        ))
+        .stdout(predicate::str::contains("do not promote"));
+
+    assert!(
+        !temp_dir
+            .path()
+            .join("baselines/test-benchmark.json")
+            .exists(),
+        "missing candidate promote-plan must not write a baseline"
+    );
+}
+
+#[test]
+fn baseline_promote_plan_marks_existing_baseline_force_review() {
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
+    write_config(temp_dir.path());
+    write_run_fixture(
+        &temp_dir
+            .path()
+            .join("artifacts/perfgate/test-benchmark/run.json"),
+        "test-benchmark",
+    );
+    write_baseline_maturity_fixture(
+        &temp_dir.path().join("baselines/test-benchmark.json"),
+        "test-benchmark",
+        8,
+        0.02,
+        1,
+    );
+
+    perfgate_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "baseline",
+            "promote-plan",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "test-benchmark",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("existing baseline: mature"))
+        .stdout(predicate::str::contains(
+            "perfgate baseline promote --config perfgate.toml --bench test-benchmark",
+        ))
+        .stdout(predicate::str::contains("--force"));
+}
+
+#[test]
 fn baseline_promote_refuses_overwrite_without_force() {
     let temp_dir = tempfile::tempdir().expect("create temp dir");
     write_config(temp_dir.path());

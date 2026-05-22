@@ -1,0 +1,20 @@
+---
+source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
+assertion_line: 813
+expression: "help_output(&[\"policy\", \"promote-plan\", \"--help\"])"
+---
+Plan a non-mutating policy promotion with blockers and review steps
+
+Usage: perfgate policy promote-plan [OPTIONS] --bench <BENCH> --to <TO>
+
+Options:
+      --config <CONFIG> Path to the config file (TOML or JSON) [default: perfgate.toml]
+      --out-dir <DIR> Output directory containing recent artifacts. Defaults to [defaults].out_dir or artifacts/perfgate
+      --bench <BENCH> Benchmark to prepare a policy promotion plan for
+      --to <TO> Target rollout state to evaluate for reviewer approval [possible values: smoke, advisory, gate_candidate, required_gate, quarantined, retired]
+  -h, --help Print help
+
+Global Options:
+      --baseline-server <BASELINE_SERVER> URL of the baseline server (e.g., http://localhost:3000/api/v1) Can also be set via PERFGATE_SERVER_URL environment variable
+      --api-key <API_KEY> API key for authentication with the baseline server. Can also be set via PERFGATE_API_KEY environment variable
+      --project <PROJECT> Project name for multi-tenancy. Can also be set via PERFGATE_PROJECT environment variable
