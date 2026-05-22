@@ -1,0 +1,7 @@
+schema_version = "1.0"
+
+[[claim]]
+id = "PERFGATE-CLAIM-0001"
+statement = "Perfgate provides a spec-driven source-of-truth stack for performance decisions."
+proof = ["cargo test --all", "cargo run -p xtask -- ci"]
+references = ["docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md", "docs/VERIFICATION.md"]

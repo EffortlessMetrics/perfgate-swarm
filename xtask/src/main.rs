@@ -186,6 +186,12 @@ enum Command {
         action: PolicyAction,
     },
 
+    /// Validate Rails source-of-truth framework artifacts.
+    Rails {
+        #[command(subcommand)]
+        action: RailsAction,
+    },
+
     /// Enforce crate-layer dependency rules for the current architecture.
     Arch,
 
@@ -333,6 +339,16 @@ enum PolicyAction {
     },
 }
 
+#[derive(Debug, Subcommand)]
+enum RailsAction {
+    /// Validate the .rails registry, artifact paths, statuses, and links.
+    Check {
+        /// Repository root to validate.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+    },
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -363,6 +379,9 @@ fn main() -> anyhow::Result<()> {
                 baseline,
                 write_baseline,
             } => cmd_check_no_panic_family(&root, &allowlist, &baseline, write_baseline),
+        },
+        Command::Rails { action } => match action {
+            RailsAction::Check { root } => cmd_rails_check(&root),
         },
         Command::Arch => cmd_arch(),
         Command::Conform { fixtures, file } => cmd_conform(fixtures, file),
@@ -1106,6 +1125,27 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
     {
         errors.push(
             "action.yml policy posture summary must run policy doctor and expose the review packet command".to_string(),
+        );
+    }
+    if !policy_summary_lines
+        .iter()
+        .any(|line| line == "review_packet_output=\"\"")
+        || !policy_summary_lines
+            .iter()
+            .any(|line| line == "review_packet_status=\"skipped\"")
+        || !policy_summary_lines.iter().any(|line| {
+            line == "if ! perfgate \"${review_packet_args[@]}\" > \"${review_packet_output}\" 2>&1; then"
+        })
+        || !policy_summary_lines
+            .iter()
+            .any(|line| line == "echo \"Benchmark passport (${review_packet_status}):\"")
+        || !policy_summary_lines.iter().any(|line| {
+            line == "awk '/^## Benchmark Passport/{flag=1; print; next} /^## / && flag{exit} flag{print}' \"${review_packet_output}\""
+        })
+    {
+        errors.push(
+            "action.yml policy posture summary must surface the benchmark passport from review-packet output"
+                .to_string(),
         );
     }
     if !policy_summary_lines.iter().any(|line| {
@@ -4676,6 +4716,286 @@ struct SourceDoc {
     metadata: BTreeMap<String, String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RailsIndex {
+    project: RailsProject,
+    #[serde(default)]
+    artifact: Vec<RailsArtifact>,
+    #[serde(default)]
+    lane: Vec<RailsLane>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RailsProject {
+    framework: String,
+    root: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RailsArtifact {
+    id: String,
+    kind: String,
+    path: String,
+    status: String,
+    owner: String,
+    #[serde(default)]
+    linked_proposal: Option<String>,
+    #[serde(default)]
+    linked_specs: Vec<String>,
+    #[serde(default)]
+    linked_adrs: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RailsLane {
+    id: String,
+    path: String,
+    status: String,
+    owner: String,
+}
+
+fn cmd_rails_check(root: &Path) -> anyhow::Result<()> {
+    let errors = collect_rails_errors(root)?;
+
+    if !errors.is_empty() {
+        println!("Found {} Rails framework error(s):", errors.len());
+        for error in &errors {
+            println!("  - {}", error);
+        }
+
+        anyhow::bail!(
+            "{} Rails framework issue(s) found. Fix .rails/index.toml or registered artifacts.",
+            errors.len()
+        );
+    }
+
+    println!("  OK  Rails index, artifact paths, statuses, and links are valid");
+    Ok(())
+}
+
+fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
+    let mut errors = Vec::new();
+
+    let legacy_root = root.join(".perfgate-spec");
+    if legacy_root.exists() {
+        errors.push(format!(
+            "legacy source-of-truth namespace {} must not exist; use .rails/",
+            relative_display(root, &legacy_root)
+        ));
+    }
+
+    for required_doc in ["docs/rails.md", "docs/contributing/rails.md"] {
+        let path = root.join(required_doc);
+        if !path.exists() {
+            errors.push(format!("missing Rails human guidance `{required_doc}`"));
+        }
+    }
+
+    let rails_root = root.join(".rails");
+    let index_path = rails_root.join("index.toml");
+    if !index_path.exists() {
+        errors.push("missing Rails registry `.rails/index.toml`".to_string());
+        return Ok(errors);
+    }
+
+    let raw = fs::read_to_string(&index_path)
+        .with_context(|| format!("reading {}", index_path.display()))?;
+    let index = match toml::from_str::<RailsIndex>(&raw) {
+        Ok(index) => index,
+        Err(err) => {
+            errors.push(format!(
+                "{} must parse as TOML: {err}",
+                relative_display(root, &index_path)
+            ));
+            return Ok(errors);
+        }
+    };
+
+    if index.project.framework != "rails" {
+        errors.push(format!(
+            ".rails/index.toml project.framework must be `rails`, got `{}`",
+            index.project.framework
+        ));
+    }
+    if index.project.root != ".rails" {
+        errors.push(format!(
+            ".rails/index.toml project.root must be `.rails`, got `{}`",
+            index.project.root
+        ));
+    }
+
+    let mut artifact_ids = BTreeMap::<String, String>::new();
+    let mut artifact_paths = BTreeMap::<String, String>::new();
+    for artifact in &index.artifact {
+        if artifact.owner.trim().is_empty() {
+            errors.push(format!("artifact {} has an empty owner", artifact.id));
+        }
+        validate_rails_artifact_kind(&artifact.kind, &artifact.id, &mut errors);
+        validate_rails_status(
+            "artifact",
+            &artifact.id,
+            &artifact.status,
+            &[
+                "proposed",
+                "accepted",
+                "implemented",
+                "superseded",
+                "deprecated",
+            ],
+            &mut errors,
+        );
+        validate_rails_registered_path(root, "artifact", &artifact.id, &artifact.path, &mut errors);
+
+        if let Some(previous_path) = artifact_ids.insert(artifact.id.clone(), artifact.path.clone())
+        {
+            errors.push(format!(
+                "duplicate Rails artifact id {} in `{}` and `{}`",
+                artifact.id, previous_path, artifact.path
+            ));
+        }
+        if let Some(previous_id) = artifact_paths.insert(artifact.path.clone(), artifact.id.clone())
+        {
+            errors.push(format!(
+                "duplicate Rails artifact path `{}` registered by {} and {}",
+                artifact.path, previous_id, artifact.id
+            ));
+        }
+    }
+
+    for artifact in &index.artifact {
+        if let Some(linked_proposal) = artifact.linked_proposal.as_deref() {
+            validate_rails_link(
+                &artifact.id,
+                "linked_proposal",
+                linked_proposal,
+                &artifact_ids,
+                &mut errors,
+            );
+        }
+        for linked_spec in &artifact.linked_specs {
+            validate_rails_link(
+                &artifact.id,
+                "linked_specs",
+                linked_spec,
+                &artifact_ids,
+                &mut errors,
+            );
+        }
+        for linked_adr in &artifact.linked_adrs {
+            validate_rails_link(
+                &artifact.id,
+                "linked_adrs",
+                linked_adr,
+                &artifact_ids,
+                &mut errors,
+            );
+        }
+    }
+
+    let mut lane_ids = BTreeSet::<String>::new();
+    for lane in &index.lane {
+        if lane.owner.trim().is_empty() {
+            errors.push(format!("lane {} has an empty owner", lane.id));
+        }
+        validate_rails_status(
+            "lane",
+            &lane.id,
+            &lane.status,
+            &[
+                "planned",
+                "active",
+                "blocked",
+                "implemented",
+                "closed",
+                "superseded",
+            ],
+            &mut errors,
+        );
+        validate_rails_registered_path(root, "lane", &lane.id, &lane.path, &mut errors);
+        if !lane_ids.insert(lane.id.clone()) {
+            errors.push(format!("duplicate Rails lane id {}", lane.id));
+        }
+    }
+
+    Ok(errors)
+}
+
+fn validate_rails_artifact_kind(kind: &str, id: &str, errors: &mut Vec<String>) {
+    let expected_prefix = match kind {
+        "proposal" => Some("PERFGATE-PROP-"),
+        "spec" => Some("PERFGATE-SPEC-"),
+        "adr" => Some("PERFGATE-ADR-"),
+        "plan" | "support" | "policy" | "closeout" | "template" => Some("PERFGATE-"),
+        _ => None,
+    };
+
+    match expected_prefix {
+        Some(prefix) if id.starts_with(prefix) => {}
+        Some(prefix) => errors.push(format!(
+            "Rails artifact {} kind `{}` must use id prefix `{}`",
+            id, kind, prefix
+        )),
+        None => errors.push(format!(
+            "Rails artifact {} uses unknown kind `{}`",
+            id, kind
+        )),
+    }
+}
+
+fn validate_rails_status(
+    label: &str,
+    id: &str,
+    status: &str,
+    allowed: &[&str],
+    errors: &mut Vec<String>,
+) {
+    if !allowed.contains(&status) {
+        errors.push(format!(
+            "Rails {label} {id} uses unknown status `{status}`; allowed: {}",
+            allowed.join(", ")
+        ));
+    }
+}
+
+fn validate_rails_registered_path(
+    root: &Path,
+    label: &str,
+    id: &str,
+    raw_path: &str,
+    errors: &mut Vec<String>,
+) {
+    if raw_path.contains('\\') {
+        errors.push(format!(
+            "Rails {label} {id} path `{raw_path}` must use forward slashes"
+        ));
+    }
+    if !raw_path.starts_with(".rails/") {
+        errors.push(format!(
+            "Rails {label} {id} path `{raw_path}` must live under .rails/"
+        ));
+    }
+    let path = root.join(raw_path);
+    if !path.exists() {
+        errors.push(format!(
+            "Rails {label} {id} links to missing path `{raw_path}`"
+        ));
+    }
+}
+
+fn validate_rails_link(
+    source_id: &str,
+    field: &str,
+    target_id: &str,
+    artifact_ids: &BTreeMap<String, String>,
+    errors: &mut Vec<String>,
+) {
+    if !artifact_ids.contains_key(target_id) {
+        errors.push(format!(
+            "Rails artifact {source_id} {field} references unknown artifact id {target_id}"
+        ));
+    }
+}
+
 fn collect_docs_source_errors(root: &Path) -> anyhow::Result<Vec<String>> {
     let mut errors = Vec::new();
     let docs = collect_source_docs(root)?;
@@ -4998,7 +5318,7 @@ fn validate_linked_path(
 
 fn source_doc_path_regex() -> Regex {
     Regex::new(
-        r"(?:\.codex|\.github|docs|plans|policy|schemas|fixtures|examples|crates|xtask)/[A-Za-z0-9_./*{}-]+",
+        r"(?:\.codex|\.github|\.rails|docs|plans|policy|schemas|fixtures|examples|crates|xtask)/[A-Za-z0-9_./*{}-]+",
     )
     .expect("source doc path regex should compile")
 }
@@ -6814,6 +7134,11 @@ runs:
         review_required="${{ steps.handle_review_required.outputs.review_required }}"
         policy_args=(policy doctor --config "${{ inputs.config }}")
         review_packet_args=(policy review-packet --config "${{ inputs.config }}" --bench "${{ inputs.bench }}")
+        review_packet_output=""
+        review_packet_status="skipped"
+        if ! perfgate "${review_packet_args[@]}" > "${review_packet_output}" 2>&1; then
+          review_packet_status="unavailable"
+        fi
         {
           echo "### perfgate policy posture"
           echo "Blocking behavior: this action preserves existing perfgate exit-code behavior; maturity guidance is advisory unless your config already makes it blocking."
@@ -6821,8 +7146,10 @@ runs:
           echo "Blocking gate: required-baseline mode is enabled."
           echo "Imported evidence: policy doctor output includes source kind, source path, metric mapping, maturity limits, and advisory boundaries when receipts expose them."
           echo "Policy review required: ${review_reason}"
+          echo "Benchmark passport (${review_packet_status}):"
           printf '%s\n' '```bash'
           printf '%s\n' '```text'
+          awk '/^## Benchmark Passport/{flag=1; print; next} /^## / && flag{exit} flag{print}' "${review_packet_output}"
           printf '%s\n' '```'
           echo "Do not: make advisory maturity output blocking, loosen thresholds, promote baselines, or require server ledger mode from this summary alone."
         } >> "${GITHUB_STEP_SUMMARY}"
