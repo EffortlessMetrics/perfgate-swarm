@@ -65,6 +65,15 @@ linked_proposal = "PERFGATE-PROP-0001"
 linked_specs = ["PERFGATE-SPEC-0001"]
 linked_adrs = ["PERFGATE-ADR-0001"]
 
+[[artifact]]
+id = "PERFGATE-CLOSEOUT-0002"
+kind = "closeout"
+path = ".rails/closeouts/PERFGATE-CLOSEOUT-0002-first-useful-performance-review.md"
+status = "implemented"
+owner = "product-platform"
+linked_proposal = "PERFGATE-PROP-0002"
+linked_specs = ["PERFGATE-SPEC-0002"]
+
 [[lane]]
 id = "rails-adoption"
 name = "Rails adoption"
