@@ -46,26 +46,13 @@ pub(crate) fn summarize_imported_receipt(receipt: &RunReceipt) -> Option<Importe
     let sample_model = sample_model(receipt);
     let host_context = host_context(receipt);
     let noise_support = noise_support(receipt, sample_model);
-    let mut limitations =
-        vec!["imported evidence remains advisory until maturity and policy are reviewed"];
-
-    if sample_model == "summary_only" {
-        limitations.push("summary-only evidence has limited noise support");
-    }
-    if host_context == "missing_or_partial" {
-        limitations.push("missing host context is not host-compatible proof");
-    }
-    if noise_support == "samples_without_cv" {
-        limitations.push("raw samples need calibration before policy promotion");
-    }
-    if source_kind == "unrecorded_ingest_source" {
-        limitations.push(
-            "run.v1 receipt does not record adapter source kind; review the ingest command or source artifact",
-        );
-    }
-    if source_path.is_none() {
-        limitations.push("run.v1 receipt does not record adapter source path");
-    }
+    let limitations = summary_limitations::build(
+        sample_model,
+        host_context,
+        noise_support,
+        &source_kind,
+        source_path.is_none(),
+    );
 
     Some(ImportedEvidenceSummary {
         source_kind,
@@ -130,7 +117,7 @@ fn metric_mappings(receipt: &RunReceipt, source_kind: &str) -> Vec<String> {
     if !explicit.is_empty() {
         return explicit
             .into_iter()
-            .map(|mapping| format_custom_mapping(&mapping))
+            .map(|mapping| mapping_format::format_custom_mapping(&mapping))
             .collect();
     }
 
@@ -144,12 +131,53 @@ fn metric_mappings(receipt: &RunReceipt, source_kind: &str) -> Vec<String> {
     }
 }
 
-fn format_custom_mapping(mapping: &str) -> String {
-    let parts: Vec<&str> = mapping.split(':').collect();
-    if parts.len() == 4 {
-        format!("{} <= {} ({}, {})", parts[0], parts[1], parts[2], parts[3])
-    } else {
-        mapping.to_string()
+mod mapping_format {
+    pub(super) fn format_custom_mapping(mapping: &str) -> String {
+        let mut parts = mapping.split(':');
+        let (Some(lhs), Some(rhs), Some(unit), Some(direction), None) = (
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        ) else {
+            return mapping.to_string();
+        };
+
+        format!("{lhs} <= {rhs} ({unit}, {direction})")
+    }
+}
+
+mod summary_limitations {
+    pub(super) fn build(
+        sample_model: &str,
+        host_context: &str,
+        noise_support: &str,
+        source_kind: &str,
+        missing_source_path: bool,
+    ) -> Vec<&'static str> {
+        let mut limitations =
+            vec!["imported evidence remains advisory until maturity and policy are reviewed"];
+
+        if sample_model == "summary_only" {
+            limitations.push("summary-only evidence has limited noise support");
+        }
+        if host_context == "missing_or_partial" {
+            limitations.push("missing host context is not host-compatible proof");
+        }
+        if noise_support == "samples_without_cv" {
+            limitations.push("raw samples need calibration before policy promotion");
+        }
+        if source_kind == "unrecorded_ingest_source" {
+            limitations.push(
+                "run.v1 receipt does not record adapter source kind; review the ingest command or source artifact",
+            );
+        }
+        if missing_source_path {
+            limitations.push("run.v1 receipt does not record adapter source path");
+        }
+
+        limitations
     }
 }
 

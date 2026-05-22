@@ -1,7 +1,5 @@
 //! Artifact explanation command support.
 
-use anyhow::Context;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::{COMPARE_RECEIPT_FILE, ExplainAction, ExplainArtifactsArgs, RUN_RECEIPT_FILE};
@@ -84,34 +82,70 @@ fn collect_artifact_files(
     known: &mut Vec<(PathBuf, &'static str)>,
     unknown: &mut Vec<PathBuf>,
 ) -> anyhow::Result<()> {
-    if !dir.exists() {
-        return Ok(());
+    let inventory = artifact_scan::scan(root, dir)?;
+    known.extend(inventory.known);
+    unknown.extend(inventory.unknown);
+    Ok(())
+}
+
+mod artifact_scan {
+    use super::known_artifact_role;
+    use anyhow::Context;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    pub(super) struct ArtifactInventory {
+        pub(super) known: Vec<(PathBuf, &'static str)>,
+        pub(super) unknown: Vec<PathBuf>,
     }
 
-    for entry in fs::read_dir(dir).with_context(|| format!("read {}", dir.display()))? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            collect_artifact_files(root, &path, known, unknown)?;
-            continue;
+    pub(super) fn scan(root: &Path, dir: &Path) -> anyhow::Result<ArtifactInventory> {
+        let mut inventory = ArtifactInventory {
+            known: Vec::new(),
+            unknown: Vec::new(),
+        };
+        collect_recursive(root, dir, &mut inventory)?;
+        inventory.known.sort_by(|left, right| left.0.cmp(&right.0));
+        inventory.unknown.sort();
+        Ok(inventory)
+    }
+
+    fn collect_recursive(
+        root: &Path,
+        dir: &Path,
+        inventory: &mut ArtifactInventory,
+    ) -> anyhow::Result<()> {
+        if !dir.exists() {
+            return Ok(());
         }
 
+        for entry in fs::read_dir(dir).with_context(|| format!("read {}", dir.display()))? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                collect_recursive(root, &path, inventory)?;
+                continue;
+            }
+
+            classify_path(root, path, inventory);
+        }
+
+        Ok(())
+    }
+
+    fn classify_path(root: &Path, path: PathBuf, inventory: &mut ArtifactInventory) {
         let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            unknown.push(relative);
-            continue;
+            inventory.unknown.push(relative);
+            return;
         };
 
         if let Some(role) = known_artifact_role(name) {
-            known.push((relative, role));
+            inventory.known.push((relative, role));
         } else {
-            unknown.push(relative);
+            inventory.unknown.push(relative);
         }
     }
-
-    known.sort_by(|left, right| left.0.cmp(&right.0));
-    unknown.sort();
-    Ok(())
 }
 
 fn known_artifact_role(file_name: &str) -> Option<&'static str> {
