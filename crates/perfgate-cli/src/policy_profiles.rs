@@ -55,20 +55,23 @@ pub fn policy_profile(name: PolicyProfileName) -> &'static PolicyProfile {
     POLICY_PROFILES
         .iter()
         .find(|profile| profile.name == name.as_str())
-        .unwrap_or(&POLICY_PROFILES[0])
+        .expect("all PolicyProfileName values have catalog entries")
 }
 
 pub fn render_policy_profiles(filter: Option<PolicyProfileName>) -> String {
     let mut out = String::new();
-    out.push_str("# perfgate policy rollout profiles\n\n");
-    out.push_str("Policy profiles are review aids. They do not mutate config and they do not replace benchmark-specific review.\n\n");
+    out.push_str("Policy profiles are reviewable starting points, not automatic enforcement.\n");
+    out.push_str("They do not promote baselines, loosen thresholds, or make checks blocking.\n");
 
     let profiles: Vec<&PolicyProfile> = match filter {
         Some(name) => vec![policy_profile(name)],
         None => policy_profiles().iter().collect(),
     };
 
-    for profile in profiles {
+    for (index, profile) in profiles.iter().enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
         render_profile(&mut out, profile);
     }
 
@@ -76,26 +79,26 @@ pub fn render_policy_profiles(filter: Option<PolicyProfileName>) -> String {
 }
 
 fn render_profile(out: &mut String, profile: &PolicyProfile) {
-    out.push_str(&format!("## {}\n\n", profile.name));
-    out.push_str(&format!(
-        "- Starting posture: {}\n",
-        profile.starting_posture
-    ));
-    out.push_str(&format!("- Summary: {}\n", profile.summary));
+    out.push_str(&format!("\nProfile: {}\n", profile.name));
+    out.push_str(&format!("Summary: {}\n", profile.summary));
+    out.push_str(&format!("Starting posture: {}\n", profile.starting_posture));
     render_list(
         out,
         "Promotion requirements",
         profile.promotion_requirements,
     );
-    render_list(out, "Evidence expectations", profile.evidence_expectations);
+    render_list(
+        out,
+        "Default evidence expectations",
+        profile.evidence_expectations,
+    );
     render_list(out, "Known bad fits", profile.known_bad_fits);
-    out.push_str(&format!("- Failure means: {}\n", profile.failure_meaning));
+    out.push_str(&format!("Failure meaning: {}\n", profile.failure_meaning));
     render_list(out, "Do not infer", profile.not_to_infer);
-    out.push('\n');
 }
 
 fn render_list(out: &mut String, label: &str, items: &[&str]) {
-    out.push_str(&format!("- {}:\n", label));
+    out.push_str(&format!("{label}:\n"));
     for item in items {
         out.push_str(&format!("  - {}\n", item));
     }
