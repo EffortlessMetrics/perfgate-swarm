@@ -539,6 +539,146 @@ fn policy_emit_patch_marks_required_gate_as_review_required() {
 }
 
 #[test]
+fn policy_promote_plan_prints_reviewable_gate_candidate_plan_without_writing_config() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_run_receipt(
+        &dir.path().join("baselines/policy-bench.json"),
+        "policy-bench",
+        7,
+        0.03,
+    );
+    write_run_receipt(
+        &dir.path().join("artifacts/perfgate/policy-bench/run.json"),
+        "policy-bench",
+        7,
+        0.03,
+    );
+    write_compare_receipt(
+        &dir.path()
+            .join("artifacts/perfgate/policy-bench/compare.json"),
+        "policy-bench",
+        0.03,
+    );
+    let before = fs::read_to_string(dir.path().join("perfgate.toml")).expect("read config");
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args([
+            "policy",
+            "promote-plan",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "policy-bench",
+            "--to",
+            "gate_candidate",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("perfgate policy promote-plan"))
+        .stdout(predicate::str::contains("target posture: gate_candidate"))
+        .stdout(predicate::str::contains("promotion status: reviewable"))
+        .stdout(predicate::str::contains(
+            "no blocking risk found for gate_candidate review; required_gate still needs approval",
+        ))
+        .stdout(predicate::str::contains("Review checklist:"))
+        .stdout(predicate::str::contains("Reviewable config patch:"))
+        .stdout(predicate::str::contains("[bench.budgets.wall_ms]"))
+        .stdout(predicate::str::contains(
+            "perfgate policy emit-patch --config perfgate.toml --bench policy-bench --to gate_candidate",
+        ))
+        .stdout(predicate::str::contains(
+            "Advisory only: no config, baseline, threshold, policy, or server setting was changed.",
+        ));
+
+    let after = fs::read_to_string(dir.path().join("perfgate.toml")).expect("read config");
+    assert_eq!(before, after, "policy promote-plan must not write config");
+}
+
+#[test]
+fn policy_promote_plan_blocks_required_gate_without_mature_evidence() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    let before = fs::read_to_string(dir.path().join("perfgate.toml")).expect("read config");
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args([
+            "policy",
+            "promote-plan",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "policy-bench",
+            "--to",
+            "required_gate",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("target posture: required_gate"))
+        .stdout(predicate::str::contains("promotion status: blocked"))
+        .stdout(predicate::str::contains(
+            "baseline promotion after workload review",
+        ))
+        .stdout(predicate::str::contains(
+            "required_gate needs explicit reviewer approval",
+        ))
+        .stdout(predicate::str::contains(
+            "required_gate is blocked until gate_candidate evidence is reviewable",
+        ))
+        .stdout(predicate::str::contains(
+            "do not apply this plan automatically",
+        ));
+
+    let after = fs::read_to_string(dir.path().join("perfgate.toml")).expect("read config");
+    assert_eq!(before, after, "policy promote-plan must not write config");
+}
+
+#[test]
+fn policy_promote_plan_names_noisy_signal_blockers() {
+    let dir = tempdir().expect("tempdir");
+    write_config(dir.path());
+    write_run_receipt(
+        &dir.path().join("baselines/policy-bench.json"),
+        "policy-bench",
+        7,
+        0.20,
+    );
+    write_run_receipt(
+        &dir.path().join("artifacts/perfgate/policy-bench/run.json"),
+        "policy-bench",
+        7,
+        0.20,
+    );
+
+    perfgate_cmd()
+        .current_dir(dir.path())
+        .args([
+            "policy",
+            "promote-plan",
+            "--config",
+            "perfgate.toml",
+            "--bench",
+            "policy-bench",
+            "--to",
+            "gate_candidate",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("promotion status: blocked"))
+        .stdout(predicate::str::contains(
+            "paired-mode or calibration review",
+        ))
+        .stdout(predicate::str::contains(
+            "high noise can turn real changes into false policy decisions",
+        ))
+        .stdout(predicate::str::contains(
+            "gate_candidate is blocked until baseline and signal evidence are mature",
+        ));
+}
+
+#[test]
 fn policy_review_packet_renders_mature_gate_candidate_without_writing_config() {
     let dir = tempdir().expect("tempdir");
     write_config(dir.path());
@@ -599,6 +739,13 @@ fn policy_review_packet_renders_mature_gate_candidate_without_writing_config() {
         .stdout(predicate::str::contains(
             "- Signal confidence: `safe_to_gate`",
         ))
+        .stdout(predicate::str::contains("## Benchmark Passport"))
+        .stdout(predicate::str::contains("- Source kind: `native perfgate run`"))
+        .stdout(predicate::str::contains("- Baseline status: `mature`"))
+        .stdout(predicate::str::contains("- Policy posture: `gate_candidate`"))
+        .stdout(predicate::str::contains(
+            "- Next safe action: `perfgate check --config perfgate.toml --bench policy-bench --require-baseline`",
+        ))
         .stdout(predicate::str::contains(
             "- Reproduce locally: `perfgate check --config perfgate.toml --bench policy-bench --require-baseline`",
         ))
@@ -641,6 +788,9 @@ fn policy_review_packet_can_write_markdown_artifact_for_setup_state() {
     assert!(packet.contains("- Gate verdict: `setup_incomplete_missing_baseline`"));
     assert!(packet.contains("- Current posture: `smoke`"));
     assert!(packet.contains("- Recommended posture: `advisory`"));
+    assert!(packet.contains("## Benchmark Passport"));
+    assert!(packet.contains("- Baseline status: `missing`"));
+    assert!(packet.contains("- Signal maturity: `no_decision_yet`"));
     assert!(packet.contains("baseline promotion after workload review"));
     assert!(packet.contains("do not loosen thresholds or promote baselines"));
 }
@@ -661,6 +811,11 @@ fn policy_review_packet_explains_imported_source_mapping_and_limits() {
     let packet = policy_review_packet_stdout(dir.path());
 
     assert!(packet.contains("## Imported Evidence"));
+    assert!(packet.contains("## Benchmark Passport"));
+    assert!(packet.contains("- Source kind: `imported (k6_summary_json)`"));
+    assert!(packet.contains("- Source artifact: `artifacts/k6-summary.json`"));
+    assert!(packet.contains("- Sample model: `summary_only`"));
+    assert!(packet.contains("- Known non-inferences:"));
     assert!(packet.contains("- Evidence source: `imported (k6_summary_json)`"));
     assert!(packet.contains("- Source kind: `k6_summary_json`"));
     assert!(packet.contains("- Source path: `artifacts/k6-summary.json`"));

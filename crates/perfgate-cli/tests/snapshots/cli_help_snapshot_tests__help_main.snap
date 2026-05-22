@@ -1,6 +1,6 @@
 ---
 source: crates/perfgate-cli/tests/cli_help_snapshot_tests.rs
-assertion_line: 593
+assertion_line: 669
 expression: "help_output(&[\"--help\"])"
 ---
 Perf budgets and baseline diffs for CI / PR bots
@@ -36,6 +36,7 @@ Commands:
   explain Provide AI-ready prompts, artifact explanations, and automated playbooks
   ingest Import benchmark results from external frameworks into perfgate format
   adoption Show reviewable adoption packs for common repository shapes
+  review Explain first-use performance posture from existing receipts
   badge Generate an embeddable SVG status badge from a report or compare receipt
   discover Auto-detect benchmarks in a repository without manual configuration
   diff Quick "did I make it slower?" comparison against baselines
