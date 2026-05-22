@@ -5324,6 +5324,7 @@ fn validate_rails_owned_artifacts_registered(
         ".rails/specs",
         ".rails/adr",
         ".rails/closeouts",
+        ".rails/plans",
         ".rails/support",
         ".rails/policy",
     ] {
@@ -7353,6 +7354,24 @@ owner = "test"
         assert!(
             errors.iter().any(|error| error.contains(
                 "Rails-owned artifact `.rails/support/claim-map.toml` must be registered"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_unregistered_owned_plan_artifacts() {
+        let root = unique_temp_dir("perfgate_rails_unregistered_plan");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(&root, ".rails/plans/PERFGATE-PLAN-9999-demo.md", "# Plan\n");
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails-owned artifact `.rails/plans/PERFGATE-PLAN-9999-demo.md` must be registered"
             )),
             "unexpected errors: {:?}",
             errors
