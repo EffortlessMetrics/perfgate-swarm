@@ -4797,6 +4797,37 @@ struct RailsLaneTracker {
     owner: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct RailsSupportMap {
+    schema_version: String,
+    #[serde(default)]
+    claim: Vec<RailsSupportClaim>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RailsSupportClaim {
+    id: String,
+    statement: String,
+    #[serde(default)]
+    proof: Vec<String>,
+    #[serde(default)]
+    references: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RailsPolicyReference {
+    schema_version: String,
+    #[serde(default)]
+    ledger: Vec<RailsPolicyLedger>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RailsPolicyLedger {
+    id: String,
+    path: String,
+    owner: String,
+}
+
 fn cmd_rails_check(root: &Path) -> anyhow::Result<()> {
     let errors = collect_rails_errors(root)?;
 
@@ -4936,6 +4967,7 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
     }
 
     validate_rails_owned_artifacts_registered(root, &artifact_paths, &mut errors);
+    validate_rails_support_and_policy(root, &index.artifact, &mut errors);
 
     let implemented_closeout_paths = index
         .artifact
@@ -4981,6 +5013,183 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
     }
 
     Ok(errors)
+}
+
+fn validate_rails_support_and_policy(
+    root: &Path,
+    artifacts: &[RailsArtifact],
+    errors: &mut Vec<String>,
+) {
+    for artifact in artifacts {
+        match artifact.kind.as_str() {
+            "support" => validate_rails_support_artifact(root, artifact, errors),
+            "policy" => validate_rails_policy_artifact(root, artifact, errors),
+            _ => {}
+        }
+    }
+}
+
+fn validate_rails_support_artifact(
+    root: &Path,
+    artifact: &RailsArtifact,
+    errors: &mut Vec<String>,
+) {
+    let path = root.join(&artifact.path);
+    if !path.exists() {
+        return;
+    }
+
+    let raw = match fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(err) => {
+            errors.push(format!(
+                "Rails support artifact {} `{}` could not be read: {err}",
+                artifact.id, artifact.path
+            ));
+            return;
+        }
+    };
+    let support = match toml::from_str::<RailsSupportMap>(&raw) {
+        Ok(support) => support,
+        Err(err) => {
+            errors.push(format!(
+                "Rails support artifact {} `{}` must parse as TOML: {err}",
+                artifact.id, artifact.path
+            ));
+            return;
+        }
+    };
+
+    if support.schema_version != "1.0" {
+        errors.push(format!(
+            "Rails support artifact {} uses schema_version `{}`; expected `1.0`",
+            artifact.id, support.schema_version
+        ));
+    }
+    if support.claim.is_empty() {
+        errors.push(format!(
+            "Rails support artifact {} must define at least one claim",
+            artifact.id
+        ));
+    }
+    for claim in &support.claim {
+        if claim.id.trim().is_empty() {
+            errors.push(format!(
+                "Rails support artifact {} has a claim with an empty id",
+                artifact.id
+            ));
+        }
+        if claim.statement.trim().is_empty() {
+            errors.push(format!(
+                "Rails support claim {} has an empty statement",
+                claim.id
+            ));
+        }
+        if claim.proof.is_empty() {
+            errors.push(format!(
+                "Rails support claim {} must list proof commands",
+                claim.id
+            ));
+        }
+        if claim.references.is_empty() {
+            errors.push(format!(
+                "Rails support claim {} must list reference paths",
+                claim.id
+            ));
+        }
+        for reference in &claim.references {
+            validate_rails_reference_path(
+                root,
+                &format!("Rails support claim {}", claim.id),
+                "reference",
+                reference,
+                errors,
+            );
+        }
+    }
+}
+
+fn validate_rails_policy_artifact(root: &Path, artifact: &RailsArtifact, errors: &mut Vec<String>) {
+    let path = root.join(&artifact.path);
+    if !path.exists() {
+        return;
+    }
+
+    let raw = match fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(err) => {
+            errors.push(format!(
+                "Rails policy artifact {} `{}` could not be read: {err}",
+                artifact.id, artifact.path
+            ));
+            return;
+        }
+    };
+    let policy = match toml::from_str::<RailsPolicyReference>(&raw) {
+        Ok(policy) => policy,
+        Err(err) => {
+            errors.push(format!(
+                "Rails policy artifact {} `{}` must parse as TOML: {err}",
+                artifact.id, artifact.path
+            ));
+            return;
+        }
+    };
+
+    if policy.schema_version != "1.0" {
+        errors.push(format!(
+            "Rails policy artifact {} uses schema_version `{}`; expected `1.0`",
+            artifact.id, policy.schema_version
+        ));
+    }
+    if policy.ledger.is_empty() {
+        errors.push(format!(
+            "Rails policy artifact {} must define at least one ledger",
+            artifact.id
+        ));
+    }
+    for ledger in &policy.ledger {
+        if ledger.id.trim().is_empty() {
+            errors.push(format!(
+                "Rails policy artifact {} has a ledger with an empty id",
+                artifact.id
+            ));
+        }
+        if ledger.owner.trim().is_empty() {
+            errors.push(format!(
+                "Rails policy ledger {} has an empty owner",
+                ledger.id
+            ));
+        }
+        validate_rails_reference_path(
+            root,
+            &format!("Rails policy ledger {}", ledger.id),
+            "path",
+            &ledger.path,
+            errors,
+        );
+    }
+}
+
+fn validate_rails_reference_path(
+    root: &Path,
+    source: &str,
+    field: &str,
+    raw_path: &str,
+    errors: &mut Vec<String>,
+) {
+    if raw_path.trim().is_empty() {
+        errors.push(format!("{source} has an empty {field}"));
+        return;
+    }
+    if raw_path.contains('\\') {
+        errors.push(format!(
+            "{source} {field} `{raw_path}` must use forward slashes"
+        ));
+    }
+    if !root.join(raw_path).exists() {
+        errors.push(format!("{source} {field} `{raw_path}` does not exist"));
+    }
 }
 
 fn validate_rails_owned_artifacts_registered(
@@ -6566,6 +6775,13 @@ owner = "test"
         );
     }
 
+    fn append_rails_index(root: &Path, content: &str) {
+        let path = root.join(".rails/index.toml");
+        let mut index = fs::read_to_string(&path).expect("read rails index");
+        index.push_str(content);
+        fs::write(path, index).expect("append rails index");
+    }
+
     #[test]
     fn rails_check_accepts_implemented_lane_with_registered_closeout() {
         let root = unique_temp_dir("perfgate_rails_closeout_ok");
@@ -6588,6 +6804,85 @@ owner = "test"
             errors
                 .iter()
                 .any(|error| error.contains("implemented Rails lane demo-lane")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_missing_support_claim_reference() {
+        let root = unique_temp_dir("perfgate_rails_support_missing_ref");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/support/claim-map.toml",
+            r#"schema_version = "1.0"
+
+[[claim]]
+id = "PERFGATE-CLAIM-9999"
+statement = "Test claim"
+proof = ["cargo test"]
+references = ["docs/missing.md"]
+"#,
+        );
+        append_rails_index(
+            &root,
+            r#"
+[[artifact]]
+id = "PERFGATE-SUPPORT-9999"
+kind = "support"
+path = ".rails/support/claim-map.toml"
+status = "accepted"
+owner = "test"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails support claim PERFGATE-CLAIM-9999 reference `docs/missing.md` does not exist"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_missing_policy_ledger_path() {
+        let root = unique_temp_dir("perfgate_rails_policy_missing_path");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/policy/ledgers.toml",
+            r#"schema_version = "1.0"
+
+[[ledger]]
+id = "missing-ledger"
+path = "docs/missing-policy.md"
+owner = "test"
+"#,
+        );
+        append_rails_index(
+            &root,
+            r#"
+[[artifact]]
+id = "PERFGATE-POLICY-9999"
+kind = "policy"
+path = ".rails/policy/ledgers.toml"
+status = "accepted"
+owner = "test"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails policy ledger missing-ledger path `docs/missing-policy.md` does not exist"
+            )),
             "unexpected errors: {:?}",
             errors
         );
