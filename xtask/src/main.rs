@@ -4935,6 +4935,7 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
             &mut errors,
         );
         validate_rails_registered_path(root, "artifact", &artifact.id, &artifact.path, &mut errors);
+        validate_rails_artifact_path_identity(artifact, &mut errors);
 
         if let Some(previous_path) = artifact_ids.insert(artifact.id.clone(), artifact.path.clone())
         {
@@ -5498,6 +5499,23 @@ fn validate_rails_registered_path(
     if !path.exists() {
         errors.push(format!(
             "Rails {label} {id} links to missing path `{raw_path}`"
+        ));
+    }
+}
+
+fn validate_rails_artifact_path_identity(artifact: &RailsArtifact, errors: &mut Vec<String>) {
+    if !matches!(
+        artifact.kind.as_str(),
+        "proposal" | "spec" | "adr" | "plan" | "closeout" | "template"
+    ) {
+        return;
+    }
+
+    let file_name = rails_path_file_name(&artifact.path);
+    if !file_name.starts_with(&artifact.id) {
+        errors.push(format!(
+            "Rails artifact {} path `{}` filename must start with `{}`",
+            artifact.id, artifact.path, artifact.id
         ));
     }
 }
@@ -7313,6 +7331,31 @@ owner = "test"
         assert!(
             errors.iter().any(|error| error.contains(
                 "Rails-owned artifact `.rails/support/claim-map.toml` must be registered"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_artifact_path_identity_drift() {
+        let root = unique_temp_dir("perfgate_rails_artifact_path_identity_drift");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(&root, ".rails/proposals/demo.md", "# Proposal\n");
+        fs::remove_file(root.join(".rails/proposals/PERFGATE-PROP-9999-demo.md"))
+            .expect("remove original proposal artifact");
+        replace_rails_index(
+            &root,
+            "path = \".rails/proposals/PERFGATE-PROP-9999-demo.md\"",
+            "path = \".rails/proposals/demo.md\"",
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails artifact PERFGATE-PROP-9999 path `.rails/proposals/demo.md` filename must start with `PERFGATE-PROP-9999`"
             )),
             "unexpected errors: {:?}",
             errors
