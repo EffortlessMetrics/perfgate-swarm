@@ -36,6 +36,7 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 - Rails support claim references and policy ledger paths must resolve.
 - Rails support claim IDs and policy ledger IDs must be unique inside their
   artifact.
+- Rails support claim proof command entries must be non-empty.
 - Rails links must resolve to the expected artifact kind: proposals to
   proposals, specs to specs, and ADRs to ADRs.
 - External namespaces may be listed for awareness, but not owned.
@@ -80,6 +81,7 @@ Registry schema drift, project identity drift, prefix convention drift, external
 namespace drift, missing linked artifacts, unregistered owned artifacts,
 artifact kind-directory drift, artifact filename identity drift, wrong-kind
 artifact links, unresolved support claim references, unresolved policy ledger
-paths, duplicate support claim or policy ledger IDs, lane tracker path drift,
-lane tracker schema drift, lane tracker identity drift, missing closeouts for
-implemented lanes, or paths under external namespaces must fail validation.
+paths, duplicate support claim or policy ledger IDs, empty support proof
+commands, lane tracker path drift, lane tracker schema drift, lane tracker
+identity drift, missing closeouts for implemented lanes, or paths under external
+namespaces must fail validation.

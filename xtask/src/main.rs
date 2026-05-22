@@ -5207,6 +5207,14 @@ fn validate_rails_support_artifact(
                 claim.id
             ));
         }
+        for proof in &claim.proof {
+            if proof.trim().is_empty() {
+                errors.push(format!(
+                    "Rails support claim {} has an empty proof command",
+                    claim.id
+                ));
+            }
+        }
         if claim.references.is_empty() {
             errors.push(format!(
                 "Rails support claim {} must list reference paths",
@@ -7250,6 +7258,45 @@ owner = "test"
             errors.iter().any(|error| error.contains(
                 "Rails support artifact PERFGATE-SUPPORT-9999 has duplicate claim id PERFGATE-CLAIM-9999"
             )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_empty_support_claim_proof_command() {
+        let root = unique_temp_dir("perfgate_rails_support_empty_proof_command");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/support/claim-map.toml",
+            r#"schema_version = "1.0"
+
+[[claim]]
+id = "PERFGATE-CLAIM-9999"
+statement = "Test claim"
+proof = ["cargo test", " "]
+references = ["docs/rails.md"]
+"#,
+        );
+        append_rails_index(
+            &root,
+            r#"
+[[artifact]]
+id = "PERFGATE-SUPPORT-9999"
+kind = "support"
+path = ".rails/support/claim-map.toml"
+status = "accepted"
+owner = "test"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error
+                .contains("Rails support claim PERFGATE-CLAIM-9999 has an empty proof command")),
             "unexpected errors: {:?}",
             errors
         );

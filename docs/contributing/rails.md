@@ -32,6 +32,7 @@ Use `.rails/` for durable repository knowledge, and keep tool/agent state in ext
    `linked_specs` point to specs, and `linked_adrs` point to ADRs.
 13. Keep support claim IDs and policy ledger IDs unique inside each registered
     support or policy artifact.
+14. Keep support claim proof command entries non-empty.
 
 ## Validation
 
@@ -46,5 +47,6 @@ fields, registered artifact and lane paths, status values, ID prefixes, artifact
 kind directories, filename identity, registry links, link target kinds,
 unregistered owned artifacts, support claim references, policy ledger paths,
 duplicate support claim or policy ledger IDs, lane tracker path/schema and
-identity/status/owner consistency, closeouts for implemented lanes, the required
-human docs, and the absence of the legacy `.perfgate-spec/` namespace.
+identity/status/owner consistency, non-empty support proof commands, closeouts
+for implemented lanes, the required human docs, and the absence of the legacy
+`.perfgate-spec/` namespace.
