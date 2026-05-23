@@ -72,6 +72,78 @@ owner = "docs-platform"
 linked_specs = ["PERFGATE-SPEC-0001"]
 
 [[artifact]]
+id = "PERFGATE-TEMPLATE-0001"
+kind = "template"
+path = ".rails/templates/proposal.md"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
+id = "PERFGATE-TEMPLATE-0002"
+kind = "template"
+path = ".rails/templates/spec.md"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
+id = "PERFGATE-TEMPLATE-0003"
+kind = "template"
+path = ".rails/templates/adr.md"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
+id = "PERFGATE-TEMPLATE-0004"
+kind = "template"
+path = ".rails/templates/implementation-plan.md"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
+id = "PERFGATE-TEMPLATE-0005"
+kind = "template"
+path = ".rails/templates/lane-tracker.toml"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
+id = "PERFGATE-TEMPLATE-0006"
+kind = "template"
+path = ".rails/templates/work-item.md"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
+id = "PERFGATE-TEMPLATE-0007"
+kind = "template"
+path = ".rails/templates/support-claim.md"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
+id = "PERFGATE-TEMPLATE-0008"
+kind = "template"
+path = ".rails/templates/policy-reference.toml"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
+id = "PERFGATE-TEMPLATE-0009"
+kind = "template"
+path = ".rails/templates/closeout.md"
+status = "accepted"
+owner = "docs-platform"
+linked_specs = ["PERFGATE-SPEC-0001"]
+
+[[artifact]]
 id = "PERFGATE-CLOSEOUT-0001"
 kind = "closeout"
 path = ".rails/closeouts/PERFGATE-CLOSEOUT-0001-rails-adoption.md"
