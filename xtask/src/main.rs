@@ -5591,6 +5591,14 @@ fn validate_rails_lane_tracker(
             ],
             errors,
         );
+        if lane.status == "implemented"
+            && !matches!(work_item.status.as_str(), "implemented" | "superseded")
+        {
+            errors.push(format!(
+                "implemented Rails lane {} work item {} has status `{}`; work items must be implemented or superseded",
+                lane.id, work_item.id, work_item.status
+            ));
+        }
         if work_item.proof.is_empty() {
             errors.push(format!(
                 "Rails lane {} work item {} must list proof commands",
@@ -7296,6 +7304,40 @@ owner = "test"
             errors
                 .iter()
                 .any(|error| error.contains("implemented Rails lane demo-lane")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_unfinished_work_items_in_implemented_lane() {
+        let root = unique_temp_dir("perfgate_rails_implemented_lane_unfinished_work_item");
+        write_minimal_rails_stack(&root, true);
+        let tracker_path = root.join(".rails/lanes/demo-lane/tracker.toml");
+        let mut tracker = fs::read_to_string(&tracker_path).expect("read tracker");
+        tracker.push_str(
+            r#"
+[[work_item]]
+id = "unfinished"
+status = "ready"
+proposal = "PERFGATE-PROP-9999"
+spec = "PERFGATE-SPEC-9999"
+adr = ""
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
+blocks = []
+blocked_by = []
+proof = ["cargo +1.95.0 run -p xtask -- rails check"]
+"#,
+        );
+        fs::write(&tracker_path, tracker).expect("write tracker");
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "implemented Rails lane demo-lane work item unfinished has status `ready`"
+            )),
             "unexpected errors: {:?}",
             errors
         );
