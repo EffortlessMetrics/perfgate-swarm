@@ -790,6 +790,7 @@ fn cmd_ci() -> anyhow::Result<()> {
         false,
     )?;
     cmd_arch()?;
+    cmd_rails_check(Path::new("."))?;
     cmd_docs_check()?;
     cmd_docs_source_check(Path::new("."))?;
     cmd_product_claims_check(Path::new("docs/status/PRODUCT_CLAIMS.md"))?;
