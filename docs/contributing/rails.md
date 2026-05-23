@@ -36,14 +36,17 @@ Use `.rails/` for durable repository knowledge, and keep tool/agent state in ext
 15. Keep lane work item IDs unique and non-empty inside each lane tracker.
 16. Keep lane work item statuses in the accepted lane-work vocabulary:
     `planned`, `ready`, `active`, `blocked`, `implemented`, or `superseded`.
-17. Keep lane work item `proposal` and `spec` references populated and linked
+17. When a lane becomes `implemented`, keep each work item either
+    `implemented` or `superseded`; do not leave planned, ready, active, or
+    blocked work in an implemented lane.
+18. Keep lane work item `proposal` and `spec` references populated and linked
     to registered proposal and spec artifacts.
-18. Keep lane work item `adr` references empty when not used, or linked to a
+19. Keep lane work item `adr` references empty when not used, or linked to a
     registered ADR artifact when used.
-19. Keep lane work item `implementation_plan` paths resolvable.
-20. Keep lane work item `blocks` and `blocked_by` entries non-empty, scoped to
+20. Keep lane work item `implementation_plan` paths resolvable.
+21. Keep lane work item `blocks` and `blocked_by` entries non-empty, scoped to
     work item IDs in the same lane tracker, and non-self-referential.
-21. Keep lane work item proof command entries non-empty.
+22. Keep lane work item proof command entries non-empty.
 
 ## Validation
 
@@ -60,6 +63,6 @@ unregistered owned artifacts, support claim references, policy ledger paths,
 duplicate support claim or policy ledger IDs, lane tracker path/schema and
 identity/status/owner consistency, lane work item IDs and statuses, non-empty
 support and lane work item proof commands, lane work item source links and
-implementation plans, lane work item dependencies, closeouts for implemented
-lanes, the required human docs, and the absence of the legacy `.perfgate-spec/`
-namespace.
+implementation plans, lane work item dependencies, completed or superseded work
+items in implemented lanes, closeouts for implemented lanes, the required human
+docs, and the absence of the legacy `.perfgate-spec/` namespace.
