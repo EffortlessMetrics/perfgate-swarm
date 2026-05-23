@@ -6282,6 +6282,8 @@ struct ProductClaimSection {
 #[derive(Debug)]
 struct ProductClaimIndexEntry {
     id: String,
+    tier: String,
+    review_after: String,
     line: usize,
 }
 
@@ -6436,15 +6438,30 @@ fn validate_product_claim_index(
         }
     }
 
-    let section_ids = claims
-        .iter()
-        .map(|claim| claim.id.as_str())
-        .collect::<BTreeSet<_>>();
     for entry in claim_index {
-        if !section_ids.contains(entry.id.as_str()) {
+        let Some(claim) = claims.iter().find(|claim| claim.id == entry.id) else {
             errors.push(format!(
                 "Claim Index line {} references `{}` but no matching claim section exists",
                 entry.line, entry.id
+            ));
+            continue;
+        };
+
+        if let Some(tier) = claim_field(&claim.body, "Tier")
+            && entry.tier != tier
+        {
+            errors.push(format!(
+                "Claim Index line {} lists `{}` as tier `{}`, but the claim section uses `{}`",
+                entry.line, entry.id, entry.tier, tier
+            ));
+        }
+
+        if let Some(review_after) = claim_field(&claim.body, "Review after")
+            && entry.review_after != review_after
+        {
+            errors.push(format!(
+                "Claim Index line {} lists `{}` review-after `{}`, but the claim section uses `{}`",
+                entry.line, entry.id, entry.review_after, review_after
             ));
         }
     }
@@ -6476,8 +6493,7 @@ fn validate_product_claim_index(
 }
 
 fn extract_product_claim_index_entries(content: &str) -> Vec<ProductClaimIndexEntry> {
-    let index_re =
-        Regex::new(r"^\|\s*(PG-CLAIM-\d{4})\s*\|").expect("claim index regex should compile");
+    let id_re = Regex::new(r"^PG-CLAIM-\d{4}$").expect("claim id regex should compile");
     let mut entries = Vec::new();
     let mut in_claim_index = false;
 
@@ -6495,9 +6511,12 @@ fn extract_product_claim_index_entries(content: &str) -> Vec<ProductClaimIndexEn
             continue;
         }
 
-        if let Some(captures) = index_re.captures(line) {
+        let cells = line.split('|').map(str::trim).collect::<Vec<_>>();
+        if cells.len() >= 6 && id_re.is_match(cells[1]) {
             entries.push(ProductClaimIndexEntry {
-                id: captures[1].to_string(),
+                id: cells[1].to_string(),
+                tier: cells[3].to_string(),
+                review_after: cells[5].to_string(),
                 line: idx + 1,
             });
         }
@@ -9045,6 +9064,63 @@ Review after: next-claim-change
                 .iter()
                 .any(|error| error.contains("Claim Index order must match claim section order")),
             "expected index order error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn product_claims_check_rejects_claim_index_metadata_drift() {
+        let content = r###"# Product Claims
+
+## Claim Index
+
+| Claim ID | Claim | Tier | Surface | Review after |
+|----------|-------|------|---------|--------------|
+| PG-CLAIM-0001 | first | supported | docs | before-release |
+| PG-CLAIM-0002 | second | advisory | docs | next-claim-change |
+
+## PG-CLAIM-0001: First claim
+
+Tier: advisory
+Surface: docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-claim-change
+
+## PG-CLAIM-0002: Second claim
+
+Tier: advisory
+Surface: docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-claim-change
+"###;
+
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
+        assert!(
+            errors.iter().any(|error| {
+                error.contains(
+                    "Claim Index line 7 lists `PG-CLAIM-0001` as tier `supported`, but the claim section uses `advisory`",
+                )
+            }),
+            "expected tier metadata drift error, got {errors:?}"
+        );
+        assert!(
+            errors.iter().any(|error| {
+                error.contains(
+                    "Claim Index line 7 lists `PG-CLAIM-0001` review-after `before-release`, but the claim section uses `next-claim-change`",
+                )
+            }),
+            "expected review-after metadata drift error, got {errors:?}"
         );
     }
 
