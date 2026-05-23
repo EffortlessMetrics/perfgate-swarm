@@ -41,7 +41,9 @@ Use `.rails/` for durable repository knowledge, and keep tool/agent state in ext
 18. Keep lane work item `adr` references empty when not used, or linked to a
     registered ADR artifact when used.
 19. Keep lane work item `implementation_plan` paths resolvable.
-20. Keep lane work item proof command entries non-empty.
+20. Keep lane work item `blocks` and `blocked_by` entries non-empty, scoped to
+    work item IDs in the same lane tracker, and non-self-referential.
+21. Keep lane work item proof command entries non-empty.
 
 ## Validation
 
@@ -58,5 +60,6 @@ unregistered owned artifacts, support claim references, policy ledger paths,
 duplicate support claim or policy ledger IDs, lane tracker path/schema and
 identity/status/owner consistency, lane work item IDs and statuses, non-empty
 support and lane work item proof commands, lane work item source links and
-implementation plans, closeouts for implemented lanes, the required human docs,
-and the absence of the legacy `.perfgate-spec/` namespace.
+implementation plans, lane work item dependencies, closeouts for implemented
+lanes, the required human docs, and the absence of the legacy `.perfgate-spec/`
+namespace.
