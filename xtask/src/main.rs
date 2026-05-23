@@ -804,10 +804,13 @@ fn cmd_action_check(action: &Path, cli_manifest: &Path) -> anyhow::Result<()> {
         .with_context(|| format!("reading {}", summary_examples_path.display()))?;
     let mut errors = collect_action_check_errors(&action_content, &manifest_content);
     errors.extend(collect_action_summary_example_errors(&summary_examples));
+    errors.extend(collect_workflow_policy_errors(Path::new(
+        ".github/workflows",
+    ))?);
 
     if !errors.is_empty() {
         println!(
-            "Found {} GitHub Action release/install/diagnostic error(s):",
+            "Found {} GitHub Action release/install/diagnostic/workflow policy error(s):",
             errors.len()
         );
         for error in &errors {
@@ -815,13 +818,13 @@ fn cmd_action_check(action: &Path, cli_manifest: &Path) -> anyhow::Result<()> {
         }
 
         anyhow::bail!(
-            "{} GitHub Action release/install/diagnostic issue(s) found. Fix action.yml or binstall metadata.",
+            "{} GitHub Action release/install/diagnostic/workflow policy issue(s) found. Fix action.yml, binstall metadata, summary examples, or workflow policy.",
             errors.len()
         );
     }
 
     println!(
-        "  OK  GitHub Action install, release asset, and failure diagnostic wiring is aligned"
+        "  OK  GitHub Action install, release asset, failure diagnostic, and workflow policy wiring is aligned"
     );
     Ok(())
 }
@@ -1431,6 +1434,74 @@ fn collect_action_check_errors(action: &str, cli_manifest: &str) -> Vec<String> 
     errors
 }
 
+fn collect_workflow_policy_errors(workflows_dir: &Path) -> anyhow::Result<Vec<String>> {
+    if !workflows_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut workflows = Vec::new();
+    for entry in fs::read_dir(workflows_dir)
+        .with_context(|| format!("reading {}", workflows_dir.display()))?
+    {
+        let path = entry?.path();
+        let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
+            continue;
+        };
+        if !matches!(extension, "yml" | "yaml") {
+            continue;
+        }
+
+        let content =
+            fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        workflows.push((path.display().to_string(), content));
+    }
+
+    Ok(collect_workflow_policy_errors_from_entries(
+        workflows
+            .iter()
+            .map(|(path, content)| (path.as_str(), content.as_str())),
+    ))
+}
+
+fn collect_workflow_policy_errors_from_entries<'a>(
+    workflows: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Vec<String> {
+    let forbidden_pr_merge =
+        Regex::new(r"\bgh\s+pr\s+merge\b").expect("workflow merge regex must compile");
+    let mut errors = Vec::new();
+
+    for (path, content) in workflows {
+        let workflow = match yaml_serde::from_str::<WorkflowDefinition>(content) {
+            Ok(workflow) => workflow,
+            Err(err) => {
+                errors.push(format!("{path} must parse as workflow YAML: {err}"));
+                continue;
+            }
+        };
+
+        for (job_name, job) in workflow.jobs {
+            for (index, step) in job.steps.iter().enumerate() {
+                let Some(run) = step.run.as_deref() else {
+                    continue;
+                };
+                for line in active_shell_lines(run) {
+                    if forbidden_pr_merge.is_match(&line) {
+                        let step_name = step
+                            .name
+                            .as_deref()
+                            .map_or_else(|| format!("#{index}"), str::to_string);
+                        errors.push(format!(
+                            "{path} job `{job_name}` step `{step_name}` must not run `gh pr merge`; generated PRs require maintainer review and squash merge"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    errors
+}
+
 fn collect_action_summary_example_errors(summary_examples: &str) -> Vec<String> {
     let mut errors = Vec::new();
     let required_examples = [
@@ -1565,6 +1636,18 @@ struct ActionStep {
     id: Option<String>,
     name: Option<String>,
     run: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WorkflowDefinition {
+    #[serde(default)]
+    jobs: BTreeMap<String, WorkflowJob>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WorkflowJob {
+    #[serde(default)]
+    steps: Vec<ActionStep>,
 }
 
 fn active_shell_lines(script: &str) -> Vec<String> {
@@ -9146,6 +9229,49 @@ pkg-fmt = "zip"
             valid_action_install_surface(),
             valid_cli_binstall_metadata(),
         );
+
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn workflow_policy_rejects_generated_pr_auto_merge() {
+        let errors = collect_workflow_policy_errors_from_entries([(
+            ".github/workflows/perfgate-nightly.yml",
+            r#"
+name: perfgate-nightly
+jobs:
+  nightly:
+    steps:
+      - name: Merge generated PR
+        run: |
+          gh pr merge "$BRANCH_NAME" --auto --merge
+"#,
+        )]);
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("must not run `gh pr merge`")),
+            "errors should mention forbidden gh pr merge: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn workflow_policy_ignores_commented_generated_pr_auto_merge() {
+        let errors = collect_workflow_policy_errors_from_entries([(
+            ".github/workflows/perfgate-nightly.yml",
+            r#"
+name: perfgate-nightly
+jobs:
+  nightly:
+    steps:
+      - name: Explain generated PR handling
+        run: |
+          # gh pr merge "$BRANCH_NAME" --auto --merge
+          echo "maintainer review required"
+"#,
+        )]);
 
         assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
     }
