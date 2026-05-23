@@ -6279,11 +6279,18 @@ struct ProductClaimSection {
     body: String,
 }
 
+#[derive(Debug)]
+struct ProductClaimIndexEntry {
+    id: String,
+    line: usize,
+}
+
 fn collect_product_claim_errors(
     content: &str,
     concrete_spec_ids: &BTreeSet<String>,
 ) -> Vec<String> {
     let mut errors = Vec::new();
+    let claim_index = extract_product_claim_index_entries(content);
     let claims = extract_product_claim_sections(content);
     let mut ids = BTreeSet::new();
     let mut previous_claim_id: Option<String> = None;
@@ -6294,6 +6301,10 @@ fn collect_product_claim_errors(
         errors
             .push("PRODUCT_CLAIMS.md must contain at least one `## PG-CLAIM-NNNN` section".into());
         return errors;
+    }
+
+    if !claim_index.is_empty() {
+        validate_product_claim_index(&claim_index, &claims, &mut errors);
     }
 
     for claim in claims {
@@ -6403,6 +6414,77 @@ fn collect_product_claim_errors(
     }
 
     errors
+}
+
+fn validate_product_claim_index(
+    claim_index: &[ProductClaimIndexEntry],
+    claims: &[ProductClaimSection],
+    errors: &mut Vec<String>,
+) {
+    let mut seen_index_ids = BTreeSet::new();
+    for entry in claim_index {
+        if !seen_index_ids.insert(entry.id.as_str()) {
+            errors.push(format!(
+                "Claim Index line {} repeats `{}`",
+                entry.line, entry.id
+            ));
+        }
+    }
+
+    let section_ids = claims
+        .iter()
+        .map(|claim| claim.id.as_str())
+        .collect::<BTreeSet<_>>();
+    for entry in claim_index {
+        if !section_ids.contains(entry.id.as_str()) {
+            errors.push(format!(
+                "Claim Index line {} references `{}` but no matching claim section exists",
+                entry.line, entry.id
+            ));
+        }
+    }
+
+    let index_ids = claim_index
+        .iter()
+        .map(|entry| entry.id.as_str())
+        .collect::<BTreeSet<_>>();
+    for claim in claims {
+        if !index_ids.contains(claim.id.as_str()) {
+            errors.push(format!(
+                "{} line {} is missing from the Claim Index",
+                claim.id, claim.line
+            ));
+        }
+    }
+
+    let index_order = claim_index
+        .iter()
+        .map(|entry| entry.id.as_str())
+        .collect::<Vec<_>>();
+    let section_order = claims
+        .iter()
+        .map(|claim| claim.id.as_str())
+        .collect::<Vec<_>>();
+    if index_order.len() == section_order.len() && index_order != section_order {
+        errors.push("Claim Index order must match claim section order".to_string());
+    }
+}
+
+fn extract_product_claim_index_entries(content: &str) -> Vec<ProductClaimIndexEntry> {
+    let index_re =
+        Regex::new(r"^\|\s*(PG-CLAIM-\d{4})\s*\|").expect("claim index regex should compile");
+    let mut entries = Vec::new();
+
+    for (idx, line) in content.lines().enumerate() {
+        if let Some(captures) = index_re.captures(line) {
+            entries.push(ProductClaimIndexEntry {
+                id: captures[1].to_string(),
+                line: idx + 1,
+            });
+        }
+    }
+
+    entries
 }
 
 fn extract_product_claim_sections(content: &str) -> Vec<ProductClaimSection> {
@@ -8849,6 +8931,67 @@ Review after: next-claim-change
                 .iter()
                 .any(|error| error.contains("keep claim sections sorted by ID")),
             "expected claim ordering error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn product_claims_check_rejects_claim_index_drift() {
+        let content = r###"# Product Claims
+
+## Claim Index
+
+| Claim ID | Claim | Tier | Surface | Review after |
+|----------|-------|------|---------|--------------|
+| PG-CLAIM-0002 | second | advisory | docs | next-claim-change |
+| PG-CLAIM-0003 | missing | advisory | docs | next-claim-change |
+
+## PG-CLAIM-0001: First claim
+
+Tier: advisory
+Surface: docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-claim-change
+
+## PG-CLAIM-0002: Second claim
+
+Tier: advisory
+Surface: docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-claim-change
+"###;
+
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
+        assert!(
+            errors.iter().any(|error| {
+                error.contains(
+                    "Claim Index line 8 references `PG-CLAIM-0003` but no matching claim section exists",
+                )
+            }),
+            "expected missing section error, got {errors:?}"
+        );
+        assert!(
+            errors.iter().any(
+                |error| error.contains("PG-CLAIM-0001 line 10 is missing from the Claim Index")
+            ),
+            "expected missing index row error, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("Claim Index order must match claim section order")),
+            "expected index order error, got {errors:?}"
         );
     }
 
