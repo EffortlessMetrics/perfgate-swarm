@@ -4830,6 +4830,12 @@ struct RailsLaneWorkItem {
     id: String,
     status: String,
     #[serde(default)]
+    proposal: String,
+    #[serde(default)]
+    spec: String,
+    #[serde(default)]
+    adr: String,
+    #[serde(default)]
     implementation_plan: String,
     #[serde(default)]
     proof: Vec<String>,
@@ -5034,7 +5040,7 @@ fn collect_rails_errors(root: &Path) -> anyhow::Result<Vec<String>> {
         );
         validate_rails_registered_path(root, "lane", &lane.id, &lane.path, &mut errors);
         validate_rails_lane_path(lane, &mut errors);
-        validate_rails_lane_tracker(root, lane, &mut errors);
+        validate_rails_lane_tracker(root, lane, &artifact_kinds, &mut errors);
         if lane.status == "implemented"
             && !implemented_closeout_paths
                 .iter()
@@ -5404,7 +5410,12 @@ fn validate_rails_owned_artifact_dir(
     }
 }
 
-fn validate_rails_lane_tracker(root: &Path, lane: &RailsLane, errors: &mut Vec<String>) {
+fn validate_rails_lane_tracker(
+    root: &Path,
+    lane: &RailsLane,
+    artifact_kinds: &BTreeMap<String, String>,
+    errors: &mut Vec<String>,
+) {
     let path = root.join(&lane.path);
     if !path.exists() {
         return;
@@ -5495,6 +5506,34 @@ fn validate_rails_lane_tracker(root: &Path, lane: &RailsLane, errors: &mut Vec<S
                 lane.id, work_item.id
             ));
         }
+        let source = format!("Rails lane {} work item {}", lane.id, work_item.id);
+        validate_rails_lane_work_item_link(
+            &source,
+            "proposal",
+            &work_item.proposal,
+            "proposal",
+            true,
+            artifact_kinds,
+            errors,
+        );
+        validate_rails_lane_work_item_link(
+            &source,
+            "spec",
+            &work_item.spec,
+            "spec",
+            true,
+            artifact_kinds,
+            errors,
+        );
+        validate_rails_lane_work_item_link(
+            &source,
+            "adr",
+            &work_item.adr,
+            "adr",
+            false,
+            artifact_kinds,
+            errors,
+        );
         validate_rails_reference_path(
             root,
             &format!("Rails lane {} work item {}", lane.id, work_item.id),
@@ -5510,6 +5549,36 @@ fn validate_rails_lane_tracker(root: &Path, lane: &RailsLane, errors: &mut Vec<S
                 ));
             }
         }
+    }
+}
+
+fn validate_rails_lane_work_item_link(
+    source: &str,
+    field: &str,
+    target_id: &str,
+    expected_kind: &str,
+    required: bool,
+    artifact_kinds: &BTreeMap<String, String>,
+    errors: &mut Vec<String>,
+) {
+    if target_id.trim().is_empty() {
+        if required {
+            errors.push(format!("{source} has an empty {field}"));
+        }
+        return;
+    }
+
+    let Some(actual_kind) = artifact_kinds.get(target_id) else {
+        errors.push(format!(
+            "{source} {field} references unknown artifact id {target_id}"
+        ));
+        return;
+    };
+
+    if actual_kind != expected_kind {
+        errors.push(format!(
+            "{source} {field} references {target_id}, which is kind `{actual_kind}`; expected `{expected_kind}`"
+        ));
     }
 }
 
@@ -7708,6 +7777,9 @@ owner = "test"
 [[work_item]]
 id = "demo-work"
 status = "implemented"
+proposal = "PERFGATE-PROP-9999"
+spec = "PERFGATE-SPEC-9999"
+adr = ""
 implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
 proof = ["cargo test", " "]
 "#,
@@ -7741,12 +7813,18 @@ owner = "test"
 [[work_item]]
 id = "demo-work"
 status = "implemented"
+proposal = "PERFGATE-PROP-9999"
+spec = "PERFGATE-SPEC-9999"
+adr = ""
 implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
 proof = ["cargo test"]
 
 [[work_item]]
 id = "demo-work"
 status = "implemented"
+proposal = "PERFGATE-PROP-9999"
+spec = "PERFGATE-SPEC-9999"
+adr = ""
 implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
 proof = ["cargo test"]
 "#,
@@ -7780,6 +7858,9 @@ owner = "test"
 [[work_item]]
 id = "demo-work"
 status = "maybe"
+proposal = "PERFGATE-PROP-9999"
+spec = "PERFGATE-SPEC-9999"
+adr = ""
 implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
 proof = ["cargo test"]
 "#,
@@ -7813,6 +7894,9 @@ owner = "test"
 [[work_item]]
 id = "demo-work"
 status = "implemented"
+proposal = "PERFGATE-PROP-9999"
+spec = "PERFGATE-SPEC-9999"
+adr = ""
 implementation_plan = ".rails/lanes/demo-lane/missing-plan.md"
 proof = ["cargo test"]
 "#,
@@ -7823,6 +7907,116 @@ proof = ["cargo test"]
         assert!(
             errors.iter().any(|error| error.contains(
                 "Rails lane demo-lane work item demo-work implementation_plan `.rails/lanes/demo-lane/missing-plan.md` does not exist"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_missing_lane_work_item_spec_link() {
+        let root = unique_temp_dir("perfgate_rails_work_item_missing_spec");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+[[work_item]]
+id = "demo-work"
+status = "implemented"
+proposal = "PERFGATE-PROP-9999"
+spec = ""
+adr = ""
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
+proof = ["cargo test"]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error
+                .contains("Rails lane demo-lane work item demo-work has an empty spec")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_unknown_lane_work_item_proposal_link() {
+        let root = unique_temp_dir("perfgate_rails_work_item_unknown_proposal");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+[[work_item]]
+id = "demo-work"
+status = "implemented"
+proposal = "PERFGATE-PROP-0000"
+spec = "PERFGATE-SPEC-9999"
+adr = ""
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
+proof = ["cargo test"]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails lane demo-lane work item demo-work proposal references unknown artifact id PERFGATE-PROP-0000"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_wrong_kind_lane_work_item_adr_link() {
+        let root = unique_temp_dir("perfgate_rails_work_item_wrong_adr");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+[[work_item]]
+id = "demo-work"
+status = "implemented"
+proposal = "PERFGATE-PROP-9999"
+spec = "PERFGATE-SPEC-9999"
+adr = "PERFGATE-SPEC-9999"
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
+proof = ["cargo test"]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails lane demo-lane work item demo-work adr references PERFGATE-SPEC-9999, which is kind `spec`; expected `adr`"
             )),
             "unexpected errors: {:?}",
             errors
