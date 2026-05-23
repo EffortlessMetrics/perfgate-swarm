@@ -5294,11 +5294,19 @@ fn validate_rails_support_artifact(
                 "Rails support artifact {} has a claim with an empty id",
                 artifact.id
             ));
-        } else if !claim_ids.insert(claim.id.as_str()) {
-            errors.push(format!(
-                "Rails support artifact {} has duplicate claim id {}",
-                artifact.id, claim.id
-            ));
+        } else {
+            if !claim.id.starts_with("PERFGATE-CLAIM-") {
+                errors.push(format!(
+                    "Rails support claim {} must use id prefix `PERFGATE-CLAIM-`",
+                    claim.id
+                ));
+            }
+            if !claim_ids.insert(claim.id.as_str()) {
+                errors.push(format!(
+                    "Rails support artifact {} has duplicate claim id {}",
+                    artifact.id, claim.id
+                ));
+            }
         }
         if claim.statement.trim().is_empty() {
             errors.push(format!(
@@ -7571,6 +7579,45 @@ owner = "test"
             errors.iter().any(|error| error.contains(
                 "Rails support artifact PERFGATE-SUPPORT-9999 has duplicate claim id PERFGATE-CLAIM-9999"
             )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_support_claim_id_prefix_drift() {
+        let root = unique_temp_dir("perfgate_rails_support_claim_id_prefix");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/support/claim-map.toml",
+            r#"schema_version = "1.0"
+
+[[claim]]
+id = "CLAIM-9999"
+statement = "Test claim"
+proof = ["cargo test"]
+references = ["docs/rails.md"]
+"#,
+        );
+        append_rails_index(
+            &root,
+            r#"
+[[artifact]]
+id = "PERFGATE-SUPPORT-9999"
+kind = "support"
+path = ".rails/support/claim-map.toml"
+status = "accepted"
+owner = "test"
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error
+                .contains("Rails support claim CLAIM-9999 must use id prefix `PERFGATE-CLAIM-`")),
             "unexpected errors: {:?}",
             errors
         );
