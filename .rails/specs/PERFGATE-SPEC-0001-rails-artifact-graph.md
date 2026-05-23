@@ -48,6 +48,8 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 - Lane tracker work item IDs must be non-empty and unique within the lane tracker.
 - Lane tracker work item statuses must use the allowed lane-work vocabulary:
   `planned`, `ready`, `active`, `blocked`, `implemented`, or `superseded`.
+- Implemented lane trackers must not leave work items in `planned`, `ready`,
+  `active`, or `blocked`; each work item must be `implemented` or `superseded`.
 - Lane tracker work item `proposal` and `spec` references are required and must
   resolve to registered proposal and spec artifacts.
 - Lane tracker work item `adr` references are optional, but when set must
@@ -96,6 +98,7 @@ artifact links, unresolved support claim references, unresolved policy ledger
 paths, duplicate support claim or policy ledger IDs, empty support proof
 commands, lane tracker path drift, lane tracker schema drift, lane tracker
 identity drift, duplicate lane work item IDs, unknown lane work item statuses,
+unfinished work items in implemented lanes,
 unknown or wrong-kind lane work item source links, unresolved lane work item
 implementation plans, unknown or self-referential lane work item dependencies,
 empty lane work item proof commands, missing closeouts for implemented lanes, or
