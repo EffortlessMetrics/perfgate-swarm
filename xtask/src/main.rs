@@ -4830,6 +4830,8 @@ struct RailsLaneWorkItem {
     id: String,
     status: String,
     #[serde(default)]
+    implementation_plan: String,
+    #[serde(default)]
     proof: Vec<String>,
 }
 
@@ -5493,6 +5495,13 @@ fn validate_rails_lane_tracker(root: &Path, lane: &RailsLane, errors: &mut Vec<S
                 lane.id, work_item.id
             ));
         }
+        validate_rails_reference_path(
+            root,
+            &format!("Rails lane {} work item {}", lane.id, work_item.id),
+            "implementation_plan",
+            &work_item.implementation_plan,
+            errors,
+        );
         for proof in &work_item.proof {
             if proof.trim().is_empty() {
                 errors.push(format!(
@@ -6967,6 +6976,11 @@ status = "implemented"
 owner = "test"
 "#,
         );
+        write_test_file(
+            root,
+            ".rails/lanes/demo-lane/implementation-plan.md",
+            "# Demo lane plan\n",
+        );
         if include_closeout {
             write_test_file(
                 root,
@@ -7694,6 +7708,7 @@ owner = "test"
 [[work_item]]
 id = "demo-work"
 status = "implemented"
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
 proof = ["cargo test", " "]
 "#,
         );
@@ -7726,11 +7741,13 @@ owner = "test"
 [[work_item]]
 id = "demo-work"
 status = "implemented"
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
 proof = ["cargo test"]
 
 [[work_item]]
 id = "demo-work"
 status = "implemented"
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
 proof = ["cargo test"]
 "#,
         );
@@ -7763,6 +7780,7 @@ owner = "test"
 [[work_item]]
 id = "demo-work"
 status = "maybe"
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
 proof = ["cargo test"]
 "#,
         );
@@ -7772,6 +7790,40 @@ proof = ["cargo test"]
         assert!(
             errors.iter().any(|error| error
                 .contains("Rails lane work item demo-lane/demo-work uses unknown status `maybe`")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_missing_lane_work_item_implementation_plan_path() {
+        let root = unique_temp_dir("perfgate_rails_work_item_missing_plan");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+[[work_item]]
+id = "demo-work"
+status = "implemented"
+implementation_plan = ".rails/lanes/demo-lane/missing-plan.md"
+proof = ["cargo test"]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails lane demo-lane work item demo-work implementation_plan `.rails/lanes/demo-lane/missing-plan.md` does not exist"
+            )),
             "unexpected errors: {:?}",
             errors
         );
