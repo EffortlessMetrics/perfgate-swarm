@@ -14,7 +14,7 @@ jobs:
     name: Nightly Calibration Lane
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0

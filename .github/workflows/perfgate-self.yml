@@ -23,7 +23,7 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'full-ci') ||
       contains(github.event.pull_request.labels.*.name, 'release-proof')
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
@@ -51,7 +51,7 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'full-ci') ||
       contains(github.event.pull_request.labels.*.name, 'release-proof')
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
@@ -82,12 +82,12 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'release-proof')
     steps:
       - name: Checkout Current
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           path: current
 
       - name: Checkout Main
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           ref: main
           path: main
