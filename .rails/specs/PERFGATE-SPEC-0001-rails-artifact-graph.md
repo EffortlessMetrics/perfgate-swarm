@@ -53,6 +53,9 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 - Lane tracker work item `adr` references are optional, but when set must
   resolve to a registered ADR artifact.
 - Lane tracker work item `implementation_plan` paths must resolve.
+- Lane tracker work item `blocks` and `blocked_by` references must point to
+  non-empty work item IDs inside the same lane tracker and must not point back
+  to the same work item.
 - Lane tracker work item proof command entries must be non-empty.
 - Implemented lanes must have a registered implemented closeout artifact.
 
@@ -94,5 +97,6 @@ paths, duplicate support claim or policy ledger IDs, empty support proof
 commands, lane tracker path drift, lane tracker schema drift, lane tracker
 identity drift, duplicate lane work item IDs, unknown lane work item statuses,
 unknown or wrong-kind lane work item source links, unresolved lane work item
-implementation plans, empty lane work item proof commands, missing closeouts for
-implemented lanes, or paths under external namespaces must fail validation.
+implementation plans, unknown or self-referential lane work item dependencies,
+empty lane work item proof commands, missing closeouts for implemented lanes, or
+paths under external namespaces must fail validation.

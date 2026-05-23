@@ -4838,6 +4838,10 @@ struct RailsLaneWorkItem {
     #[serde(default)]
     implementation_plan: String,
     #[serde(default)]
+    blocks: Vec<String>,
+    #[serde(default)]
+    blocked_by: Vec<String>,
+    #[serde(default)]
     proof: Vec<String>,
 }
 
@@ -5486,6 +5490,9 @@ fn validate_rails_lane_tracker(
                 lane.id, work_item.id
             ));
         }
+    }
+
+    for work_item in &tracker.work_item {
         validate_rails_status(
             "lane work item",
             &format!("{}/{}", lane.id, work_item.id),
@@ -5541,6 +5548,22 @@ fn validate_rails_lane_tracker(
             &work_item.implementation_plan,
             errors,
         );
+        validate_rails_lane_work_item_dependencies(
+            &source,
+            "blocks",
+            &work_item.blocks,
+            &work_item.id,
+            &work_item_ids,
+            errors,
+        );
+        validate_rails_lane_work_item_dependencies(
+            &source,
+            "blocked_by",
+            &work_item.blocked_by,
+            &work_item.id,
+            &work_item_ids,
+            errors,
+        );
         for proof in &work_item.proof {
             if proof.trim().is_empty() {
                 errors.push(format!(
@@ -5548,6 +5571,34 @@ fn validate_rails_lane_tracker(
                     lane.id, work_item.id
                 ));
             }
+        }
+    }
+}
+
+fn validate_rails_lane_work_item_dependencies(
+    source: &str,
+    field: &str,
+    dependencies: &[String],
+    work_item_id: &str,
+    work_item_ids: &BTreeSet<&str>,
+    errors: &mut Vec<String>,
+) {
+    for dependency in dependencies {
+        let dependency = dependency.trim();
+        if dependency.is_empty() {
+            errors.push(format!("{source} has an empty {field} reference"));
+            continue;
+        }
+        if dependency == work_item_id {
+            errors.push(format!(
+                "{source} {field} references itself as {dependency}"
+            ));
+            continue;
+        }
+        if !work_item_ids.contains(dependency) {
+            errors.push(format!(
+                "{source} {field} references unknown work item id {dependency}"
+            ));
         }
     }
 }
@@ -7871,6 +7922,120 @@ proof = ["cargo test"]
         assert!(
             errors.iter().any(|error| error
                 .contains("Rails lane work item demo-lane/demo-work uses unknown status `maybe`")),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_unknown_lane_work_item_blocked_by() {
+        let root = unique_temp_dir("perfgate_rails_work_item_unknown_blocked_by");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+[[work_item]]
+id = "demo-work"
+status = "implemented"
+proposal = "PERFGATE-PROP-9999"
+spec = "PERFGATE-SPEC-9999"
+adr = ""
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
+blocked_by = ["missing-work"]
+proof = ["cargo test"]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails lane demo-lane work item demo-work blocked_by references unknown work item id missing-work"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_unknown_lane_work_item_blocks() {
+        let root = unique_temp_dir("perfgate_rails_work_item_unknown_blocks");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+[[work_item]]
+id = "demo-work"
+status = "implemented"
+proposal = "PERFGATE-PROP-9999"
+spec = "PERFGATE-SPEC-9999"
+adr = ""
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
+blocks = ["missing-work"]
+proof = ["cargo test"]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails lane demo-lane work item demo-work blocks references unknown work item id missing-work"
+            )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_self_referential_lane_work_item_dependency() {
+        let root = unique_temp_dir("perfgate_rails_work_item_self_dependency");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(
+            &root,
+            ".rails/lanes/demo-lane/tracker.toml",
+            r#"schema_version = "1.0"
+
+id = "demo-lane"
+name = "Demo lane"
+status = "implemented"
+owner = "test"
+
+[[work_item]]
+id = "demo-work"
+status = "implemented"
+proposal = "PERFGATE-PROP-9999"
+spec = "PERFGATE-SPEC-9999"
+adr = ""
+implementation_plan = ".rails/lanes/demo-lane/implementation-plan.md"
+blocked_by = ["demo-work"]
+proof = ["cargo test"]
+"#,
+        );
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "Rails lane demo-lane work item demo-work blocked_by references itself as demo-work"
+            )),
             "unexpected errors: {:?}",
             errors
         );
