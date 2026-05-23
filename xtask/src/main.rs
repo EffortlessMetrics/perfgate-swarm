@@ -6292,6 +6292,7 @@ fn collect_product_claim_errors(
     concrete_spec_ids: &BTreeSet<String>,
 ) -> Vec<String> {
     let mut errors = Vec::new();
+    let claim_index_header = find_product_claim_index_header_line(content);
     let claim_index = extract_product_claim_index_entries(content);
     let claims = extract_product_claim_sections(content);
     let mut ids = BTreeSet::new();
@@ -6311,6 +6312,17 @@ fn collect_product_claim_errors(
                 .into(),
         );
     } else {
+        match claim_index_header {
+            Some((line, false)) => errors.push(format!(
+                "Claim Index line {} must use header `| Claim ID | Claim | Tier | Surface | Review after |`",
+                line
+            )),
+            None => errors.push(
+                "PRODUCT_CLAIMS.md Claim Index must include header `| Claim ID | Claim | Tier | Surface | Review after |`"
+                    .into(),
+            ),
+            Some((_, true)) => {}
+        }
         validate_product_claim_index(&claim_index, &claims, &mut errors);
     }
 
@@ -6421,6 +6433,38 @@ fn collect_product_claim_errors(
     }
 
     errors
+}
+
+fn find_product_claim_index_header_line(content: &str) -> Option<(usize, bool)> {
+    let mut in_claim_index = false;
+
+    for (idx, line) in content.lines().enumerate() {
+        if line == "## Claim Index" {
+            in_claim_index = true;
+            continue;
+        }
+
+        if in_claim_index && line.starts_with("## ") {
+            break;
+        }
+
+        if !in_claim_index {
+            continue;
+        }
+
+        let cells = line.split('|').map(str::trim).collect::<Vec<_>>();
+        if cells.len() >= 6 && cells[1] == "Claim ID" {
+            return Some((
+                idx + 1,
+                cells[2] == "Claim"
+                    && cells[3] == "Tier"
+                    && cells[4] == "Surface"
+                    && cells[5] == "Review after",
+            ));
+        }
+    }
+
+    None
 }
 
 fn validate_product_claim_index(
@@ -8867,6 +8911,39 @@ Review after: before-release
                 .iter()
                 .any(|error| error.contains("must include a `## Claim Index` table")),
             "expected missing Claim Index error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn product_claims_check_rejects_claim_index_header_drift() {
+        let content = r###"# Product Claims
+
+## Claim Index
+
+| Claim ID | Claim | Surface | Tier | Review after |
+|----------|-------|---------|------|--------------|
+| PG-CLAIM-0001 | first | docs | advisory | next-claim-change |
+
+## PG-CLAIM-0001: First claim
+
+Tier: advisory
+Surface: docs
+Linked gates: product-claims-check
+Proof commands:
+
+```bash
+cargo +1.95.0 run -p xtask -- product-claims-check
+```
+
+Review after: next-claim-change
+"###;
+
+        let errors = collect_product_claim_errors(content, &BTreeSet::new());
+        assert!(
+            errors.iter().any(|error| error.contains(
+                "must use header `| Claim ID | Claim | Tier | Surface | Review after |`"
+            )),
+            "expected claim index header drift error, got {errors:?}"
         );
     }
 
