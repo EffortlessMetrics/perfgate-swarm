@@ -72,6 +72,7 @@ Taking ownership of `.codex/`, `.spec/`, `.claude/`, or `.jules/`.
 
 ## Required evidence
 
+- `cargo +1.95.0 run -p xtask -- rails check`
 - `git diff --check`
 
 ## Acceptance examples
@@ -80,7 +81,8 @@ A lane tracker is linked in `.rails/index.toml`, and all artifact paths resolve 
 
 ## Test mapping
 
-Future validator commands should parse and verify index and lane contracts.
+`xtask::tests::*rails_check*` covers registry, artifact, support, policy, lane,
+and closeout validation behavior.
 
 ## Implementation mapping
 
@@ -88,11 +90,14 @@ Future validator commands should parse and verify index and lane contracts.
 
 ## CI proof
 
-`git diff --check` until dedicated validator commands land.
+`cargo +1.95.0 run -p xtask -- rails check` validates the current Rails
+artifact graph. Broader CI also runs the Rails check through `cargo run -p xtask
+-- ci`.
 
 ## Metrics / promotion rule
 
-Promotion once index/lane validators are implemented and used in CI.
+Keep Rails validation in the default proof path before promoting new Rails
+artifact conventions or support claims.
 
 ## Failure modes
 
