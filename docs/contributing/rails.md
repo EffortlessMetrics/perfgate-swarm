@@ -36,7 +36,8 @@ Use `.rails/` for durable repository knowledge, and keep tool/agent state in ext
 15. Keep lane work item IDs unique and non-empty inside each lane tracker.
 16. Keep lane work item statuses in the accepted lane-work vocabulary:
     `planned`, `ready`, `active`, `blocked`, `implemented`, or `superseded`.
-17. Keep lane work item proof command entries non-empty.
+17. Keep lane work item `implementation_plan` paths resolvable.
+18. Keep lane work item proof command entries non-empty.
 
 ## Validation
 
@@ -52,5 +53,6 @@ kind directories, filename identity, registry links, link target kinds,
 unregistered owned artifacts, support claim references, policy ledger paths,
 duplicate support claim or policy ledger IDs, lane tracker path/schema and
 identity/status/owner consistency, lane work item IDs and statuses, non-empty
-support and lane work item proof commands, closeouts for implemented lanes, the
-required human docs, and the absence of the legacy `.perfgate-spec/` namespace.
+support and lane work item proof commands, lane work item implementation plans,
+closeouts for implemented lanes, the required human docs, and the absence of the
+legacy `.perfgate-spec/` namespace.
