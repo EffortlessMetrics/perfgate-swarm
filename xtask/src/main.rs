@@ -5440,6 +5440,7 @@ fn validate_rails_owned_artifacts_registered(
         ".rails/plans",
         ".rails/support",
         ".rails/policy",
+        ".rails/templates",
     ] {
         let path = root.join(artifact_dir);
         if path.exists() {
@@ -5802,7 +5803,7 @@ fn validate_rails_artifact_kind_path(artifact: &RailsArtifact, errors: &mut Vec<
 fn validate_rails_artifact_path_identity(artifact: &RailsArtifact, errors: &mut Vec<String>) {
     if !matches!(
         artifact.kind.as_str(),
-        "proposal" | "spec" | "adr" | "plan" | "closeout" | "template"
+        "proposal" | "spec" | "adr" | "plan" | "closeout"
     ) {
         return;
     }
@@ -7690,6 +7691,23 @@ owner = "test"
             errors.iter().any(|error| error.contains(
                 "Rails-owned artifact `.rails/plans/PERFGATE-PLAN-9999-demo.md` must be registered"
             )),
+            "unexpected errors: {:?}",
+            errors
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rails_check_rejects_unregistered_owned_template_artifacts() {
+        let root = unique_temp_dir("perfgate_rails_unregistered_template");
+        write_minimal_rails_stack(&root, true);
+        write_test_file(&root, ".rails/templates/spec.md", "# Spec template\n");
+
+        let errors = collect_rails_errors(&root).expect("collect rails errors");
+
+        assert!(
+            errors.iter().any(|error| error
+                .contains("Rails-owned artifact `.rails/templates/spec.md` must be registered")),
             "unexpected errors: {:?}",
             errors
         );
