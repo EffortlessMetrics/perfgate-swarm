@@ -1,6 +1,6 @@
 # Rails
 
-Rails is this repo’s durable source-of-truth framework.
+Rails is this repo's durable source-of-truth framework.
 
 It separates:
 
