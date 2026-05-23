@@ -34,6 +34,7 @@ Without an explicit graph contract, durable artifacts may drift, break links, or
 - Rails-owned artifacts under proposals, specs, ADRs, closeouts, plans, support,
   and policy directories must be registered.
 - Rails support claim references and policy ledger paths must resolve.
+- Rails support claim IDs must use the `PERFGATE-CLAIM-` prefix.
 - Rails support claim IDs and policy ledger IDs must be unique inside their
   artifact.
 - Rails support claim proof command entries must be non-empty.
@@ -96,8 +97,9 @@ namespace drift, missing linked artifacts, unregistered owned artifacts,
 artifact kind-directory drift, artifact filename identity drift, wrong-kind
 artifact links, unresolved support claim references, unresolved policy ledger
 paths, duplicate support claim or policy ledger IDs, empty support proof
-commands, lane tracker path drift, lane tracker schema drift, lane tracker
-identity drift, duplicate lane work item IDs, unknown lane work item statuses,
+commands, support claim ID prefix drift, lane tracker path drift, lane tracker
+schema drift, lane tracker identity drift, duplicate lane work item IDs,
+unknown lane work item statuses,
 unfinished work items in implemented lanes,
 unknown or wrong-kind lane work item source links, unresolved lane work item
 implementation plans, unknown or self-referential lane work item dependencies,
