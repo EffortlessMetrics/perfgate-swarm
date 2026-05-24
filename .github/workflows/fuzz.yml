@@ -22,7 +22,7 @@ env:
 
 jobs:
   fuzz:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 90 # Allow enough time for all targets
     if: >-
       github.event_name != 'pull_request' ||

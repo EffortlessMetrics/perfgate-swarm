@@ -15,7 +15,7 @@ permissions:
 jobs:
   smoke:
     name: Action Smoke Lane
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
     if: >-
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
@@ -43,7 +43,7 @@ jobs:
 
   perf:
     name: Core Perf Lane
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
     if: >-
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
@@ -73,7 +73,7 @@ jobs:
 
   paired:
     name: Paired PR-vs-Main Lane
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
     if: >-
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'perfgate-self') ||
