@@ -717,7 +717,10 @@ fn cmd_check_file_policy() -> anyhow::Result<()> {
 
 fn cmd_pr() -> anyhow::Result<()> {
     cmd_badges(true)?;
+    cmd_rails_check(Path::new("."))?;
     cmd_docs_check()?;
+    cmd_docs_source_check(Path::new("."))?;
+    cmd_product_claims_check(Path::new("docs/status/PRODUCT_CLAIMS.md"))?;
     cmd_check_file_policy()?;
     run("cargo", ["test", "-p", "xtask", "badge"])?;
     Ok(())
