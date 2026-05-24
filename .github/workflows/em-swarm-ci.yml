@@ -2,7 +2,7 @@ name: EM Swarm CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     branches: [main]
   push:
     branches: [main]
@@ -113,6 +113,9 @@ jobs:
           elif [[ "${idle_cx53}" -gt 0 ]]; then
             target="cx53"
             reason="cx53_idle"
+          elif [[ "${fallback_allowed}" == "true" ]]; then
+            target="github"
+            reason="authorized_no_idle_runner"
           else
             target="unconfigured"
             reason="no_idle_runner"
