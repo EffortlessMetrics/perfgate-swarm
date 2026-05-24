@@ -63,6 +63,110 @@ This spec extends the advisory-to-blocking promotion contract. It does not
 replace local receipts, decision bundles, product claims, or policy ledgers as
 sources of truth.
 
+## Hard compatibility: CI-efficiency invariants
+
+When agents are asked to "make CI cheaper" or "improve CI efficiency," they
+MUST preserve EffortlessMetrics CI routing and queue semantics. Efficiency
+changes that move cost around, cancel useful work, or misclassify metadata are
+non-compliant with this spec.
+
+### 1. Concurrency semantics for heavy/core workflows
+
+For heavy/core Rust CI, agents MUST preserve:
+
+- one active run at a time;
+- one pending replacement slot; and
+- no cancellation of an already running core job.
+
+In GitHub Actions terms, heavy/core PR workflows MUST use
+`cancel-in-progress: false` and MUST NOT be changed to `true` unless a repo
+policy explicitly allows cancellation for that exact workflow.
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+```
+
+Rationale: canceling near-complete compile/test runs wastes already-spent
+self-hosted runner time and increases queue churn.
+
+### 2. Change classification is mandatory before lane selection
+
+Agents MUST classify changed files before selecting CI lanes.
+
+- Metadata/control-plane-only changes MUST use docs/policy/light paths and
+  MUST NOT trigger Rust compile/test by default.
+- Workflow-file edits (`.github/workflows/**`) are special and MUST NOT be
+  routed as docs-light; they should go to minimal hosted workflow validation.
+
+Examples of metadata/control-plane surfaces that should remain light unless
+mixed with true Rust/build/test changes include:
+
+- `docs/**`, markdown-only files, `README*`, `CHANGELOG*`, `SECURITY*`,
+  `CONTRIBUTING*`;
+- `policy/**`, `plans/**`, `badges/**`, `AGENTS.md`;
+- `.github/CODEOWNERS`, `.github/dependabot.yml`,
+  `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE/**`;
+- `.codex/campaigns/**`, `docs/tracking/**`, `ci/hardware/**` receipt files;
+- `.rails/**`, `.uselesskey/**`.
+
+### 3. Default PR routing policy
+
+Default PR CI SHOULD route to the cheapest truthful lane:
+
+- docs/control-plane-only -> no Rust compile;
+- workflow-only -> minimal hosted YAML/workflow validation;
+- Rust source/build/test touched -> Rust-small;
+- hardware/GPU/receipt-only -> syntax/receipt validation only;
+- unknown or mixed change sets -> Rust-small (not full CI).
+
+Full CI SHOULD require an explicit trigger (label, manual dispatch, main push,
+release, schedule, or merge queue).
+
+### 4. Hosted fallback policy
+
+Agents MUST NOT silently replace a self-hosted Rust-small lane with an
+expensive GitHub-hosted equivalent.
+
+- Fork PRs may run a tiny hosted safe lane.
+- Missing runner readiness, token issues, or no idle self-hosted runner MUST
+  NOT automatically trigger a 75-120 minute hosted lane.
+- Expensive hosted fallback SHOULD require explicit opt-in signals such as
+  `full-ci`, `allow-github-hosted`, or `ci-budget-ack`.
+
+### 5. Artifact policy
+
+Default PR workflows SHOULD avoid always-on artifact uploads.
+
+- No `if: always()` uploads for receipts/JUnit/log bundles on default PR paths
+  unless required by merge policy.
+- Prefer upload-on-failure with short retention (for example 3-7 days).
+- Docs/control-plane-only paths SHOULD avoid artifact uploads unless required.
+
+### 6. Required proof for CI-only efficiency PRs
+
+Every CI-efficiency PR SHOULD provide:
+
+- `git diff --check`;
+- YAML parse checks for each edited workflow;
+- classification proof (dry-run or shell/unit test) covering docs-only,
+  metadata-only (`.rails/**`, `.uselesskey/**`), workflow-only, Rust-only, and
+  mixed docs+Rust;
+- explicit confirmation that heavy/core concurrency semantics remain
+  no-cancel-active unless intentionally documented.
+
+### 7. Reviewer rejection checklist
+
+Reviewers SHOULD reject CI-efficiency PRs that fail any of these checks:
+
+1. heavy/core CI changed away from `cancel-in-progress: false` without explicit
+   policy;
+2. metadata/control-plane-only edits now trigger Rust CI by default;
+3. workflow-only edits were routed through docs-light;
+4. expensive hosted fallback became implicit/default; or
+5. billable work was not reduced, only shifted.
+
 ## Agent capability classes
 
 Agent actions fall into three classes.
