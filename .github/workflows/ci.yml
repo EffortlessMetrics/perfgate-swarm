@@ -4,12 +4,15 @@ on:
   push:
     branches: [ main ]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     branches: [ main ]
 
 jobs:
   deny:
     name: cargo-deny
-    if: github.repository == 'EffortlessMetrics/perfgate'
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate' &&
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +20,9 @@ jobs:
 
   test:
     name: test (${{ matrix.os }})
-    if: github.repository == 'EffortlessMetrics/perfgate'
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate' &&
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -35,7 +40,9 @@ jobs:
 
   server-integration:
     name: server integration (memory/sqlite/postgres)
-    if: github.repository == 'EffortlessMetrics/perfgate'
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate' &&
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: ubuntu-latest
     services:
       postgres:
