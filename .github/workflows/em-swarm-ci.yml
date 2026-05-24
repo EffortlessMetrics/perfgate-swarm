@@ -22,7 +22,7 @@ jobs:
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
       (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
@@ -30,7 +30,7 @@ jobs:
   route-perfgate-rust-small:
     name: Route Perfgate Rust Small
     if: github.repository == 'EffortlessMetrics/perfgate-swarm'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       target: ${{ steps.route.outputs.target }}
       reason: ${{ steps.route.outputs.reason }}
@@ -287,7 +287,7 @@ jobs:
     name: Perfgate Rust Small on GitHub Hosted
     needs: route-perfgate-rust-small
     if: github.repository == 'EffortlessMetrics/perfgate-swarm' && needs.route-perfgate-rust-small.outputs.target == 'github' && needs.route-perfgate-rust-small.outputs.fallback_allowed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 45
     env:
       PERFGATE_CI_TARGET_DIR: target/perfgate-ci
@@ -311,7 +311,7 @@ jobs:
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
       (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    runs-on: windows-latest
+    runs-on: self-hosted
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -333,7 +333,7 @@ jobs:
     if: >-
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
       (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
     services:
       postgres:
@@ -376,7 +376,7 @@ jobs:
       - perfgate-windows
       - perfgate-server-integration
     if: always() && github.repository == 'EffortlessMetrics/perfgate-swarm'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Evaluate result
         run: |
