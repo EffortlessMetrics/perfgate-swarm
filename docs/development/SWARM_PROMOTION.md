@@ -102,6 +102,27 @@ Perfgate Rust Small on GitHub Hosted
 
 Those jobs are intentionally conditional.
 
+## Branch Hygiene
+
+Delete normal swarm branches after their PRs squash-merge. If a branch survives
+because automation or a manual merge did not delete it, it may be removed when
+all of these are true:
+
+- the branch belongs to `EffortlessMetrics/perfgate-swarm`;
+- the branch is not `main`, a release ref, or an explicit backup ref;
+- there is no open PR for the branch; and
+- the branch head is either a merged PR head, a closed/superseded PR head, or
+  generated churn that has been replaced by a newer run.
+
+For closed but unmerged branches, preserve the closed PR as the durable review
+record and delete only the stale branch ref. Do not delete publishing-repo
+branches from swarm cleanup. Do not delete `backup/*` refs unless the repair or
+backup they protect has been explicitly retired.
+
+Generated badge and baseline branches follow the same rule: merge them only when
+they are current, generated-only, and proven by the required check; otherwise
+close or supersede the PR and delete the stale generated branch.
+
 ## Promotion to Publishing
 
 Create promotion PRs in `EffortlessMetrics/perfgate` from `perfgate-swarm/main`
