@@ -70,26 +70,27 @@ MUST preserve EffortlessMetrics CI routing and queue semantics. Efficiency
 changes that move cost around, cancel useful work, or misclassify metadata are
 non-compliant with this spec.
 
-### 1. Concurrency semantics for heavy/core workflows
+### 1. Concurrency semantics for routed workflows
 
-For heavy/core Rust CI, agents MUST preserve:
+Agents MUST preserve the repo's declared concurrency policy for each workflow.
+They MUST NOT flip `cancel-in-progress`, broaden the concurrency group, or make
+independent lanes cancel each other without an accepted repo policy change for
+that exact workflow.
 
-- one active run at a time;
-- one pending replacement slot; and
-- no cancellation of an already running core job.
-
-In GitHub Actions terms, heavy/core PR workflows MUST use
-`cancel-in-progress: false` and MUST NOT be changed to `true` unless a repo
-policy explicitly allows cancellation for that exact workflow.
+For `perfgate-swarm`, `EM Swarm CI` intentionally uses a PR/ref-scoped group
+with `cancel-in-progress: true` so a superseded PR run gives way to the latest
+commit or label state. That policy is part of the routed swarm CI contract and
+must not be changed casually.
 
 ```yaml
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  group: repo-workflow-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 ```
 
-Rationale: canceling near-complete compile/test runs wastes already-spent
-self-hosted runner time and increases queue churn.
+Other workflows may use different semantics, including no-cancel active runs.
+The invariant is to preserve the workflow's documented policy and prove any
+change to cancellation behavior explicitly.
 
 ### 2. Change classification is mandatory before lane selection
 
@@ -153,15 +154,15 @@ Every CI-efficiency PR SHOULD provide:
 - classification proof (dry-run or shell/unit test) covering docs-only,
   metadata-only (`.rails/**`, `.uselesskey/**`), workflow-only, Rust-only, and
   mixed docs+Rust;
-- explicit confirmation that heavy/core concurrency semantics remain
-  no-cancel-active unless intentionally documented.
+- explicit confirmation that routed workflow concurrency semantics remain
+  unchanged unless intentionally documented.
 
 ### 7. Reviewer rejection checklist
 
 Reviewers SHOULD reject CI-efficiency PRs that fail any of these checks:
 
-1. heavy/core CI changed away from `cancel-in-progress: false` without explicit
-   policy;
+1. routed CI changed cancellation behavior or concurrency grouping without
+   explicit policy;
 2. metadata/control-plane-only edits now trigger Rust CI by default;
 3. workflow-only edits were routed through docs-light;
 4. expensive hosted fallback became implicit/default; or
