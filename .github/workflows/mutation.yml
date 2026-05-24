@@ -18,13 +18,7 @@ on:
           - perfgate-types
           - perfgate-app
           - perfgate-cli
-          - perfgate-server
-          - perfgate-client
-          - perfgate-stats
-          - perfgate-significance
           - perfgate-paired
-          - perfgate-validation
-          - perfgate-error
           - perfgate-fake
 
 jobs:
@@ -41,9 +35,11 @@ jobs:
         run: cargo install cargo-mutants
 
       - name: Run mutation testing
+        env:
+          MUTATION_CRATE: ${{ inputs.crate || 'all' }}
         run: |
-          if [ "${{ inputs.crate }}" != "all" ]; then
-            cargo run -p xtask -- mutants --crate ${{ inputs.crate }} --summary
+          if [ "${MUTATION_CRATE}" != "all" ]; then
+            cargo run -p xtask -- mutants --crate "${MUTATION_CRATE}" --summary
           else
             cargo run -p xtask -- mutants --summary
           fi
