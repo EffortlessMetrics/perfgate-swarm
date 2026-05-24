@@ -2,6 +2,7 @@ name: EM Swarm CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     branches: [main]
   push:
     branches: [main]
@@ -12,13 +13,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: em-ci-${{ github.workflow }}-${{ github.ref }}
+  group: repo-workflow-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   cargo-deny:
     name: cargo-deny
-    if: github.repository == 'EffortlessMetrics/perfgate-swarm'
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +34,7 @@ jobs:
     outputs:
       target: ${{ steps.route.outputs.target }}
       reason: ${{ steps.route.outputs.reason }}
+      fallback_allowed: ${{ steps.route.outputs.fallback_allowed }}
     steps:
       - id: route
         env:
@@ -46,9 +50,17 @@ jobs:
             trusted="false"
           fi
 
+          fallback_allowed="false"
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            if jq -e '.pull_request.labels[].name | select(. == "allow-github-hosted" or . == "ci-budget-ack" or . == "full-ci")' "$GITHUB_EVENT_PATH" >/dev/null 2>&1; then
+              fallback_allowed="true"
+            fi
+          fi
+
           if [[ "${trusted}" != "true" ]]; then
             echo "target=github" >> "$GITHUB_OUTPUT"
             echo "reason=fork_or_untrusted_pr" >> "$GITHUB_OUTPUT"
+            echo "fallback_allowed=true" >> "$GITHUB_OUTPUT"
             echo "router_target=github"
             echo "router_reason=fork_or_untrusted_pr"
             exit 0
@@ -101,13 +113,17 @@ jobs:
           elif [[ "${idle_cx53}" -gt 0 ]]; then
             target="cx53"
             reason="cx53_idle"
-          else
+          elif [[ "${fallback_allowed}" == "true" ]]; then
             target="github"
+            reason="authorized_no_idle_runner"
+          else
+            target="unconfigured"
             reason="no_idle_runner"
           fi
 
           echo "target=${target}" >> "$GITHUB_OUTPUT"
           echo "reason=${reason}" >> "$GITHUB_OUTPUT"
+          echo "fallback_allowed=${fallback_allowed}" >> "$GITHUB_OUTPUT"
           echo "router_target=${target}"
           echo "router_reason=${reason}"
           echo "idle_cx43=${idle_cx43}"
@@ -268,7 +284,7 @@ jobs:
   perfgate-rust-small-github:
     name: Perfgate Rust Small on GitHub Hosted
     needs: route-perfgate-rust-small
-    if: github.repository == 'EffortlessMetrics/perfgate-swarm' && needs.route-perfgate-rust-small.outputs.target == 'github'
+    if: github.repository == 'EffortlessMetrics/perfgate-swarm' && needs.route-perfgate-rust-small.outputs.target == 'github' && needs.route-perfgate-rust-small.outputs.fallback_allowed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -285,12 +301,14 @@ jobs:
         with:
           cache-on-failure: true
 
-      - name: Run xtask CI
-        run: cargo run -p xtask -- ci
+      - name: Run tiny fallback check
+        run: cargo check --workspace --locked --all-targets
 
   perfgate-windows:
     name: Perfgate Windows
-    if: github.repository == 'EffortlessMetrics/perfgate-swarm'
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -310,7 +328,9 @@ jobs:
 
   perfgate-server-integration:
     name: Perfgate Server Integration
-    if: github.repository == 'EffortlessMetrics/perfgate-swarm'
+    if: >-
+      github.repository == 'EffortlessMetrics/perfgate-swarm' &&
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -374,10 +394,13 @@ jobs:
             fi
           }
 
-          test_required "cargo-deny" "${{ needs.cargo-deny.result }}"
           test_required "route-perfgate-rust-small" "${{ needs.route-perfgate-rust-small.result }}"
-          test_required "perfgate-windows" "${{ needs.perfgate-windows.result }}"
-          test_required "perfgate-server-integration" "${{ needs.perfgate-server-integration.result }}"
+
+          if [[ "${{ github.event_name }}" != "pull_request" ]] || [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" == "true" ]]; then
+            test_required "cargo-deny" "${{ needs.cargo-deny.result }}"
+            test_required "perfgate-windows" "${{ needs.perfgate-windows.result }}"
+            test_required "perfgate-server-integration" "${{ needs.perfgate-server-integration.result }}"
+          fi
 
           case "${route_target}" in
             cx43)
@@ -388,6 +411,10 @@ jobs:
               ;;
             github)
               test_required "perfgate-rust-small-github" "${{ needs.perfgate-rust-small-github.result }}"
+              ;;
+            unconfigured)
+              echo "::error::No idle trusted self-hosted runner and GitHub-hosted fallback not authorized. Add allow-github-hosted/ci-budget-ack/full-ci label, or re-run later."
+              exit 1
               ;;
             *)
               echo "::error::unknown route target: ${route_target}"
