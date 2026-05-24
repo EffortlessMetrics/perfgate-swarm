@@ -281,6 +281,10 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt, clippy
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
       - name: Run xtask CI
         run: cargo run -p xtask -- ci
 
@@ -296,6 +300,10 @@ jobs:
         with:
           toolchain: 1.95.0
           components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Run xtask CI
         run: cargo run -p xtask -- ci
@@ -325,6 +333,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Run live baseline server CLI workflows
         env:
