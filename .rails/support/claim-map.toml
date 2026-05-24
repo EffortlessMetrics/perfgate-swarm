@@ -2,6 +2,10 @@ schema_version = "1.0"
 
 [[claim]]
 id = "PERFGATE-CLAIM-0001"
-statement = "Perfgate provides a spec-driven source-of-truth stack for performance decisions."
-proof = ["cargo test --all", "cargo run -p xtask -- ci"]
-references = ["docs/specs/PERFGATE-SPEC-0001-source-of-truth-stack.md", "docs/VERIFICATION.md"]
+statement = "Perfgate maintains a Rails artifact graph for durable proposals, specs, lanes, support claims, policy references, and closeouts."
+proof = ["cargo +1.95.0 run -p xtask -- rails check"]
+references = [
+  ".rails/specs/PERFGATE-SPEC-0001-rails-artifact-graph.md",
+  "docs/rails.md",
+  "docs/contributing/rails.md",
+]
