@@ -73,7 +73,7 @@ jobs:
 
       - name: RIPR annotations
         if: always()
-        run: python scripts/ripr-annotations.py
+        run: python3 scripts/ripr-annotations.py
 
       - name: Upload RIPR PR evidence
         if: always()
