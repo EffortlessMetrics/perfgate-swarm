@@ -12,7 +12,16 @@ permissions:
 jobs:
   nightly:
     name: Nightly Calibration Lane
-    runs-on: self-hosted
+    runs-on:
+      group: em-ci-small
+      labels:
+        - self-hosted
+        - linux
+        - x64
+        - em-ci
+        - cx53
+        - rust-large
+        - trusted-pr
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -72,11 +81,11 @@ jobs:
             
             This PR updates the canonical performance baselines and saves the latest trend data (JSONL/Prometheus/Summary) to \`baselines/trends/\` for long-term historical analysis.
 
-            Maintainer note: update the branch if protected checks do not start automatically, wait for \`Perfgate Swarm CI Result\`, then squash-merge. Generated baseline PRs must not merge by merge commit." \
+            Maintainer note: update the branch if protected checks do not start automatically, wait for \`Perfgate Rust Small Result\`, then squash-merge. Generated baseline PRs must not merge by merge commit." \
             --base main \
             --head "$BRANCH_NAME" || echo "PR already exists"
           
-          echo "Baseline PR is ready for maintainer review; squash-merge only after Perfgate Swarm CI Result passes."
+          echo "Baseline PR is ready for maintainer review; squash-merge only after Perfgate Rust Small Result passes."
 
       - name: Upload nightly artifacts
         if: always()
