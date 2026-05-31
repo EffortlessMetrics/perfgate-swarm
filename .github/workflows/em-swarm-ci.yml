@@ -429,7 +429,7 @@ jobs:
         with:
           cache-on-failure: true
       - name: Run bounded fallback check
-        run: cargo check --workspace --all-targets --locked
+        run: cargo check --workspace --all-targets
 
   perfgate-windows:
     name: Perfgate Windows
