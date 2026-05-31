@@ -505,7 +505,7 @@ jobs:
         run: cargo test -p perfgate-cli --test cli_server_tests live_server -- --nocapture
 
   perfgate-rust-small-result:
-    name: Perfgate Rust Small Result
+    name: Perfgate Swarm CI Result
     needs:
       - runner-routing-policy
       - runner-routing-policy-fork
@@ -589,4 +589,4 @@ jobs:
               ;;
           esac
 
-          echo "Perfgate Rust Small Result passed"
+          echo "Perfgate Swarm CI Result passed"
