@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::{ExplainAction, ExplainArtifactsArgs, COMPARE_RECEIPT_FILE, RUN_RECEIPT_FILE};
+use crate::{COMPARE_RECEIPT_FILE, ExplainAction, ExplainArtifactsArgs, RUN_RECEIPT_FILE};
 
 pub(crate) fn execute_explain_action(action: ExplainAction) -> anyhow::Result<()> {
     match action {
@@ -259,9 +259,10 @@ mod tests {
             "local reproduction and repair hints",
         )];
         let cmds = artifact_next_commands(&known);
-        assert!(cmds
-            .iter()
-            .any(|c| c.contains("inspect repair_context.json")));
+        assert!(
+            cmds.iter()
+                .any(|c| c.contains("inspect repair_context.json"))
+        );
     }
 
     #[test]
@@ -294,13 +295,16 @@ mod tests {
             ),
         ];
         let cmds = artifact_next_commands(&known);
-        assert!(cmds
-            .iter()
-            .any(|c| c.contains("inspect artifacts/perfgate/comment.md")));
+        assert!(
+            cmds.iter()
+                .any(|c| c.contains("inspect artifacts/perfgate/comment.md"))
+        );
         assert!(cmds.iter().any(|c| c.contains("--require-baseline")));
-        assert!(!cmds
-            .iter()
-            .any(|c| c == "perfgate check --config perfgate.toml --all"));
+        assert!(
+            !cmds
+                .iter()
+                .any(|c| c == "perfgate check --config perfgate.toml --all")
+        );
     }
 
     #[test]
@@ -311,9 +315,10 @@ mod tests {
             "PR-ready human summary",
         )];
         let cmds = artifact_next_commands(&known);
-        assert!(cmds
-            .iter()
-            .any(|c| c.contains("inspect artifacts/perfgate/comment.md")));
+        assert!(
+            cmds.iter()
+                .any(|c| c.contains("inspect artifacts/perfgate/comment.md"))
+        );
     }
 
     #[test]
