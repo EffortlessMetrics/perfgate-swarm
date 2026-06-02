@@ -3,6 +3,7 @@ name: Droid PR Review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
 
 concurrency:
   group: droid-review-${{ github.event.pull_request.number }}
@@ -10,7 +11,9 @@ concurrency:
 
 jobs:
   droid-review:
-    if: github.event.pull_request.draft == false
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
 
     permissions:
@@ -27,26 +30,41 @@ jobs:
 
       - name: Configure MiniMax M3 for Droid BYOK
         shell: bash
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         run: |
           mkdir -p "$HOME/.factory"
 
-          cat > "$HOME/.factory/settings.json" <<'JSON'
-          {
-            "customModels": [
-              {
-                "model": "MiniMax-M3",
-                "displayName": "MiniMax-M3",
-                "baseUrl": "https://api.minimax.io/anthropic",
-                "apiKey": "${MINIMAX_API_KEY}",
-                "provider": "anthropic",
-                "maxOutputTokens": 64000
-              }
-            ]
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          api_key = os.environ.get("MINIMAX_API_KEY")
+          if not api_key:
+              raise SystemExit("MINIMAX_API_KEY is required for Droid MiniMax M3 reviews")
+
+          settings = {
+              "customModels": [
+                  {
+                      "model": "MiniMax-M3-0",
+                      "displayName": "MiniMax-M3",
+                      "baseUrl": "https://api.minimax.io/anthropic",
+                      "apiKey": api_key,
+                      "provider": "anthropic",
+                      "maxOutputTokens": 64000,
+                  }
+              ]
           }
-          JSON
+
+          Path.home().joinpath(".factory", "settings.json").write_text(
+              json.dumps(settings, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
 
       - name: Run Droid Auto Review
-        uses: Factory-AI/droid-action@main
+        uses: Factory-AI/droid-action@8ffd7a26584277528320465ff8c2c81d5c91614e
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           ANTHROPIC_AUTH_TOKEN: ""
