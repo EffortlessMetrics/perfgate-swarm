@@ -727,7 +727,10 @@ mod tests {
         let s = InMemoryStore::new();
         let r = record("p", "b", "v1", None, None, vec![]);
         s.create(&r).await?;
-        let err = s.create(&r).await.expect_err("expected duplicate error");
+        let err = match s.create(&r).await {
+            Ok(()) => anyhow::bail!("expected duplicate baseline error"),
+            Err(err) => err,
+        };
         assert!(matches!(err, StoreError::AlreadyExists(_)));
         Ok(())
     }
@@ -778,7 +781,10 @@ mod tests {
         assert_eq!(got.tags, vec!["new".to_string()]);
 
         let missing = record("p", "b", "vmissing", None, None, vec![]);
-        let err = s.update(&missing).await.expect_err("expected not found");
+        let err = match s.update(&missing).await {
+            Ok(()) => anyhow::bail!("expected missing baseline update error"),
+            Err(err) => err,
+        };
         assert!(matches!(err, StoreError::NotFound(_)));
         Ok(())
     }
@@ -1610,6 +1616,31 @@ mod tests {
             restored_latest_baseline.content_hash,
             source_latest_baseline.content_hash
         );
+        let source_baseline_fingerprints: Vec<_> = backup_baselines
+            .iter()
+            .map(|record| (record.version.clone(), record.content_hash.clone()))
+            .collect();
+        let restored_baseline_summaries = restored
+            .list("p", &ListBaselinesQuery::default())
+            .await?
+            .baselines;
+        let mut restored_baseline_fingerprints = Vec::new();
+        for summary in restored_baseline_summaries {
+            let record = restored
+                .get("p", &summary.benchmark, &summary.version)
+                .await?
+                .with_context(|| {
+                    format!(
+                        "restored baseline should resolve to full record: {} {}",
+                        summary.benchmark, summary.version
+                    )
+                })?;
+            restored_baseline_fingerprints.push((record.version, record.content_hash));
+        }
+        assert_eq!(
+            restored_baseline_fingerprints,
+            source_baseline_fingerprints
+        );
         assert!(
             restored
                 .get_latest("other", "bench")
@@ -1647,6 +1678,18 @@ mod tests {
             restored_latest_decision.accepted_rules,
             source_latest_decision.accepted_rules
         );
+        let source_decision_history: Vec<_> = backup_decisions
+            .iter()
+            .map(|record| (record.id.clone(), record.accepted_rules.clone()))
+            .collect();
+        let restored_decision_history: Vec<_> = restored
+            .list_decisions("p", &ListDecisionsQuery::default())
+            .await?
+            .decisions
+            .into_iter()
+            .map(|record| (record.id, record.accepted_rules))
+            .collect();
+        assert_eq!(restored_decision_history, source_decision_history);
 
         let source_audit_ids: Vec<_> = source
             .list_events(&ListAuditEventsQuery {
