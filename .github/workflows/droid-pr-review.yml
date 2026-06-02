@@ -2,7 +2,7 @@ name: Droid PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
     branches: [main]
 
 concurrency:
@@ -13,7 +13,8 @@ jobs:
   droid-review:
     if: >-
       github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'droid-review')
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
@@ -73,6 +74,7 @@ jobs:
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
+          label_trigger: droid-review
           review_model: custom:MiniMax-M3-0
           automatic_security_review: true
           security_model: custom:MiniMax-M3-0
