@@ -17,13 +17,17 @@ Developer automation crate for the perfgate workspace.
 - Checks generated documentation drift (`docs-check`).
 - Validates documentation CLI examples plus TOML, JSON, and YAML snippets (`doc-test`).
 - Validates fixtures against vendored contracts (`conform`).
-- Runs the fast local PR gate bundle (`pr`).
+- Runs the fast local PR gate bundle (`pr`, `check-pr`).
+- Wraps standard upstream engines for tests, coverage, dependencies, semver,
+  workflow checks, TOML checks, and targeted mutation (`test-pr`, `test-docs`,
+  `coverage`, `check-deps`, `check-supply-chain`, `semver-check`,
+  `check-workflows`, `check-toml`, `mutation-targeted`, `miri-targeted`).
 - Syncs golden fixtures into `contracts/fixtures` (`sync-fixtures`).
 - Runs mutation testing helpers (`mutants`).
 
 ## Why It Exists
 
-`xtask` keeps project maintenance flows in typed Rust code instead of shell scripts, so local dev and CI use the same logic.
+`xtask` keeps project maintenance flows in typed Rust code instead of shell scripts, so local dev and CI use the same logic. The repository tooling standard keeps upstream tools in the engine room while `xtask` remains the public control plane; see [`docs/TOOLING_STANDARD.md`](../docs/TOOLING_STANDARD.md).
 
 ## Usage
 
@@ -46,7 +50,25 @@ cargo run -p xtask -- product-claims-check
 cargo run -p xtask -- check-file-policy
 cargo run -p xtask -- conform
 cargo run -p xtask -- pr
+cargo run -p xtask -- check-pr
+cargo run -p xtask -- fix-pr
+cargo run -p xtask -- pr-summary
+cargo run -p xtask -- allow-check
+cargo run -p xtask -- allow-diff
+cargo run -p xtask -- ripr-pr
+cargo run -p xtask -- unsafe-review-pr
+cargo run -p xtask -- test-pr
+cargo run -p xtask -- test-docs
+cargo run -p xtask -- coverage
+cargo run -p xtask -- check-deps
+cargo run -p xtask -- check-supply-chain
+cargo run -p xtask -- semver-check
+cargo run -p xtask -- check-workflows
+cargo run -p xtask -- check-toml
+cargo run -p xtask -- policy-report
+cargo run -p xtask -- miri-targeted
 cargo run -p xtask -- mutants --crate perfgate-domain --summary  # logical alias for perfgate::domain
+cargo run -p xtask -- mutation-targeted --crate perfgate-domain
 ```
 
 ## License

@@ -65,6 +65,7 @@ Codex execution state stay reviewable.
 - Architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and the existing
   [`adrs/`](adrs/) archive
 - Policy allowlists: [`POLICY_ALLOWLISTS.md`](POLICY_ALLOWLISTS.md)
+- Tooling substrate and `xtask` control plane: [`TOOLING_STANDARD.md`](TOOLING_STANDARD.md)
 
 ## Header Standard
 

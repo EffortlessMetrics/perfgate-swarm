@@ -268,6 +268,65 @@ enum Command {
     /// Run the standard fast local PR checks.
     Pr,
 
+    /// Stable alias for the standard fast local PR checks.
+    CheckPr,
+
+    /// Apply safe local fixes for the standard PR lane.
+    FixPr,
+
+    /// Print a compact summary of repo-facing PR commands.
+    PrSummary,
+
+    /// Validate source exception ledgers via cargo-allow.
+    AllowCheck,
+
+    /// Show source exception ledger drift via cargo-allow.
+    AllowDiff,
+
+    /// Run unsafe-contract review via unsafe-review.
+    UnsafeReviewPr,
+
+    /// Run targeted Miri witnesses on nightly.
+    MiriTargeted,
+
+    /// Print the repo policy wrapper inventory.
+    PolicyReport,
+
+    /// Run the standard PR test lane via cargo-nextest.
+    TestPr,
+
+    /// Run doctests separately from cargo-nextest.
+    TestDocs,
+
+    /// Run the standard Rust coverage lane via cargo-llvm-cov.
+    Coverage,
+
+    /// Run targeted mutation testing via cargo-mutants.
+    MutationTargeted {
+        /// Run mutation testing on a specific crate only
+        #[arg(long = "crate", value_enum)]
+        crate_name: Option<MutantsCrate>,
+
+        /// Extra args forwarded to cargo-mutants
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+
+    /// Run dependency policy checks via cargo-deny.
+    CheckDeps,
+
+    /// Run supply-chain advisory checks via cargo-deny and cargo-audit.
+    CheckSupplyChain,
+
+    /// Run public API semver checks via cargo-semver-checks.
+    SemverCheck,
+
+    /// Run GitHub Actions workflow checks via actionlint and zizmor.
+    CheckWorkflows,
+
+    /// Run TOML formatting and lint checks via taplo.
+    CheckToml,
+
     /// Validate CLI examples in documentation against actual --help output.
     DocTest {
         /// Additional markdown files to scan in addition to the current-doc default set
@@ -402,6 +461,23 @@ fn main() -> anyhow::Result<()> {
         Command::RiprReviewComments { check } => cmd_ripr_review_comments(check),
         Command::CheckFilePolicy => cmd_check_file_policy(),
         Command::Pr => cmd_pr(),
+        Command::CheckPr => cmd_check_pr(),
+        Command::FixPr => cmd_fix_pr(),
+        Command::PrSummary => cmd_pr_summary(),
+        Command::AllowCheck => cmd_allow_check(),
+        Command::AllowDiff => cmd_allow_diff(),
+        Command::UnsafeReviewPr => cmd_unsafe_review_pr(),
+        Command::MiriTargeted => cmd_miri_targeted(),
+        Command::PolicyReport => cmd_policy_report(),
+        Command::TestPr => cmd_test_pr(),
+        Command::TestDocs => cmd_test_docs(),
+        Command::Coverage => cmd_coverage(),
+        Command::MutationTargeted { crate_name, args } => cmd_mutation_targeted(crate_name, args),
+        Command::CheckDeps => cmd_check_deps(),
+        Command::CheckSupplyChain => cmd_check_supply_chain(),
+        Command::SemverCheck => cmd_semver_check(),
+        Command::CheckWorkflows => cmd_check_workflows(),
+        Command::CheckToml => cmd_check_toml(),
         Command::DocTest { files } => cmd_doc_test(files),
         Command::DocsSourceCheck { root } => cmd_docs_source_check(&root),
         Command::ProductClaimsCheck { path } => cmd_product_claims_check(&path),
@@ -724,6 +800,128 @@ fn cmd_pr() -> anyhow::Result<()> {
     cmd_product_claims_check(Path::new("docs/status/PRODUCT_CLAIMS.md"))?;
     cmd_check_file_policy()?;
     run("cargo", ["test", "-p", "xtask", "badge"])?;
+    Ok(())
+}
+
+fn cmd_check_pr() -> anyhow::Result<()> {
+    cmd_pr()
+}
+
+fn cmd_fix_pr() -> anyhow::Result<()> {
+    run("cargo", ["fmt", "--all"])?;
+    cmd_docs_sync()
+}
+
+fn cmd_pr_summary() -> anyhow::Result<()> {
+    print_policy_wrapper_inventory();
+    Ok(())
+}
+
+fn cmd_allow_check() -> anyhow::Result<()> {
+    run("cargo", ["allow", "check"])
+}
+
+fn cmd_allow_diff() -> anyhow::Result<()> {
+    run("cargo", ["allow", "diff"])
+}
+
+fn cmd_unsafe_review_pr() -> anyhow::Result<()> {
+    run("unsafe-review", ["pr"])
+}
+
+fn cmd_miri_targeted() -> anyhow::Result<()> {
+    run("cargo", ["+nightly", "miri", "test", "--workspace"])
+}
+
+fn cmd_policy_report() -> anyhow::Result<()> {
+    print_policy_wrapper_inventory();
+    Ok(())
+}
+
+fn print_policy_wrapper_inventory() {
+    println!("perfgate repo-facing policy wrappers:");
+    for (name, role) in [
+        ("check-pr", "fast local PR policy bundle"),
+        ("fix-pr", "safe local formatting and generated-doc fixes"),
+        ("pr-summary", "wrapper inventory and review summary"),
+        ("allow-check", "source exception ledger validation"),
+        ("allow-diff", "source exception ledger drift"),
+        ("ripr-pr", "static mutation-exposure evidence"),
+        ("unsafe-review-pr", "unsafe-contract reviewability"),
+        ("test-pr", "nextest PR test lane"),
+        ("test-docs", "Cargo doctest lane"),
+        ("coverage", "LLVM coverage lane"),
+        (
+            "mutation-targeted",
+            "targeted cargo-mutants runtime backstop",
+        ),
+        ("miri-targeted", "targeted Miri UB witness lane"),
+        ("check-deps", "cargo-deny dependency policy"),
+        (
+            "check-supply-chain",
+            "dependency policy plus advisory checks",
+        ),
+        ("semver-check", "public API compatibility"),
+        ("check-workflows", "workflow correctness and security"),
+        ("check-toml", "TOML format and lint"),
+        ("policy-report", "policy wrapper inventory"),
+    ] {
+        println!("  {name:<20} {role}");
+    }
+}
+
+fn cmd_test_pr() -> anyhow::Result<()> {
+    run("cargo", ["nextest", "run", "--workspace", "--all-features"])
+}
+
+fn cmd_test_docs() -> anyhow::Result<()> {
+    run("cargo", ["test", "--doc", "--workspace", "--all-features"])
+}
+
+fn cmd_coverage() -> anyhow::Result<()> {
+    run(
+        "cargo",
+        [
+            "llvm-cov",
+            "nextest",
+            "--workspace",
+            "--all-features",
+            "--lcov",
+            "--output-path",
+            "target/llvm-cov/lcov.info",
+        ],
+    )
+}
+
+fn cmd_mutation_targeted(
+    crate_name: Option<MutantsCrate>,
+    args: Vec<String>,
+) -> anyhow::Result<()> {
+    cmd_mutants(crate_name, true, args)
+}
+
+fn cmd_check_deps() -> anyhow::Result<()> {
+    run("cargo", ["deny", "check"])
+}
+
+fn cmd_check_supply_chain() -> anyhow::Result<()> {
+    cmd_check_deps()?;
+    run("cargo", ["audit"])
+}
+
+fn cmd_semver_check() -> anyhow::Result<()> {
+    run("cargo", ["semver-checks", "check-release"])
+}
+
+fn cmd_check_workflows() -> anyhow::Result<()> {
+    run("actionlint", [".github/workflows"])?;
+    run("zizmor", [".github/workflows"])?;
+    Ok(())
+}
+
+fn cmd_check_toml() -> anyhow::Result<()> {
+    run("taplo", ["fmt", "--check"])?;
+    run("taplo", ["lint"])?;
     Ok(())
 }
 
