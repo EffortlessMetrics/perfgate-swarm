@@ -8,12 +8,15 @@ all three in a single binary that fits into any CI pipeline.
 
 ## Install
 
+The binary installer avoids compiling perfgate locally. If `cargo-binstall` is
+not installed yet, install it once with `cargo install cargo-binstall`.
+
 ```bash
 # Pre-built binary (via cargo-binstall)
 cargo binstall perfgate-cli
 
-# From crates.io
-cargo install perfgate-cli
+# From crates.io with Rust 1.95 or newer
+cargo install perfgate-cli --locked
 
 # From this repository checkout
 cargo install --path crates/perfgate-cli
