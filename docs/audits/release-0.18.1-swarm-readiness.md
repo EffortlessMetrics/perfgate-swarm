@@ -62,8 +62,8 @@ surfaces.
   hosted canary expansion, or scheduler/adapter additions.
 - No public release artifacts or tags are generated in this packet.
 - No automatic gate-promotion flow has been performed.
-- Open PRs include `#262` (`docs: mark no-panic advisory posture for v0.18.1`); PR
-  `#261` (`badge: refresh public endpoints`) is outside this patch lane.
+- No additional in-lane PR remains open for this governance thread; open PR
+  `#263` (`badge: refresh public endpoints`) is outside this patch lane.
 
 ## Release-trust truth for v0.18.1
 
