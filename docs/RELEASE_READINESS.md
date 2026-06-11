@@ -72,7 +72,7 @@ action alias movement, and public install smoke from public artifacts.
 | Publish dry-run proof | Passing | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types` |
 | Publish dry-run matrix | Passing | `cargo run -p xtask -- publish-check --dry-run --package perfgate-types`, `cargo run -p xtask -- publish-check --dry-run --package perfgate`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-client`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-server`, `cargo run -p xtask -- publish-check --dry-run --package perfgate-cli` |
 | GitHub Action install wiring | Passing | `cargo run -p xtask -- action-check` |
-| Install smoke proof | Passing | Public install smoke passed with `cargo binstall perfgate-cli --version 0.18.0`; installed binary reported `perfgate 0.18.0` and completed doctor/init/check/promote/require-baseline smoke |
+| Install smoke proof | Passing | Public install smoke passed with `cargo binstall perfgate-cli --version 0.18.1`; installed binary reported `perfgate 0.18.1` and completed doctor/init/check/promote/require-baseline smoke |
 | Schema compatibility | Passing | `cargo run -p xtask -- schema-compat`, including `/health` response fixtures |
 | Documentation examples | Passing | `cargo run -p xtask -- docs-check` and `cargo run -p xtask -- doc-test` |
 | Structured decision end-to-end | Verified | `perfgate ingest probes`, `perfgate decision evaluate`, `perfgate decision bundle` on `examples/performance-decision`, plus `perfgate serve --no-open` and `decision upload/history/debt/prune --dry-run` |
