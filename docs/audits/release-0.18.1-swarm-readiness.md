@@ -4,7 +4,7 @@ Date: 2026-06-11
 
 Source branch: `chore/0.18.1-release-readiness-truth-refresh` on `perfgate-swarm`
 
-Main SHA: `a5c2349f056426178809a9b85849b05f15f89aa2`
+Main SHA: `f8304daf3f1a8a22be2d7e7be6f4f9f1e8a0f1a84`
 
 Purpose:
 
