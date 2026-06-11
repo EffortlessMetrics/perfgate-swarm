@@ -214,9 +214,8 @@ Known limits:
   `213 no-panic policy issue(s) found`, so do not promote this claim back to
   `supported` until the no-panic debt is removed or explicitly reviewed. For
   v0.18.1 specifically, this claim remains advisory-only and is not part of
-  the release-pass gate.
-  This condition is carried into `v0.18.1` patch-readiness planning as an
-  explicit deferral.
+  the release-pass gate; this is documented as an explicit reviewed deferral in
+  the 0.18.1 trust-hardening lane.
 
 Review after: next-policy-ledger-change
 
