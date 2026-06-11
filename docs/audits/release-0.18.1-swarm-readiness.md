@@ -2,9 +2,9 @@
 
 Date: 2026-06-11
 
-Source branch: `lane/0.18.1-v0181-swarm-readiness-docs-2` on `perfgate-swarm`
+Source branch: `main` on `perfgate-swarm`
 
-Main SHA: `68bd3adf79b25aae8a9e8944a17f6fb3fd41783b`
+Main SHA: `7eb82bd`
 
 Purpose:
 
@@ -39,6 +39,10 @@ Recent merged PRs included in this batch:
 | #256 | Scope baseline bootstrap guidance to selected bench | 2026-06-05 |
 | #257 | Fix action summary test fixture | 2026-06-05 |
 | #258 | docs: clarify check artifact layouts | 2026-06-05 |
+| #260 | docs: v0.18.1 swarm readiness packet + clippy unblock | 2026-06-11 |
+| #262 | docs: mark no-panic advisory posture for v0.18.1 | 2026-06-11 |
+| #264 | docs: clarify no-panic advisory posture for v0.18.1 | 2026-06-11 |
+| #266 | chore: refresh v0.18.1 patch readiness packet proof artifacts | 2026-06-11 |
 
 ## Readiness status
 
@@ -62,7 +66,7 @@ surfaces.
   hosted canary expansion, or scheduler/adapter additions.
 - No public release artifacts or tags are generated in this packet.
 - No automatic gate-promotion flow has been performed.
-- No open PRs outside this patch lane are currently pending after lane cleanup.
+- No open PRs directly tied to this patch lane are pending after lane cleanup. The remaining open PRs are isolated follow-ups (for example, endpoint badge refresh #267/#619) and should not affect the v0.18.1 trust-hardening proof packet.
 
 ## Release-trust truth for v0.18.1
 
