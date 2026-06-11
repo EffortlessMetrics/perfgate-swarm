@@ -2783,7 +2783,9 @@ fn run_command(cmd: Command, server_flags: ServerFlags) -> anyhow::Result<()> {
         }
 
         Command::GithubAnnotations { compare } => {
-            if !compare.exists() && let Some(message) = no_baseline_compare_receipts_message_for_path(&compare) {
+            if !compare.exists()
+                && let Some(message) = no_baseline_compare_receipts_message_for_path(&compare)
+            {
                 anyhow::bail!("{message}");
             }
             let compare_receipt: perfgate_types::CompareReceipt = read_json(&compare)?;
