@@ -2,9 +2,9 @@
 
 Date: 2026-06-11
 
-Source branch: `lane/0.18.1-no-panic-governance-decision` on `perfgate-swarm`
+Source branch: `lane/0.18.1-v0181-swarm-readiness-docs-2` on `perfgate-swarm`
 
-Main SHA: `bea23d1eb915acc3609253714c06d6f3ce6bde4f`
+Main SHA: `68bd3adf79b25aae8a9e8944a17f6fb3fd41783b`
 
 Purpose:
 
@@ -62,8 +62,7 @@ surfaces.
   hosted canary expansion, or scheduler/adapter additions.
 - No public release artifacts or tags are generated in this packet.
 - No automatic gate-promotion flow has been performed.
-- No additional in-lane PR remains open for this governance thread; open PR
-  `#263` (`badge: refresh public endpoints`) is outside this patch lane.
+- No open PRs outside this patch lane are currently pending after lane cleanup.
 
 ## Release-trust truth for v0.18.1
 
