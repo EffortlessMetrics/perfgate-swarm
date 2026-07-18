@@ -60,7 +60,7 @@ pub enum StorageBackend {
     Memory,
     /// SQLite persistent storage
     Sqlite,
-    /// PostgreSQL storage (not yet implemented)
+    /// PostgreSQL storage (connection pooling, retry logic, and health checks)
     Postgres,
 }
 

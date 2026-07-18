@@ -7,9 +7,9 @@ This document outlines the planned evolution of perfgate. v0.15.0 is the first p
 Theme: make the baseline service boring, trustworthy, and well-documented.
 
 ### Storage Hardening
-- [ ] **PostgreSQL connection pooling** ([#65]): Pool tuning, retry logic, and health checks under load.
-- [ ] **S3 lifecycle policies** ([#67]): Retention and cleanup for old receipts in object storage.
-- [ ] **SQLite WAL mode** ([#73]): Enable WAL for concurrent read performance.
+- [x] **PostgreSQL connection pooling** ([#65]): Implemented via `PgPoolOptions` (max/min connections, idle and max-lifetime timeouts, acquire timeout), `with_retry()` exponential backoff on transient errors, a `health_check()` probe, server-side CLI flags (`--pg-max-connections` and friends), and pool metrics on the health endpoint.
+- [ ] **S3 lifecycle policies** ([#67]): Retention and cleanup for old receipts in object storage. The server ships time-based cleanup (`--retention-days`, the admin cleanup endpoint) but does not configure provider-side lifecycle rules; operators still enable those manually as the durable backstop.
+- [x] **SQLite WAL mode** ([#73]): Implemented via `PRAGMA journal_mode=WAL` on file-backed databases with explicit return-value verification (in-memory databases silently reject WAL), plus concurrency integration tests.
 
 ### Authentication & Authorization
 - [ ] **OIDC stabilization** ([#72]): Test with GitLab CI and custom providers beyond GitHub Actions.
