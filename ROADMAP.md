@@ -13,15 +13,15 @@ Theme: make the baseline service boring, trustworthy, and well-documented.
 
 ### Authentication & Authorization
 - [ ] **OIDC stabilization** ([#72]): Test with GitLab CI and custom providers beyond GitHub Actions.
-- [ ] **API key management CLI** ([#71]): Commands for creating, listing, revoking, and rotating keys.
+- [x] **API key management CLI** ([#71]): Implemented via the `keys` admin subcommand (create, list, revoke, rotate) backed by server handlers in `handlers/keys.rs` and client methods (`create_key`, `list_keys`, `revoke_key`), with mock-server CLI coverage.
 
 ### Platform Parity
-- [ ] **Windows metric gaps** ([#70]): `page_faults` and `ctx_switches` are not yet collected on Windows (only `cpu_ms` and `max_rss_kb`).
+- [ ] **Windows metric gaps** ([#70]): On Windows, `page_faults` is now collected best-effort via `GetProcessMemoryInfo`; `ctx_switches` remains uncollected (no straightforward Win32 equivalent). Unix collects both via `rusage`. This item stays open until Windows context switches are wired up (e.g. via PDH).
 - [x] **Timeout support on Windows** ([#69]): Implemented via `try_wait()` polling loop with `child.kill()` on expiration.
 
 ### Quality
 - [ ] **Server integration tests** ([#76]): Automate `#[ignore]` server tests in CI.
-- [ ] **CLI doc example validation** ([#83]): Validate doc examples against the actual binary.
+- [x] **CLI doc example validation** ([#83]): Implemented as `xtask doc-test`, which extracts CLI examples from the docs and validates every subcommand and flag against the real binary's `--help`, plus validates embedded versioned-JSON snippets against their schemas.
 
 ## Medium-Term (0.17.x)
 
