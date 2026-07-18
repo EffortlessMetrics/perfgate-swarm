@@ -28,13 +28,13 @@ Theme: make the baseline service boring, trustworthy, and well-documented.
 Theme: trust the signal before widening the platform surface.
 
 ### Observability & Audit
-- [ ] **Audit logging** ([#68]): Audit trail for baseline promotions, deletions, and key changes.
-- [ ] **Prometheus endpoint** ([#66]): `/metrics` scrape endpoint on the server.
+- [x] **Audit logging** ([#68]): Implemented — `emit_audit` records `Create`/`Delete`/`Promote` events for baselines and dedicated key-change events, persisted via `AuditStore` and served through the `/audit` listing endpoint.
+- [x] **Prometheus endpoint** ([#66]): Implemented — `/metrics` scrape endpoint plus request-timing middleware and custom counters (requests, uploads/downloads, storage ops, auth/storage failures) via `metrics-exporter-prometheus`.
 
 ### Noise & Stability
-- [ ] **Noise policy tuning** ([#78]): Smarter paired retry logic with adaptive sample sizes.
-- [ ] **Flakiness tracking** ([#79]): Cross-run flakiness history and scoring.
-- [ ] **Weighted fleet aggregation** ([#81]): Account for runner variance in `perfgate aggregate`.
+- [x] **Noise policy tuning** ([#78]): Implemented — paired retries use adaptive sample sizing (1.5× growth per retry) with CV-based early termination when the benchmark is too noisy for significance, surfaced as `NoiseDiagnostics`.
+- [x] **Flakiness tracking** ([#79]): Implemented — the server derives a `flakiness_score` from recent wall-time CV history per project/benchmark, exposed via `perfgate baseline flaky` and documented in `docs/FLAKINESS.md`.
+- [x] **Weighted fleet aggregation** ([#81]): Implemented — `perfgate aggregate` supports an inverse-variance weight mode that down-ranks noisy runners, flags variance outliers, and applies a variance floor.
 
 ### Dashboard
 - [ ] **Dashboard enhancement** ([#77]): Filtering, drill-down, export, and responsive layout.
