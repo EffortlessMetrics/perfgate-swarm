@@ -40,8 +40,8 @@ Theme: trust the signal before widening the platform surface.
 - [ ] **Dashboard enhancement** ([#77]): Filtering, drill-down, export, and responsive layout.
 
 ### Documentation & Ecosystem
-- [ ] **CI guides** ([#74]): Bitbucket Pipelines and CircleCI integration guides.
-- [ ] **Schema evolution** ([#75]): Documented policy for v2 schema coexistence.
+- [x] **CI guides** ([#74]): Shipped — `docs/GETTING_STARTED_BITBUCKET.md` and `docs/GETTING_STARTED_CIRCLECI.md` cover setup, caching, baseline-server integration, baseline promotion, and common pitfalls (alongside the existing GitHub Actions and GitLab CI guides).
+- [x] **Schema evolution** ([#75]): Documented in [ADR 0012](docs/adrs/0012-schema-evolution-policy.md): additive-vs-breaking rules, v(N)/v(N-1) coexistence with namespaced API routes, a deprecation timeline, `perfgate migrate` tooling, and `schema`-field version routing.
 - [ ] **Crate READMEs** ([#59]): Expand thin READMEs for api, config, selfbench, summary.
 - [x] **Baseline server docs** ([#51], [#52]): Validate and trim server documentation.
 
