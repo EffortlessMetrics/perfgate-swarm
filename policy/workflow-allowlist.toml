@@ -1,6 +1,19 @@
 schema_version = "1.0"
 
 [[allow]]
+id = "swarm-ci-workflow"
+glob = ".github/workflows/em-swarm-ci.yml"
+kind = "workflow"
+language = "yaml"
+surface = "ci"
+classification = "contract"
+owner = "maintainers"
+reason = "Swarm runner routing and normalized Rust result. Existing hosted routing-policy jobs also run pinned offline jactionlint correctness checks without extra runner allocation."
+covered_by = "hosted GitHub Actions; jactionlint --profile correctness --no-online --shellcheck= --pyflakes=; scripts/ci/check-runner-routing.sh"
+created = "2026-11-07"
+review_after = "0.18.0"
+
+[[allow]]
 id = "ci-workflow"
 glob = ".github/workflows/ci.yml"
 kind = "workflow"
