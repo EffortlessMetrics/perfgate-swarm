@@ -85,6 +85,16 @@ cargo run -p perfgate-cli -- blame --baseline old-Cargo.lock --current Cargo.loc
 cargo run -p perfgate-cli -- explain --compare cmp.json
 ```
 
+## GitHub Actions validation
+
+For workflow or composite-action edits, run
+`jactionlint --profile correctness --no-online --shellcheck= --pyflakes=`
+from the repository root. If the uv-installed command is not on PATH, use
+`uvx --from jactionlint==2.5.0 jactionlint` with those arguments. This is the
+static workflow check in the existing hosted runner-routing jobs; it does not
+run ShellCheck, Pyflakes, or online checks. YAML parsing alone does not replace
+workflow linting. See [CONTRIBUTING.md](CONTRIBUTING.md#github-actions-validation).
+
 ## Fuzzing (requires nightly)
 
 ```bash

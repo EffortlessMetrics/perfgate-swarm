@@ -7,6 +7,24 @@
 cargo run -p xtask -- ci
 ```
 
+## GitHub Actions validation
+
+For changes to workflows, composite actions, or workflow-linter configuration,
+run the pinned linter from the repository root:
+
+```bash
+uvx --from jactionlint==2.5.0 jactionlint --profile correctness --no-online --shellcheck= --pyflakes=
+```
+
+An installation made with `uv tool install jactionlint==2.5.0` can use
+`jactionlint` directly with the same arguments; check `jactionlint --version`
+before comparing results. The existing hosted runner-routing jobs run this
+check for both same-repository and fork PRs without another runner allocation.
+It reads the existing `.github/actionlint.yaml` runner-label configuration.
+ShellCheck, Pyflakes, and GitHub API checks are explicitly outside this lane;
+it proves static workflow correctness, not hosted execution or cache timings.
+A YAML parse is not a substitute.
+
 ## Architecture
 
 perfgate is a 26-crate Rust workspace following clean architecture. The domain

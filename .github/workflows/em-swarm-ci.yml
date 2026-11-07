@@ -23,8 +23,15 @@ jobs:
       github.repository == 'EffortlessMetrics/perfgate-swarm' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
+      - name: Validate GitHub Actions
+        uses: jdx/jactionlint@9e87e8f34edfc00b849a27807e26eff9d00b936d # v2.5.0
+        with:
+          profile: correctness
+          online: false
+          args: --shellcheck= --pyflakes=
       - name: Check runner routing policy
         run: scripts/ci/check-runner-routing.sh
 
@@ -35,8 +42,15 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
+      - name: Validate GitHub Actions
+        uses: jdx/jactionlint@9e87e8f34edfc00b849a27807e26eff9d00b936d # v2.5.0
+        with:
+          profile: correctness
+          online: false
+          args: --shellcheck= --pyflakes=
       - name: Check runner routing policy without self-hosted access
         run: scripts/ci/check-runner-routing.sh
 

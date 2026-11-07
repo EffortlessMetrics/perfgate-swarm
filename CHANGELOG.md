@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes beyond the prepared 0.18.0 release-candidate notes below.
+### Changed
+
+- Validate GitHub Actions with pinned, offline jactionlint correctness checks
+  in the existing hosted runner-routing jobs, with matching local uv commands.
 
 ## [0.18.0] - Unreleased
 
